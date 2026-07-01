@@ -65,6 +65,13 @@ to some commonly used settings:
 | `--mainModulePath, -m`  |                            | Path from where Components.js will start its lookup when initializing configurations.                                                         |
 | `--workers, -w`         | `1`                        | Run in multithreaded mode using workers. Special values are `-1` (scale to `num_cores-1`), `0` (scale to `num_cores`) and 1 (singlethreaded). |
 
+When using more than 1 worker together with a file-based configuration,
+the configuration needs to import `css:config/util/resource-locker/file.json`,
+or `css:config/util/resource-locker/redis.json`,
+instead of the default `css:config/util/resource-locker/in-memory.json`,
+as the in-memory locker does not synchronize locks across processes.
+The server will refuse to start otherwise.
+
 Parameters can also be passed through environment variables.
 
 They are prefixed with `CSS_` and converted from `camelCase` to `CAMEL_CASE`
