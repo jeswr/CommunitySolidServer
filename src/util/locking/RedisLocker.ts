@@ -11,7 +11,13 @@ import type { ResourceLocker } from './ResourceLocker';
 import type { RedisAnswer, RedisReadWriteLock, RedisResourceLock } from './scripts/RedisLuaScripts';
 import { fromResp2ToBool, REDIS_LUA_SCRIPTS } from './scripts/RedisLuaScripts';
 
-const attemptDefaults: Required<AttemptSettings> = { retryCount: -1, retryDelay: 50, retryJitter: 30 };
+const attemptDefaults: Required<AttemptSettings> = {
+  retryCount: -1,
+  retryDelay: 50,
+  retryJitter: 30,
+  retryBackoffFactor: 1,
+  retryDelayMax: 1000,
+};
 
 // Internal prefix for Redis keys;
 const PREFIX_RW = '__RW__';

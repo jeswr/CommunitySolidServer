@@ -29,7 +29,13 @@ const defaultUnlockOptions: UnlockOptions = {
   realpath: false,
 };
 
-const attemptDefaults: Required<AttemptSettings> = { retryCount: -1, retryDelay: 50, retryJitter: 30 };
+const attemptDefaults: Required<AttemptSettings> = {
+  retryCount: -1,
+  retryDelay: 50,
+  retryJitter: 30,
+  retryBackoffFactor: 2,
+  retryDelayMax: 1000,
+};
 
 /**
  * Argument interface of the FileSystemResourceLocker constructor.
@@ -89,7 +95,33 @@ export class FileSystemResourceLocker implements ResourceLocker, Initializable, 
   }
 
   /**
-   * Wrapper function for all (un)lock operations. Any errors coming from the `fn()` will be swallowed.
+   * Wrapper function for lock operations. Only `ELOCKED` errors, indicating the lock is currently held,
+   * will be swallowed, as those are the ones that should trigger a new attempt.
+   * All other errors, such as the lock folder not being accessible, would fail every future attempt as well,
+   * so those are thrown immediately instead of retrying until the maximum number of attempts is reached.
+   * This wrapper returns undefined because {@link retryFunction} expects that when a retry needs to happen.
+   *
+   * @param fn - The function reference to swallow `ELOCKED` errors from.
+   *
+   * @returns Boolean or undefined.
+   */
+  private swallowLockedErrors(fn: () => Promise<unknown>): () => Promise<unknown> {
+    return async(): Promise<unknown> => {
+      try {
+        await fn();
+        return true;
+      } catch (err: unknown) {
+        // Only a held lock should trigger a retry
+        if (isCodedError(err) && err.code === 'ELOCKED') {
+          return;
+        }
+        throw err;
+      }
+    };
+  }
+
+  /**
+   * Wrapper function for unlock operations. Any errors coming from the `fn()` will be swallowed.
    * Only `ENOTACQUIRED` errors wills be thrown (trying to release lock that didn't exist).
    * This wrapper returns undefined because {@link retryFunction} expects that when a retry needs to happen.
    *
@@ -117,7 +149,7 @@ export class FileSystemResourceLocker implements ResourceLocker, Initializable, 
     try {
       const opt = this.generateOptions(identifier, this.lockOptions);
       await retryFunction(
-        this.swallowErrors(lock.bind(null, path, opt)),
+        this.swallowLockedErrors(lock.bind(null, path, opt)),
         this.attemptSettings,
       );
     } catch (err: unknown) {
