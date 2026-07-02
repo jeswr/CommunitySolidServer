@@ -208,4 +208,108 @@ describe('A WebAclReader', (): void => {
     // http://example.com/.acl and http://example.com/bar/.acl
     expect(store.getRepresentation).toHaveBeenCalledTimes(2);
   });
+
+  it('caches the ACL resolution when the same identifier object is used again.', async(): Promise<void> => {
+    store.getRepresentation.mockImplementation(async(): Promise<Representation> => new BasicRepresentation([
+      quad(nn('auth'), nn(`${rdf}type`), nn(`${acl}Authorization`)),
+      quad(nn('auth'), nn(`${acl}accessTo`), nn(identifier.path)),
+      quad(nn('auth'), nn(`${acl}mode`), nn(`${acl}Read`)),
+    ], INTERNAL_QUADS));
+
+    compareMaps(await reader.handle(input), new IdentifierMap([[ identifier, { read: true }]]));
+    // Simulates the public permission read of a WAC-Allow header check reusing the same requested modes
+    compareMaps(
+      await reader.handle({ credentials: {}, requestedModes: accessMap }),
+      new IdentifierMap([[ identifier, { read: true }]]),
+    );
+
+    expect(resourceSet.hasResource).toHaveBeenCalledTimes(1);
+    expect(store.getRepresentation).toHaveBeenCalledTimes(1);
+    // The credential-specific part is not cached
+    expect(accessChecker.handleSafe).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not reuse cached ACL resolutions for different identifier objects.', async(): Promise<void> => {
+    store.getRepresentation.mockImplementation(async(): Promise<Representation> => new BasicRepresentation([
+      quad(nn('auth'), nn(`${rdf}type`), nn(`${acl}Authorization`)),
+    ], INTERNAL_QUADS));
+    const copy = { path: identifier.path };
+    const copyModes: AccessMap = new IdentifierSetMultiMap([[ copy, AccessMode.read ]]);
+
+    compareMaps(await reader.handle(input), new IdentifierMap([[ identifier, {}]]));
+    compareMaps(await reader.handle({ credentials, requestedModes: copyModes }), new IdentifierMap([[ copy, {}]]));
+
+    expect(resourceSet.hasResource).toHaveBeenCalledTimes(2);
+    expect(store.getRepresentation).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not cache a failed ACL document walk.', async(): Promise<void> => {
+    resourceSet.hasResource.mockResolvedValue(false);
+    await expect(reader.handle(input)).rejects.toThrow(ForbiddenHttpError);
+    // One call for the resource and one for the root container
+    expect(resourceSet.hasResource).toHaveBeenCalledTimes(2);
+
+    resourceSet.hasResource.mockResolvedValue(true);
+    compareMaps(await reader.handle(input), new IdentifierMap([[ identifier, {}]]));
+    expect(resourceSet.hasResource).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not cache a failed ACL document read.', async(): Promise<void> => {
+    store.getRepresentation.mockRejectedValueOnce(new Error('TEST!'));
+    await expect(reader.handle(input)).rejects.toThrow(InternalServerError);
+
+    compareMaps(await reader.handle(input), new IdentifierMap([[ identifier, {}]]));
+    // The successful walk to the ACL document was cached, the failed read was not
+    expect(resourceSet.hasResource).toHaveBeenCalledTimes(1);
+    expect(store.getRepresentation).toHaveBeenCalledTimes(2);
+  });
+
+  it('caches resolved ACL documents for a mix of subject and child identifiers.', async(): Promise<void> => {
+    const identifier2 = { path: 'http://example.com/bar/' };
+    const identifier3 = { path: 'http://example.com/bar/baz' };
+
+    resourceSet.hasResource.mockImplementation(async(id): Promise<boolean> =>
+      id.path === 'http://example.com/.acl' || id.path === 'http://example.com/bar/.acl');
+
+    store.getRepresentation.mockImplementation(async(id: ResourceIdentifier): Promise<Representation> => {
+      if (id.path === 'http://example.com/.acl') {
+        return new BasicRepresentation([
+          quad(nn('auth'), nn(`${rdf}type`), nn(`${acl}Authorization`)),
+          quad(nn('auth'), nn(`${acl}agentClass`), nn('http://xmlns.com/foaf/0.1/Agent')),
+          quad(nn('auth'), nn(`${acl}default`), nn('http://example.com/')),
+          quad(nn('auth'), nn(`${acl}mode`), nn(`${acl}Read`)),
+        ], INTERNAL_QUADS);
+      }
+      if (id.path === 'http://example.com/bar/.acl') {
+        return new BasicRepresentation([
+          quad(nn('auth'), nn(`${rdf}type`), nn(`${acl}Authorization`)),
+          quad(nn('auth'), nn(`${acl}agentClass`), nn('http://xmlns.com/foaf/0.1/Agent')),
+          quad(nn('auth'), nn(`${acl}default`), nn(identifier2.path)),
+          quad(nn('auth'), nn(`${acl}mode`), nn(`${acl}Append`)),
+          quad(nn('auth2'), nn(`${rdf}type`), nn(`${acl}Authorization`)),
+          quad(nn('auth2'), nn(`${acl}agentClass`), nn('http://xmlns.com/foaf/0.1/Agent')),
+          quad(nn('auth2'), nn(`${acl}accessTo`), nn(identifier2.path)),
+          quad(nn('auth2'), nn(`${acl}mode`), nn(`${acl}Read`)),
+        ], INTERNAL_QUADS);
+      }
+      throw new NotFoundHttpError();
+    });
+
+    input.requestedModes.set(identifier2, new Set([ AccessMode.read ]));
+    input.requestedModes.set(identifier3, new Set([ AccessMode.append ]));
+
+    const expected = new IdentifierMap([
+      [ identifier, { read: true }],
+      [ identifier2, { read: true }],
+      [ identifier3, { append: true }],
+    ]);
+    compareMaps(await reader.handle(input), expected);
+    // 2 for identifier, 1 for identifier2, 2 for identifier3
+    expect(resourceSet.hasResource).toHaveBeenCalledTimes(5);
+    expect(store.getRepresentation).toHaveBeenCalledTimes(2);
+
+    compareMaps(await reader.handle({ credentials: {}, requestedModes: accessMap }), expected);
+    expect(resourceSet.hasResource).toHaveBeenCalledTimes(5);
+    expect(store.getRepresentation).toHaveBeenCalledTimes(2);
+  });
 });
