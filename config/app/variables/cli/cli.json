@@ -129,6 +129,15 @@
             "type": "boolean",
             "describe": "Skips the confirmation prompts during migration from older versions."
           }
+        },
+        {
+          "@type": "YargsParameter",
+          "name": "saltRounds",
+          "options": {
+            "requiresArg": true,
+            "type": "number",
+            "describe": "The bcrypt cost factor (salt rounds) used when hashing passwords. Higher is more secure but slower."
+          }
         }
       ],
       "options": {
