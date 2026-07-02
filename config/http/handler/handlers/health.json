@@ -1,0 +1,11 @@
+{
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@graph": [
+    {
+      "comment": "Responds to liveness requests so external tools can verify that the server is running.",
+      "@id": "urn:solid-server:default:HealthHandler",
+      "@type": "HealthHandler",
+      "path": "/.well-known/css/health"
+    }
+  ]
+}
