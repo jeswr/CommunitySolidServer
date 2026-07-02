@@ -34,14 +34,19 @@ const args = {};
 {
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i].startsWith('--')) {
+    if (!argv[i].startsWith('--')) {
+      continue;
+    }
+    // --key=value form; required when the value itself starts with '--' (e.g. --serverArgs="--flag x")
+    const eq = argv[i].indexOf('=');
+    if (eq >= 0) {
+      args[argv[i].slice(2, eq)] = argv[i].slice(eq + 1);
+    } else if (i + 1 < argv.length && !argv[i + 1].startsWith('--')) {
       const key = argv[i].slice(2);
-      if (i + 1 < argv.length && !argv[i + 1].startsWith('--')) {
-        i += 1;
-        args[key] = argv[i];
-      } else {
-        args[key] = true;
-      }
+      i += 1;
+      args[key] = argv[i];
+    } else {
+      args[argv[i].slice(2)] = true;
     }
   }
 }
