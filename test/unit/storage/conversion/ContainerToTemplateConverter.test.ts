@@ -101,6 +101,49 @@ describe('A ContainerToTemplateConverter', (): void => {
     });
   });
 
+  it('sorts the contained resources by code point.', async(): Promise<void> => {
+    const container = { path: 'http://test.com/container/' };
+    const representation = new BasicRepresentation([
+      quad(nn(container.path), LDP.terms.contains, nn(`${container.path}c/`)),
+      quad(nn(container.path), LDP.terms.contains, nn(`${container.path}a`)),
+      quad(nn(container.path), LDP.terms.contains, nn(`${container.path}B`)),
+    ], 'internal/quads', false);
+    await converter.handle({ identifier: container, representation, preferences });
+
+    expect(templateEngine.handleSafe).toHaveBeenCalledTimes(1);
+    expect(templateEngine.handleSafe).toHaveBeenCalledWith({
+      contents: {
+        identifier: container.path,
+        name: 'container',
+        container: true,
+        children: [
+          {
+            identifier: `${container.path}c/`,
+            name: 'c',
+            container: true,
+          },
+          {
+            identifier: `${container.path}B`,
+            name: 'B',
+            container: false,
+          },
+          {
+            identifier: `${container.path}a`,
+            name: 'a',
+            container: false,
+          },
+        ],
+        parents: [
+          {
+            identifier: 'http://test.com/',
+            name: 'test.com',
+            container: true,
+          },
+        ],
+      },
+    });
+  });
+
   it('converts the root container.', async(): Promise<void> => {
     const container = { path: 'http://test.com/' };
     const representation = new BasicRepresentation([
