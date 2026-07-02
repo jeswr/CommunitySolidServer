@@ -95,6 +95,20 @@ describe('WinstonLoggerFactory', (): void => {
       .toBe(`${now.toISOString()} [MyLabel] {W-???} ${level}: my message`);
   });
 
+  it('adds the request identifier to the output when there is one.', async(): Promise<void> => {
+    (factory as any).createTransports = (): any => [ transport ];
+
+    // Create logger, and log
+    const logger = factory.createLogger('MyLabel');
+    logger.log('debug', 'my message', { isPrimary: true, pid: 0, requestId: '4c079dca' });
+
+    expect(transport.write).toHaveBeenCalledTimes(1);
+    // Need to check level like this as it has color tags
+    const { level } = transport.write.mock.calls[0][0];
+    expect(transport.write.mock.calls[0][0][Symbol.for('message')])
+      .toBe(`${now.toISOString()} [MyLabel] {Primary} [4c079dca] ${level}: my message`);
+  });
+
   it('outputs a line of JSON per message when using the json format.', async(): Promise<void> => {
     factory = new WinstonLoggerFactory('debug', 'json');
     (factory as any).createTransports = (): any => [ transport ];
@@ -122,7 +136,7 @@ describe('WinstonLoggerFactory', (): void => {
 
     // Create logger, and log
     const logger = factory.createLogger('MyLabel');
-    logger.log('debug', 'my message', { isPrimary: true, pid: 0 });
+    logger.log('debug', 'my message', { isPrimary: true, pid: 0, requestId: '4c079dca' });
 
     expect(transport.write).toHaveBeenCalledTimes(1);
     const line: string = transport.write.mock.calls[0][0][Symbol.for('message')];
@@ -133,6 +147,7 @@ describe('WinstonLoggerFactory', (): void => {
       timestamp: now.toISOString(),
       isPrimary: true,
       pid: 0,
+      requestId: '4c079dca',
     });
   });
 });

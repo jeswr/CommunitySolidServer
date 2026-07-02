@@ -44,6 +44,13 @@ export class WinstonLoggerFactory implements LoggerFactory {
     return `W-${meta.pid ?? '???'}`;
   };
 
+  private readonly requestInfo = (meta: LogMetadata): string => {
+    if (meta.requestId) {
+      return ` [${meta.requestId}]`;
+    }
+    return '';
+  };
+
   public createLogger(label: string): Logger {
     return new WinstonLogger(createLogger({
       level: this.level,
@@ -71,7 +78,8 @@ export class WinstonLoggerFactory implements LoggerFactory {
       format.printf(
         ({ level: levelInner, message, label: labelInner, timestamp, metadata: meta }: Logform.TransformableInfo):
         string =>
-          `${timestamp} [${labelInner}] {${this.clusterInfo(meta as LogMetadata)}} ${levelInner}: ${message}`,
+          `${timestamp} [${labelInner}] {${this.clusterInfo(meta as LogMetadata)}}` +
+          `${this.requestInfo(meta as LogMetadata)} ${levelInner}: ${message}`,
       ),
     );
   }
