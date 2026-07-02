@@ -28,9 +28,13 @@ export class BearerWebIdExtractor extends CredentialsExtractor {
     const { headers: { authorization }} = request;
 
     try {
-      const { webid: webId, client_id: clientId, iss: issuer } = await this.verify(authorization!);
+      const payload = await this.verify(authorization!);
+      const { webid: webId, client_id: clientId, iss: issuer } = payload;
+      // The type of the verified payload omits `jti`,
+      // but JWT access tokens issued by the server always contain one
+      const tokenId = (payload as { jti?: string }).jti;
       this.logger.info(`Verified credentials via Bearer access token. WebID: ${webId
-      }, client ID: ${clientId}, issuer: ${issuer}`);
+      }, client ID: ${clientId ?? 'none'}, issuer: ${issuer}, token ID: ${tokenId ?? 'none'}`);
       const credentials: Credentials = { agent: { webId }, issuer: { url: issuer }};
       if (clientId) {
         credentials.client = { clientId };

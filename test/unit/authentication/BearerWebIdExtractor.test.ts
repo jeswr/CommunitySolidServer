@@ -1,21 +1,38 @@
 import type { SolidTokenVerifierFunction } from '@solid/access-token-verifier';
 import type { SolidAccessTokenPayload } from '@solid/access-token-verifier/dist/type/SolidAccessTokenPayload';
 import { BearerWebIdExtractor } from '../../../src/authentication/BearerWebIdExtractor';
+import type { Logger } from '../../../src/logging/Logger';
+import { getLoggerFor } from '../../../src/logging/LogUtil';
 import type { HttpRequest } from '../../../src/server/HttpRequest';
 import { BadRequestHttpError } from '../../../src/util/errors/BadRequestHttpError';
 import { NotImplementedHttpError } from '../../../src/util/errors/NotImplementedHttpError';
 
 let clientId: string | undefined;
-const solidTokenVerifier = jest.fn(async(): Promise<SolidAccessTokenPayload> =>
-  ({ aud: 'solid', exp: 1234, iat: 1234, iss: 'example.com/idp', webid: 'http://alice.example/card#me', client_id: clientId }));
+let tokenId: string | undefined;
+const solidTokenVerifier = jest.fn(async(): Promise<SolidAccessTokenPayload> => ({
+  aud: 'solid',
+  exp: 1234,
+  iat: 1234,
+  iss: 'example.com/idp',
+  webid: 'http://alice.example/card#me',
+  client_id: clientId,
+  jti: tokenId,
+} as SolidAccessTokenPayload));
 jest.mock('@solid/access-token-verifier', (): any =>
   ({ createSolidTokenVerifier: (): SolidTokenVerifierFunction => solidTokenVerifier }));
 
+jest.mock('../../../src/logging/LogUtil', (): any => {
+  const logger: Logger = { info: jest.fn(), warn: jest.fn() } as any;
+  return { getLoggerFor: (): Logger => logger };
+});
+
 describe('A BearerWebIdExtractor', (): void => {
+  const logger: jest.Mocked<Logger> = getLoggerFor('mock') as any;
   const webIdExtractor = new BearerWebIdExtractor();
 
   beforeEach((): void => {
     clientId = undefined;
+    tokenId = undefined;
   });
 
   afterEach((): void => {
@@ -77,6 +94,23 @@ describe('A BearerWebIdExtractor', (): void => {
       await expect(result).resolves.toEqual(
         { agent: { webId: 'http://alice.example/card#me' }, issuer: { url: 'example.com/idp' }, client: { clientId }},
       );
+    });
+
+    it('logs placeholders when the token has no client ID or token ID.', async(): Promise<void> => {
+      await webIdExtractor.handleSafe(request);
+      expect(logger.info).toHaveBeenCalledTimes(1);
+      expect(logger.info).toHaveBeenLastCalledWith('Verified credentials via Bearer access token. ' +
+        'WebID: http://alice.example/card#me, client ID: none, issuer: example.com/idp, token ID: none');
+    });
+
+    it('logs the client ID and token ID when the token contains them.', async(): Promise<void> => {
+      clientId = 'http://client.example.com/#me';
+      tokenId = '5b9ba391-023b-40de-b4c4-3e4d92a10979';
+      await webIdExtractor.handleSafe(request);
+      expect(logger.info).toHaveBeenCalledTimes(1);
+      expect(logger.info).toHaveBeenLastCalledWith('Verified credentials via Bearer access token. ' +
+        'WebID: http://alice.example/card#me, client ID: http://client.example.com/#me, ' +
+        'issuer: example.com/idp, token ID: 5b9ba391-023b-40de-b4c4-3e4d92a10979');
     });
   });
 
