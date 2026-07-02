@@ -5,6 +5,7 @@ import type { ResourceIdentifier } from '../http/representation/ResourceIdentifi
 import { getLoggerFor } from '../logging/LogUtil';
 import type { ResourceSet } from '../storage/ResourceSet';
 import type { ResourceStore } from '../storage/ResourceStore';
+import { PromiseCache } from '../util/caching/PromiseCache';
 import { INTERNAL_QUADS } from '../util/ContentTypes';
 import { createErrorMessage } from '../util/errors/ErrorUtil';
 import { ForbiddenHttpError } from '../util/errors/ForbiddenHttpError';
@@ -35,6 +36,10 @@ const modesMap: Record<string, readonly (keyof AclPermissionSet)[]> = {
  * or applying control permissions for ACL resources.
  *
  * Specific access checks are done by the provided {@link AccessChecker}.
+ *
+ * Since finding the effective ACL resource and reading its contents is independent of the credentials,
+ * those results are cached per identifier object,
+ * so multiple permission reads within a single request resolve the ACL documents only once.
  */
 export class WebAclReader extends PermissionReader {
   protected readonly logger = getLoggerFor(this);
@@ -44,6 +49,21 @@ export class WebAclReader extends PermissionReader {
   private readonly aclStore: ResourceStore;
   private readonly identifierStrategy: IdentifierStrategy;
   private readonly accessChecker: AccessChecker;
+
+  /**
+   * Caches the effective-ACL walk ({@link WebAclReader.getAclRecursive}) per target identifier object,
+   * and the parsed ACL contents ({@link WebAclReader.readAclData}) per ACL identifier object.
+   *
+   * Both caches use the `WeakMap`-backed form of {@link PromiseCache} and rely on object identity for
+   * correctness: identifier objects are created once per request when the target is extracted, and those
+   * exact objects reach this reader on every permission read within that request (such as the authorization
+   * check and the public WAC-Allow check), so the walk and the read happen only once per request. A new
+   * request always allocates new identifier objects, so a `WeakMap` keyed on these objects can never serve
+   * data across requests and needs no invalidation; identifier objects rebuilt along the way simply result
+   * in a cache miss, and entries are garbage collected once the request's identifiers become unreachable.
+   */
+  private readonly aclCache: PromiseCache<ResourceIdentifier, ResourceIdentifier>;
+  private readonly storeCache: PromiseCache<ResourceIdentifier, Store>;
 
   public constructor(
     aclStrategy: AuxiliaryIdentifierStrategy,
@@ -58,6 +78,12 @@ export class WebAclReader extends PermissionReader {
     this.aclStore = aclStore;
     this.identifierStrategy = identifierStrategy;
     this.accessChecker = accessChecker;
+    this.aclCache = new PromiseCache<ResourceIdentifier, ResourceIdentifier>(
+      new WeakMap<ResourceIdentifier, Promise<ResourceIdentifier>>(),
+    );
+    this.storeCache = new PromiseCache<ResourceIdentifier, Store>(
+      new WeakMap<ResourceIdentifier, Promise<Store>>(),
+    );
   }
 
   /**
@@ -137,7 +163,10 @@ export class WebAclReader extends PermissionReader {
 
     for (const target of targets) {
       this.logger.debug(`Searching ACL data for ${target.path}`);
-      const aclIdentifier = await this.getAclRecursive(target);
+      const aclIdentifier = await this.aclCache.getOrCreate(
+        target,
+        async(): Promise<ResourceIdentifier> => this.getAclRecursive(target),
+      );
       aclMap.add(aclIdentifier, target);
     }
 
@@ -147,6 +176,9 @@ export class WebAclReader extends PermissionReader {
   /**
    * Finds the ACL document relevant for the given identifier,
    * following the steps defined in https://solidproject.org/TR/2021/wac-20210711#effective-acl-resource.
+   *
+   * Callers reach this through {@link WebAclReader.aclCache} so the walk is performed at most once per
+   * request for a given target identifier object; see that field for the caching rationale.
    *
    * @param identifier - {@link ResourceIdentifier} of which we need the ACL document.
    *
@@ -189,17 +221,10 @@ export class WebAclReader extends PermissionReader {
     const result = new Map<Store, ResourceIdentifier[]>();
     for (const [ aclIdentifier, matchedTargets ] of map.entrySets()) {
       const subject = this.aclStrategy.getSubjectIdentifier(aclIdentifier);
-      this.logger.debug(`Trying to read the ACL document ${aclIdentifier.path}`);
-      let contents: Store;
-      try {
-        const data = await this.aclStore.getRepresentation(aclIdentifier, { type: { [INTERNAL_QUADS]: 1 }});
-        contents = await readableToQuads(data.data);
-      } catch (error: unknown) {
-        // Something is wrong with the server if we can't read the resource
-        const message = `Error reading ACL resource ${aclIdentifier.path}: ${createErrorMessage(error)}`;
-        this.logger.error(message);
-        throw new InternalServerError(message, { cause: error });
-      }
+      const contents = await this.storeCache.getOrCreate(
+        aclIdentifier,
+        async(): Promise<Store> => this.readAclData(aclIdentifier),
+      );
 
       // SubjectIdentifiers are those that match the subject identifier of the found ACL document (so max 1).
       // Due to how the effective ACL document is found, all other identifiers must be (transitive) children.
@@ -219,6 +244,32 @@ export class WebAclReader extends PermissionReader {
       }
     }
     return result;
+  }
+
+  /**
+   * Reads and parses the contents of the given ACL resource.
+   *
+   * Callers reach this through {@link WebAclReader.storeCache}, using the same request-scoped object
+   * identity as {@link WebAclReader.getAclRecursive}: the resolved ACL identifier flows unchanged from the
+   * cached walk, so within one request every permission read parses each ACL document only once. An ACL
+   * resource updated mid-request is served its pre-update snapshot for the remainder of that request,
+   * which is acceptable as it just makes all permission reads of one request see a single ACL snapshot.
+   *
+   * @param aclIdentifier - Identifier of the ACL resource to read.
+   *
+   * @returns A {@link Store} containing the statements of the ACL resource.
+   */
+  private async readAclData(aclIdentifier: ResourceIdentifier): Promise<Store> {
+    this.logger.debug(`Trying to read the ACL document ${aclIdentifier.path}`);
+    try {
+      const data = await this.aclStore.getRepresentation(aclIdentifier, { type: { [INTERNAL_QUADS]: 1 }});
+      return await readableToQuads(data.data);
+    } catch (error: unknown) {
+      // Something is wrong with the server if we can't read the resource
+      const message = `Error reading ACL resource ${aclIdentifier.path}: ${createErrorMessage(error)}`;
+      this.logger.error(message);
+      throw new InternalServerError(message, { cause: error });
+    }
   }
 
   /**
