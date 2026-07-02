@@ -8,6 +8,7 @@
  *   node scripts/perf/runner.js --serverDir <builtCheckout>
  *     [--config config/file.json] [--port 3460] [--label name] [--out results.json]
  *     [--seconds 10] [--conc 20] [--wedge] [--bootRuns N]
+ *     [--serverArgs "--extraFlag value ..."]
  *
  * --serverDir must point at a *built* CSS checkout (bin/server.js present);
  *   `jose` is resolved from that checkout's dependency tree for the pod setup.
@@ -15,6 +16,8 @@
  *   (a trickling reader holding a read lock + 40 aborted writers) and
  *   measures the idle fs-op rate it leaves behind.
  * --bootRuns N only measures cold-boot time/IO/RSS N times (no scenarios).
+ * --serverArgs appends extra whitespace-separated arguments to the server
+ *   command line (e.g. "--moduleStateCachePath /tmp/ms.json").
  *
  * All numbers are indicative: the load generator shares the machine with the
  * server, and `fetch` (undici) pools connections per origin.
@@ -85,6 +88,7 @@ async function startServer(podDir) {
     String(PORT),
     '-l',
     'warn',
+    ...typeof args.serverArgs === 'string' ? args.serverArgs.split(/\s+/u).filter(Boolean) : [],
   ], {
     cwd: SERVER_DIR,
     env: { ...process.env, FS_COUNT_OUT: COUNTS },
