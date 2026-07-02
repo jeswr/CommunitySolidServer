@@ -442,6 +442,7 @@ export * from './server/util/RouterHandler';
 // Storage/Accessors
 export * from './storage/accessors/AtomicDataAccessor';
 export * from './storage/accessors/AtomicFileDataAccessor';
+export * from './storage/accessors/AzureBlobDataAccessor';
 export * from './storage/accessors/DataAccessor';
 export * from './storage/accessors/FileDataAccessor';
 export * from './storage/accessors/FilterMetadataDataAccessor';

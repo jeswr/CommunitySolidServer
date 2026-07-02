@@ -96,6 +96,24 @@
         },
         {
           "@type": "YargsParameter",
+          "name": "azureBlobConnectionString",
+          "options": {
+            "requiresArg": true,
+            "type": "string",
+            "describe": "Connection string of the Azure Storage account, when using an Azure Blob Storage-based configuration."
+          }
+        },
+        {
+          "@type": "YargsParameter",
+          "name": "azureBlobContainer",
+          "options": {
+            "requiresArg": true,
+            "type": "string",
+            "describe": "Name of the Azure Blob Storage container, when using an Azure Blob Storage-based configuration."
+          }
+        },
+        {
+          "@type": "YargsParameter",
           "name": "podConfigJson",
           "options": {
             "requiresArg": true,
