@@ -30,6 +30,17 @@ const CORE_CLI_PARAMETERS = {
 const ENV_VAR_PREFIX = 'CSS';
 
 /**
+ * Process signals that stop the server.
+ */
+const STOP_SIGNALS: NodeJS.Signals[] = [ 'SIGINT', 'SIGTERM' ];
+
+/**
+ * Time in milliseconds the server gets to stop gracefully after receiving a stop signal
+ * before the process is exited forcefully.
+ */
+const SHUTDOWN_TIMEOUT = 30_000;
+
+/**
  * Parameters that can be used to instantiate the server through code.
  */
 export interface AppRunnerInput {
@@ -162,6 +173,54 @@ export class AppRunner {
       this.logger.error(`Could not start the server: ${createErrorMessage(error)}`);
       this.resolveError('Could not start the server', error);
     }
+    this.registerStopSignals(app);
+  }
+
+  /**
+   * Stops the given {@link App} when the process receives a stop signal (SIGINT/SIGTERM),
+   * so the server shuts down gracefully:
+   * all finalizers run, releasing resources such as file locks and open connections.
+   * The handlers are registered with `once`,
+   * so sending a second signal terminates the process immediately with the default signal behavior.
+   * Should stopping take longer than {@link SHUTDOWN_TIMEOUT} milliseconds,
+   * the process is exited forcefully.
+   *
+   * @param app - The application to stop when a signal is received.
+   */
+  protected registerStopSignals(app: App): void {
+    for (const signal of STOP_SIGNALS) {
+      process.once(signal, (): void => {
+        this.logger.info(`Received ${signal}. Stopping the server.`);
+        const timer = setTimeout((): void => {
+          this.logger.error(`Stopping the server timed out after ${SHUTDOWN_TIMEOUT} ms. Exiting forcefully.`);
+          this.exitProcess(1);
+        }, SHUTDOWN_TIMEOUT);
+        // The timer should not prevent the process from exiting once stopping finishes
+        timer.unref();
+        app.stop().then(
+          (): void => {
+            clearTimeout(timer);
+            this.logger.info('Server stopped.');
+            this.exitProcess(0);
+          },
+          (error: unknown): void => {
+            clearTimeout(timer);
+            this.logger.error(`Could not stop the server: ${createErrorMessage(error)}`);
+            this.exitProcess(1);
+          },
+        );
+      });
+    }
+  }
+
+  /**
+   * Exits the Node.js process with the given exit code.
+   *
+   * @param code - The exit code for the process.
+   */
+  private exitProcess(code: number): void {
+    // eslint-disable-next-line unicorn/no-process-exit
+    process.exit(code);
   }
 
   /**
