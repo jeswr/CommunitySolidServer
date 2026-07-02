@@ -300,6 +300,7 @@ export * from './init/AppRunner';
 export * from './init/BaseUrlVerifier';
 export * from './init/CliResolver';
 export * from './init/ConfigPodInitializer';
+export * from './init/ConfigPrecompiler';
 export * from './init/ContainerInitializer';
 export * from './init/Initializable';
 export * from './init/InitializableHandler';

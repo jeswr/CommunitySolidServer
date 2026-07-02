@@ -13,6 +13,8 @@ import type { App } from './App';
 import type { CliExtractor } from './cli/CliExtractor';
 import type { CliResolver } from './CliResolver';
 import { listSingleThreadedComponents } from './cluster/SingleThreaded';
+import type { ConfigPrecompilerInput, PrecompiledConfig } from './ConfigPrecompiler';
+import { ConfigPrecompiler } from './ConfigPrecompiler';
 import type { ShorthandResolver } from './variables/ShorthandResolver';
 import type { CliArgv, Shorthand, VariableBindings } from './variables/Types';
 
@@ -25,6 +27,7 @@ const CORE_CLI_PARAMETERS = {
   config: { type: 'array', alias: 'c', default: [ DEFAULT_CONFIG ], requiresArg: true },
   loggingLevel: { type: 'string', alias: 'l', default: 'info', requiresArg: true, choices: LOG_LEVELS },
   mainModulePath: { type: 'string', alias: 'm', requiresArg: true },
+  precompiledConfigPath: { type: 'string', requiresArg: true },
 } as const;
 
 const ENV_VAR_PREFIX = 'CSS';
@@ -67,6 +70,19 @@ export interface AppRunnerInput {
    * Entries here have the lowest priority for assigning values to variables.
    */
   argv?: string[];
+  /**
+   * Path to a file where a precompiled version of the configuration(s) is stored,
+   * allowing the server to start without having to parse any modules or configurations.
+   * If there is no such file yet, or if it is out of date,
+   * the server starts normally and afterwards writes the precompiled configuration to this path,
+   * so it can be used to speed up future server starts.
+   *
+   * Note that changes to configuration files imported by the top-level configuration(s) can not be detected,
+   * so after such changes this file needs to be deleted manually to force a new compilation.
+   * Multithreaded setups are not supported:
+   * for those the file is ignored and the server always starts normally.
+   */
+  precompiledConfigPath?: string;
 }
 
 /**
@@ -74,6 +90,7 @@ export interface AppRunnerInput {
  */
 export class AppRunner {
   private readonly logger = getLoggerFor(this);
+  private readonly precompiler = new ConfigPrecompiler();
 
   /**
    * Starts the server with a given config.
@@ -104,6 +121,29 @@ export class AppRunner {
     let configs = input.config ?? [ '@css:config/default.json' ];
     configs = (Array.isArray(configs) ? configs : [ configs ]).map(resolveAssetPath);
 
+    if (input.precompiledConfigPath) {
+      return this.createPrecompiled({
+        path: resolveAssetPath(input.precompiledConfigPath),
+        mainModulePath: loaderProperties.mainModulePath,
+        configPaths: configs,
+      }, loaderProperties, configs, input);
+    }
+
+    return this.createFromConfigs(loaderProperties, configs, input);
+  }
+
+  /**
+   * Creates an App by having Components.js build and instantiate the given configurations.
+   *
+   * @param loaderProperties - Properties used when building the Components.js manager.
+   * @param configs - The resolved configuration paths.
+   * @param input - All values necessary to configure the server.
+   */
+  private async createFromConfigs(
+    loaderProperties: IComponentsManagerBuilderOptions<App>,
+    configs: string[],
+    input: AppRunnerInput,
+  ): Promise<App> {
     let componentsManager: ComponentsManager<App | CliResolver>;
     try {
       componentsManager = await this.createComponentsManager<App>(loaderProperties, configs);
@@ -112,6 +152,91 @@ export class AppRunner {
     }
 
     const cliResolver = await this.createCliResolver(componentsManager as ComponentsManager<CliResolver>);
+    const variables = await this.resolveVariables(cliResolver, input);
+
+    return this.createApp(componentsManager as ComponentsManager<App>, variables);
+  }
+
+  /**
+   * Creates an App from the precompiled configuration in the given artifact, if possible.
+   * Falls back to {@link AppRunner.createFromConfigs} if there is no valid artifact,
+   * in which case the artifact also gets (re)generated to speed up future server starts,
+   * or if the resolved variables imply a multithreaded setup.
+   *
+   * @param precompilerInput - Determines the artifact location and the values used to verify its key.
+   * @param loaderProperties - Properties used when building the Components.js manager, in case of a fallback.
+   * @param configs - The resolved configuration paths.
+   * @param input - All values necessary to configure the server.
+   */
+  private async createPrecompiled(
+    precompilerInput: ConfigPrecompilerInput,
+    loaderProperties: IComponentsManagerBuilderOptions<App>,
+    configs: string[],
+    input: AppRunnerInput,
+  ): Promise<App> {
+    const precompiled = await this.precompiler.load(precompilerInput);
+    if (precompiled) {
+      const app = await this.createPrecompiledApp(precompiled, input, precompilerInput.path);
+      if (app) {
+        return app;
+      }
+      // Multithreaded setups require a Components.js manager for the thread safety check,
+      // so those fall back to a full build without regenerating the artifact.
+      return this.createFromConfigs(loaderProperties, configs, input);
+    }
+
+    const app = await this.createFromConfigs(loaderProperties, configs, input);
+    this.logger.info(`Precompiling the configuration to ${precompilerInput.path} to speed up future server starts`);
+    await this.precompiler.precompile(precompilerInput);
+    return app;
+  }
+
+  /**
+   * Creates an App using the instantiation functions of a precompiled configuration,
+   * without any Components.js involvement.
+   * Returns `undefined` if the result would run multithreaded,
+   * as verifying thread safety requires a Components.js manager.
+   *
+   * @param precompiled - The precompiled configuration.
+   * @param input - All values necessary to configure the server.
+   * @param path - Path of the artifact the precompiled configuration was loaded from.
+   */
+  private async createPrecompiledApp(precompiled: PrecompiledConfig, input: AppRunnerInput, path: string):
+  Promise<App | undefined> {
+    let cliResolver: CliResolver;
+    try {
+      cliResolver = precompiled.cliResolver({});
+    } catch (error: unknown) {
+      this.resolveError(`Could not create the CLI resolver from the precompiled configuration ${path}`, error);
+    }
+
+    const variables = await this.resolveVariables(cliResolver, input);
+
+    let app: App;
+    try {
+      app = precompiled.app(variables);
+    } catch (error: unknown) {
+      this.resolveError(`Could not create the server from the precompiled configuration ${path}`, error);
+    }
+
+    if (!app.clusterManager.isSingleThreaded()) {
+      this.logger.warn(`Precompiled configurations can not be used in multithreaded setups. Ignoring ${path}.`);
+      return;
+    }
+
+    this.logger.info(`Created the server from the precompiled configuration ${path}`);
+    return app;
+  }
+
+  /**
+   * Determines the variable values by extracting shorthand values from the CLI arguments, if any,
+   * and resolving those together with the shorthand input.
+   * Values from the `variableBindings` input override the resolved values.
+   *
+   * @param cliResolver - {@link CliResolver} used to extract and resolve shorthand values.
+   * @param input - All values necessary to configure the server.
+   */
+  private async resolveVariables(cliResolver: CliResolver, input: AppRunnerInput): Promise<VariableBindings> {
     let extracted: Shorthand = {};
     if (input.argv) {
       extracted = await this.extractShorthand(cliResolver.cliExtractor, input.argv);
@@ -121,12 +246,8 @@ export class AppRunner {
       ...input.shorthand,
     });
 
-    // Create the application using the translated variable values.
     // `variableBindings` override those resolved from the `shorthand` input.
-    return this.createApp(
-      componentsManager as ComponentsManager<App>,
-      { ...parsedVariables, ...input.variableBindings },
-    );
+    return { ...parsedVariables, ...input.variableBindings };
   }
 
   /**
@@ -197,6 +318,7 @@ export class AppRunner {
       config: params.config as string[],
       argv,
       shorthand: settings,
+      precompiledConfigPath: params.precompiledConfigPath,
     });
   }
 
