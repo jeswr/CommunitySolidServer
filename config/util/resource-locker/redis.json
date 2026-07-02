@@ -2,12 +2,19 @@
   "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
   "@graph": [
     {
-      "comment": "Allows multiple simultaneous read operations. All locks are threadsafe.",
+      "comment": [
+        "Allows multiple simultaneous read operations. All locks are threadsafe.",
+        "HA / multi-instance deployment shape: use a file (or database) storage backend, a single shared Redis",
+        "reachable by every server instance, and a distinct `redisNamespace` per logical deployment so different",
+        "deployments never share lock keys. All instances of the SAME deployment must share one namespace to coordinate."
+      ],
       "@id": "urn:solid-server:default:ResourceLocker",
       "@type": "WrappedExpiringReadWriteLocker",
       "locker": {
         "@id": "urn:solid-server:default:RedisLocker",
-        "@type": "RedisLocker"
+        "@type": "RedisLocker",
+        "redisClient": { "@id": "urn:solid-server:default:variable:redisUrl" },
+        "redisSettings_namespacePrefix": { "@id": "urn:solid-server:default:variable:redisNamespace" }
       },
       "expiration": 6000
     },

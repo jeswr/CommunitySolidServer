@@ -60,5 +60,7 @@ export function getDefaultVariables(port: number, baseUrl?: string): Record<stri
     'urn:solid-server:default:variable:seedConfig': null,
     'urn:solid-server:default:variable:workers': 1,
     'urn:solid-server:default:variable:confirmMigration': false,
+    'urn:solid-server:default:variable:redisUrl': '127.0.0.1:6379',
+    'urn:solid-server:default:variable:redisNamespace': '',
   };
 }
