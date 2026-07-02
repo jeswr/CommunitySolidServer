@@ -89,6 +89,16 @@ export class ParsingHttpHandler extends HttpHandler {
       );
     }
 
-    return this.errorHandler.handleSafe({ error: error as HttpError, request });
+    const httpError = error as HttpError;
+    if (httpError.statusCode >= 500) {
+      this.logger.error(`Request failed with server error: ${httpError.name}: ${createErrorMessage(httpError)}`);
+      if (httpError.stack) {
+        this.logger.error(httpError.stack);
+      }
+    } else {
+      this.logger.debug(`Request failed with client error: ${httpError.name}: ${createErrorMessage(httpError)}`);
+    }
+
+    return this.errorHandler.handleSafe({ error: httpError, request });
   }
 }
