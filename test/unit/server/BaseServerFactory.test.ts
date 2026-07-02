@@ -1,4 +1,5 @@
 import type { RequestListener, Server } from 'node:http';
+import { createServer as createHttpServer } from 'node:http';
 import request from 'supertest';
 import type { BaseServerFactoryOptions } from '../../../src/server/BaseServerFactory';
 import { BaseServerFactory } from '../../../src/server/BaseServerFactory';
@@ -70,6 +71,43 @@ describe('A BaseServerFactory', (): void => {
       }));
 
       expect(mockRequestHandler).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('with server tuning options', (): void => {
+    let configurator: ServerConfigurator;
+
+    beforeEach(async(): Promise<void> => {
+      configurator = { handleSafe: jest.fn() } as any;
+    });
+
+    it('applies the configured timeouts and connection limit to the server.', async(): Promise<void> => {
+      const factory = new BaseServerFactory(configurator, {
+        requestTimeout: 60000,
+        headersTimeout: 10000,
+        keepAliveTimeout: 65000,
+        maxConnections: 512,
+      });
+      const tunedServer = await factory.createServer();
+
+      expect(tunedServer.requestTimeout).toBe(60000);
+      expect(tunedServer.headersTimeout).toBe(10000);
+      expect(tunedServer.keepAliveTimeout).toBe(65000);
+      expect(tunedServer.maxConnections).toBe(512);
+      expect(configurator.handleSafe).toHaveBeenCalledTimes(1);
+      expect(configurator.handleSafe).toHaveBeenLastCalledWith(tunedServer);
+    });
+
+    it('keeps the node.js defaults when no tuning options are defined.', async(): Promise<void> => {
+      const factory = new BaseServerFactory(configurator);
+      const defaultServer = await factory.createServer();
+      const referenceServer = createHttpServer();
+
+      expect(defaultServer.requestTimeout).toBe(referenceServer.requestTimeout);
+      expect(defaultServer.headersTimeout).toBe(referenceServer.headersTimeout);
+      expect(defaultServer.keepAliveTimeout).toBe(referenceServer.keepAliveTimeout);
+      expect(defaultServer.maxConnections).toBe(referenceServer.maxConnections);
+      expect(configurator.handleSafe).toHaveBeenCalledTimes(1);
     });
   });
 });

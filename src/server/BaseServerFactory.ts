@@ -24,6 +24,38 @@ export interface BaseServerFactoryOptions {
 
   pfx?: string;
   passphrase?: string;
+
+  /**
+   * Maximum duration, in milliseconds, the server waits to receive the entire request from the client.
+   * Protects against slowloris-style attacks where a request body is sent extremely slowly.
+   * When unset, the Node.js default of 300000 (5 minutes) is used.
+   * A value of 60000 (1 minute) is a reasonable starting point for production deployments.
+   */
+  requestTimeout?: number;
+
+  /**
+   * Maximum duration, in milliseconds, the server waits to receive the complete HTTP headers from the client.
+   * Protects against slowloris-style attacks where headers are sent extremely slowly.
+   * When unset, the Node.js default of the minimum between 60000 (1 minute)
+   * and the request timeout is used.
+   * A value of 10000 (10 seconds) is a reasonable starting point for production deployments.
+   */
+  headersTimeout?: number;
+
+  /**
+   * Duration, in milliseconds, the server waits for additional incoming data on an idle connection
+   * before closing the socket.
+   * When unset, the Node.js default of 5000 (5 seconds) is used.
+   * Increase this when the server runs behind a load balancer with a longer idle timeout.
+   */
+  keepAliveTimeout?: number;
+
+  /**
+   * Maximum number of concurrent connections the server accepts; connections above this limit are rejected.
+   * When unset, Node.js does not limit the number of connections.
+   * Set this based on the resources available to the server to prevent connection exhaustion.
+   */
+  maxConnections?: number;
 }
 
 /**
@@ -50,6 +82,19 @@ export class BaseServerFactory implements HttpServerFactory {
     const options = this.createServerOptions();
 
     const server = this.options.https ? createHttpsServer(options) : createHttpServer(options);
+
+    if (typeof this.options.requestTimeout === 'number') {
+      server.requestTimeout = this.options.requestTimeout;
+    }
+    if (typeof this.options.headersTimeout === 'number') {
+      server.headersTimeout = this.options.headersTimeout;
+    }
+    if (typeof this.options.keepAliveTimeout === 'number') {
+      server.keepAliveTimeout = this.options.keepAliveTimeout;
+    }
+    if (typeof this.options.maxConnections === 'number') {
+      server.maxConnections = this.options.maxConnections;
+    }
 
     await this.configurator.handleSafe(server);
 
