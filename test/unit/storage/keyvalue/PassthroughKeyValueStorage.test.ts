@@ -59,4 +59,16 @@ describe('A PassthroughKeyValueStorage', (): void => {
     expect(results[0]).toEqual([ 'key', 'value' ]);
     expect(results[1]).toEqual([ 'key2', 'value2' ]);
   });
+
+  it('does not forward the prefix to the source and filters the transformed keys.', async(): Promise<void> => {
+    const map = new Map<string, string>([[ 'dummy-key', 'value' ], [ 'dummy-other', 'value2' ]]);
+    source.entries.mockReturnValue(map.entries() as unknown as AsyncIterableIterator<[string, string]>);
+    const results = [];
+    for await (const entry of storage.entries('ke')) {
+      results.push(entry);
+    }
+    expect(source.entries).toHaveBeenCalledTimes(1);
+    expect(source.entries).toHaveBeenLastCalledWith();
+    expect(results).toEqual([[ 'key', 'value' ]]);
+  });
 });

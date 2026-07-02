@@ -72,10 +72,46 @@ describe('A MaxKeyLengthStorage', (): void => {
     for await (const entry of storage.entries()) {
       entries.push(entry);
     }
+    expect(source.entries).toHaveBeenCalledTimes(1);
+    expect(source.entries).toHaveBeenLastCalledWith(undefined);
     expect(entries).toEqual([
       [ key, payload ],
       [ longKey, payload ],
     ]);
+  });
+
+  it('forwards the prefix unchanged if it ends on a slash.', async(): Promise<void> => {
+    const entries = [];
+    for await (const entry of storage.entries('container/')) {
+      entries.push(entry);
+    }
+    expect(source.entries).toHaveBeenCalledTimes(1);
+    expect(source.entries).toHaveBeenLastCalledWith('container/');
+    expect(entries).toHaveLength(0);
+  });
+
+  it('only forwards the prefix up to and including the last slash.', async(): Promise<void> => {
+    source.entries.mockImplementationOnce(async function* (): AsyncIterableIterator<any> {
+      yield [ 'container/key', { key: 'container/key', payload }];
+      yield [ 'container/other', { key: 'container/other', payload }];
+    });
+    const entries = [];
+    for await (const entry of storage.entries('container/ke')) {
+      entries.push(entry);
+    }
+    expect(source.entries).toHaveBeenCalledTimes(1);
+    expect(source.entries).toHaveBeenLastCalledWith('container/');
+    expect(entries).toEqual([[ 'container/key', payload ]]);
+  });
+
+  it('forwards an empty prefix if the prefix contains no slash.', async(): Promise<void> => {
+    const entries = [];
+    for await (const entry of storage.entries('ke')) {
+      entries.push(entry);
+    }
+    expect(source.entries).toHaveBeenCalledTimes(1);
+    expect(source.entries).toHaveBeenLastCalledWith('');
+    expect(entries).toEqual([[ key, payload ]]);
   });
 
   it('errors trying to write with a key that has the hash prefix.', async(): Promise<void> => {

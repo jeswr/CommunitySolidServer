@@ -47,9 +47,13 @@ export class JsonFileStorage implements KeyValueStorage<string, unknown> {
     });
   }
 
-  public async* entries(): AsyncIterableIterator<[ string, unknown ]> {
+  public async* entries(matchPrefix?: string): AsyncIterableIterator<[ string, unknown ]> {
     const json = await this.getJsonSafely();
-    yield* Object.entries(json);
+    for (const entry of Object.entries(json)) {
+      if (entry[0].startsWith(matchPrefix ?? '')) {
+        yield entry;
+      }
+    }
   }
 
   /**

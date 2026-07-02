@@ -51,6 +51,16 @@ describe('A JsonFileStorage', (): void => {
     expect(JSON.parse(cache.data[jsonPath])).toEqual({ lemon: value2 });
   });
 
+  it('only returns entries matching the prefix if one is given.', async(): Promise<void> => {
+    await expect(storage.set('apple', { taste: 'sweet' })).resolves.toBe(storage);
+    await expect(storage.set('lemon', { taste: 'sour' })).resolves.toBe(storage);
+    const results = [];
+    for await (const entry of storage.entries('le')) {
+      results.push(entry);
+    }
+    expect(results).toEqual([[ 'lemon', { taste: 'sour' }]]);
+  });
+
   it('throws an error if something goes wrong reading the JSON.', async(): Promise<void> => {
     cache.data[jsonPath] = '} very invalid {';
     await expect(storage.get('anything')).rejects.toThrow(Error);
