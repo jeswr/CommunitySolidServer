@@ -1,5 +1,3 @@
-// These two eslint lines are needed to store 'this' in a variable so it can be used
-// in the PassThrough of createQuotaGuard
 import { PassThrough } from 'node:stream';
 import type { RepresentationMetadata } from '../../http/representation/RepresentationMetadata';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
@@ -86,14 +84,20 @@ export abstract class QuotaStrategy {
    */
   public async createQuotaGuard(identifier: ResourceIdentifier): Promise<Guarded<PassThrough>> {
     let total = 0;
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const that = this;
     const { reporter } = this;
+
+    // The available space is computed a single time, before any chunk is streamed, instead of
+    // for every chunk. The space occupied by everything other than the resource being written
+    // does not change while a single write is streaming, so it can be captured once and reused.
+    // Re-walking the filesystem (getTotalSpaceUsed) for every chunk turned each write into an
+    // O(chunks * storage size) operation and was a denial-of-service lever when quota is enabled.
+    // The rejection point is unchanged: a write is refused as soon as its cumulative byte count
+    // exceeds the space that was available before the write started.
+    const availableSpace = await this.getAvailableSpace(identifier);
 
     return guardStream(new PassThrough({
       async transform(this, chunk: unknown, enc: string, done: () => void): Promise<void> {
         total += await reporter.calculateChunkSize(chunk);
-        const availableSpace = await that.getAvailableSpace(identifier);
         if (availableSpace.amount < total) {
           this.destroy(new PayloadHttpError(
             `Quota exceeded by ${total - availableSpace.amount} ${availableSpace.unit} during write`,
