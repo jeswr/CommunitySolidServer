@@ -3,6 +3,7 @@ import type { ClusterManager } from '../../../src';
 import type { App } from '../../../src/init/App';
 import { AppRunner } from '../../../src/init/AppRunner';
 import type { CliExtractor } from '../../../src/init/cli/CliExtractor';
+import { ModuleStateCache } from '../../../src/init/ModuleStateCache';
 import type { ShorthandResolver } from '../../../src/init/variables/ShorthandResolver';
 import { joinFilePath } from '../../../src/util/PathUtil';
 import { flushPromises } from '../../util/Util';
@@ -70,6 +71,8 @@ const app: jest.Mocked<App> = {
   clusterManager,
 } as any;
 
+const builtModuleState = { mainModulePath: 'built' };
+
 const manager: jest.Mocked<ComponentsManager<App>> = {
   instantiate: jest.fn(async(iri: string): Promise<any> => {
     switch (iri) {
@@ -81,6 +84,7 @@ const manager: jest.Mocked<ComponentsManager<App>> = {
   configRegistry: {
     register: jest.fn(),
   },
+  moduleState: builtModuleState,
 } as any;
 
 const listSingleThreadedComponentsMock = jest.fn().mockResolvedValue([]);
@@ -93,6 +97,17 @@ jest.mock('componentsjs', (): any => ({
   ComponentsManager: {
     build: jest.fn(async(): Promise<ComponentsManager<App>> => manager),
   },
+}));
+
+const cachedModuleState = { mainModulePath: 'cached' };
+
+const moduleStateCache = {
+  load: jest.fn(),
+  save: jest.fn(),
+};
+
+jest.mock('../../../src/init/ModuleStateCache', (): any => ({
+  ModuleStateCache: jest.fn((): any => moduleStateCache),
 }));
 
 let files: Record<string, any> = {};
@@ -228,6 +243,63 @@ describe('AppRunner', (): void => {
       expect(cliExtractor.handleSafe).toHaveBeenCalledTimes(0);
       expect(app.start).toHaveBeenCalledTimes(0);
       expect(app.clusterManager.isSingleThreaded()).toBeFalsy();
+      expect(ModuleStateCache).toHaveBeenCalledTimes(0);
+      expect(moduleStateCache.load).toHaveBeenCalledTimes(0);
+      expect(moduleStateCache.save).toHaveBeenCalledTimes(0);
+    });
+
+    it('uses the cached module state on a cache hit.', async(): Promise<void> => {
+      moduleStateCache.load.mockResolvedValueOnce(cachedModuleState);
+      const createdApp = await new AppRunner().create({ moduleStateCachePath: 'module-state.json' });
+      expect(createdApp).toBe(app);
+
+      expect(ModuleStateCache).toHaveBeenCalledTimes(1);
+      expect(ModuleStateCache).toHaveBeenCalledWith('/var/cwd/module-state.json', joinFilePath(__dirname, '../../../'));
+      expect(moduleStateCache.load).toHaveBeenCalledTimes(1);
+      expect(ComponentsManager.build).toHaveBeenCalledTimes(1);
+      expect(ComponentsManager.build).toHaveBeenCalledWith({
+        mainModulePath: joinFilePath(__dirname, '../../../'),
+        typeChecking: false,
+        dumpErrorState: false,
+        moduleState: cachedModuleState,
+      });
+      expect(moduleStateCache.save).toHaveBeenCalledTimes(0);
+    });
+
+    it('saves the module state on a cache miss.', async(): Promise<void> => {
+      const createdApp = await new AppRunner().create({ moduleStateCachePath: 'module-state.json' });
+      expect(createdApp).toBe(app);
+
+      expect(ModuleStateCache).toHaveBeenCalledTimes(1);
+      expect(ModuleStateCache).toHaveBeenCalledWith('/var/cwd/module-state.json', joinFilePath(__dirname, '../../../'));
+      expect(moduleStateCache.load).toHaveBeenCalledTimes(1);
+      expect(ComponentsManager.build).toHaveBeenCalledTimes(1);
+      expect(ComponentsManager.build).toHaveBeenCalledWith({
+        mainModulePath: joinFilePath(__dirname, '../../../'),
+        typeChecking: false,
+        dumpErrorState: false,
+      });
+      expect(moduleStateCache.save).toHaveBeenCalledTimes(1);
+      expect(moduleStateCache.save).toHaveBeenCalledWith(builtModuleState);
+    });
+
+    it('does not use the cache if a module state is provided.', async(): Promise<void> => {
+      const createdApp = await new AppRunner().create({
+        moduleStateCachePath: 'module-state.json',
+        loaderProperties: { moduleState: cachedModuleState as any },
+      });
+      expect(createdApp).toBe(app);
+
+      expect(ModuleStateCache).toHaveBeenCalledTimes(0);
+      expect(moduleStateCache.load).toHaveBeenCalledTimes(0);
+      expect(moduleStateCache.save).toHaveBeenCalledTimes(0);
+      expect(ComponentsManager.build).toHaveBeenCalledTimes(1);
+      expect(ComponentsManager.build).toHaveBeenCalledWith({
+        mainModulePath: joinFilePath(__dirname, '../../../'),
+        typeChecking: false,
+        dumpErrorState: false,
+        moduleState: cachedModuleState,
+      });
     });
 
     it('throws an error if threading issues are detected with 1 class.', async(): Promise<void> => {
@@ -462,6 +534,52 @@ describe('AppRunner', (): void => {
       expect(app.clusterManager.isSingleThreaded()).toBeFalsy();
 
       process.argv = argv;
+    });
+
+    it('uses the module state cache when the moduleStateCachePath parameter is set.', async(): Promise<void> => {
+      moduleStateCache.load.mockResolvedValueOnce(cachedModuleState);
+      const params = [ 'node', 'script', '--moduleStateCachePath', 'module-state.json' ];
+      await expect(new AppRunner().createCli(params)).resolves.toBe(app);
+
+      expect(ModuleStateCache).toHaveBeenCalledTimes(1);
+      expect(ModuleStateCache).toHaveBeenCalledWith('/var/cwd/module-state.json', joinFilePath(__dirname, '../../../'));
+      expect(moduleStateCache.load).toHaveBeenCalledTimes(1);
+      expect(ComponentsManager.build).toHaveBeenCalledTimes(1);
+      expect(ComponentsManager.build).toHaveBeenCalledWith({
+        logLevel: 'info',
+        mainModulePath: joinFilePath(__dirname, '../../../'),
+        typeChecking: false,
+        dumpErrorState: false,
+        moduleState: cachedModuleState,
+      });
+      expect(moduleStateCache.save).toHaveBeenCalledTimes(0);
+    });
+
+    it('honours the CSS_MODULE_STATE_CACHE_PATH environment variable.', async(): Promise<void> => {
+      const { env } = process;
+      const OLD_STATE = env.CSS_MODULE_STATE_CACHE_PATH;
+      env.CSS_MODULE_STATE_CACHE_PATH = 'module-state.json';
+      moduleStateCache.load.mockResolvedValueOnce(cachedModuleState);
+
+      await expect(new AppRunner().createCli([ 'node', 'script' ])).resolves.toBe(app);
+
+      expect(ModuleStateCache).toHaveBeenCalledTimes(1);
+      expect(ModuleStateCache).toHaveBeenCalledWith('/var/cwd/module-state.json', joinFilePath(__dirname, '../../../'));
+      expect(ComponentsManager.build).toHaveBeenCalledTimes(1);
+      expect(ComponentsManager.build).toHaveBeenCalledWith({
+        logLevel: 'info',
+        mainModulePath: joinFilePath(__dirname, '../../../'),
+        typeChecking: false,
+        dumpErrorState: false,
+        moduleState: cachedModuleState,
+      });
+
+      // Reset env
+      if (OLD_STATE) {
+        env.CSS_MODULE_STATE_CACHE_PATH = OLD_STATE;
+      } else {
+        delete env.CSS_MODULE_STATE_CACHE_PATH;
+      }
     });
 
     it('checks for threading issues when starting in multithreaded mode.', async(): Promise<void> => {

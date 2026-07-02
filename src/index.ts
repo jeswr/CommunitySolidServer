@@ -305,6 +305,7 @@ export * from './init/Initializable';
 export * from './init/InitializableHandler';
 export * from './init/Initializer';
 export * from './init/LoggerInitializer';
+export * from './init/ModuleStateCache';
 export * from './init/ModuleVersionVerifier';
 export * from './init/SeededAccountInitializer';
 export * from './init/ServerInitializer';

@@ -2,7 +2,7 @@
   "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
   "@graph": [
     {
-      "comment": "Extracts CLI arguments into a key/value object. Config and mainModulePath are only defined here so their description is returned.",
+      "comment": "Extracts CLI arguments into a key/value object. Config, mainModulePath, and moduleStateCachePath are only defined here so their description is returned.",
       "@id": "urn:solid-server-app-setup:default:CliExtractor",
       "@type": "YargsCliExtractor",
       "parameters": [
@@ -24,6 +24,15 @@
             "requiresArg": true,
             "type": "string",
             "describe": "Path from where Components.js will start its lookup when initializing configurations."
+          }
+        },
+        {
+          "@type": "YargsParameter",
+          "name": "moduleStateCachePath",
+          "options": {
+            "requiresArg": true,
+            "type": "string",
+            "describe": "Path to a file used to cache the Components.js module state between server starts, speeding up startup."
           }
         },
         {

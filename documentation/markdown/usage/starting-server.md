@@ -63,6 +63,7 @@ to some commonly used settings:
 | `--podConfigJson`       | `./pod-config.json`        | Path to the file that keeps track of dynamic Pod configurations. Only relevant when using `@css:config/dynamic.json`.                         |
 | `--seedConfig`          |                            | Path to the file that keeps track of seeded account configurations.                                                                           |
 | `--mainModulePath, -m`  |                            | Path from where Components.js will start its lookup when initializing configurations.                                                         |
+| `--moduleStateCachePath` |                           | Path to a file used to cache the Components.js module state between server starts, speeding up startup.                                       |
 | `--workers, -w`         | `1`                        | Run in multithreaded mode using workers. Special values are `-1` (scale to `num_cores-1`), `0` (scale to `num_cores`) and 1 (singlethreaded). |
 
 When using more than 1 worker together with a file-based configuration,
