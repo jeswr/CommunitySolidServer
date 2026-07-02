@@ -17,6 +17,18 @@
         {
           "HeaderHandler:_headers_key": "Accept-Ranges",
           "HeaderHandler:_headers_value": "bytes"
+        },
+        {
+          "HeaderHandler:_headers_key": "X-Content-Type-Options",
+          "HeaderHandler:_headers_value": "nosniff"
+        },
+        {
+          "HeaderHandler:_headers_key": "Referrer-Policy",
+          "HeaderHandler:_headers_value": "no-referrer"
+        },
+        {
+          "HeaderHandler:_headers_key": "X-Frame-Options",
+          "HeaderHandler:_headers_value": "DENY"
         }
       ]
     }
