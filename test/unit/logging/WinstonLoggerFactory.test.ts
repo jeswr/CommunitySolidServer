@@ -74,4 +74,18 @@ describe('WinstonLoggerFactory', (): void => {
       [Symbol.for('message')]: `${now.toISOString()} [MyLabel] {Primary} ${level}: my message`,
     }));
   });
+
+  it('adds the request identifier to the output when there is one.', async(): Promise<void> => {
+    (factory as any).createTransports = (): any => [ transport ];
+
+    // Create logger, and log
+    const logger = factory.createLogger('MyLabel');
+    logger.log('debug', 'my message', { isPrimary: true, pid: 0, requestId: '4c079dca' });
+
+    expect(transport.write).toHaveBeenCalledTimes(1);
+    // Need to check level like this as it has color tags
+    const { level } = transport.write.mock.calls[0][0];
+    expect(transport.write.mock.calls[0][0][Symbol.for('message')])
+      .toBe(`${now.toISOString()} [MyLabel] {Primary} [4c079dca] ${level}: my message`);
+  });
 });

@@ -311,6 +311,7 @@ export * from './init/ServerInitializer';
 
 // Logging
 export * from './logging/LazyLoggerFactory';
+export * from './logging/LogContext';
 export * from './logging/Logger';
 export * from './logging/LoggerFactory';
 export * from './logging/LogLevel';
