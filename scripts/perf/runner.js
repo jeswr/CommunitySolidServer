@@ -74,6 +74,7 @@ let serverLog = '';
 
 async function startServer(podDir) {
   fs.mkdirSync(podDir, { recursive: true });
+  serverLog = '';
   const t0 = Date.now();
   server = spawn(process.execPath, [
     '--expose-gc',
@@ -107,6 +108,7 @@ async function startServer(podDir) {
     }
     try {
       const res = await fetch(BASE, { signal: AbortSignal.timeout(2000) });
+      await res.arrayBuffer();
       if (res.status < 500) {
         break;
       }
@@ -117,19 +119,26 @@ async function startServer(podDir) {
 }
 
 function stopServer(signal = 'SIGINT') {
+  // Capture the current process: the module-level variable may already
+  // point at the next boot's process by the time the escalation fires.
+  const proc = server;
   return new Promise((resolve) => {
-    if (!server || server.exitCode !== null) {
+    if (!proc || proc.exitCode !== null) {
       resolve();
       return;
     }
-    server.once('exit', resolve);
-    server.kill(signal);
     // Escalate if a graceful stop hangs
-    setTimeout(() => {
+    const escalation = setTimeout(() => {
       try {
-        server.kill('SIGKILL');
+        proc.kill('SIGKILL');
       } catch {}
-    }, 10000).unref();
+    }, 10000);
+    escalation.unref();
+    proc.once('exit', () => {
+      clearTimeout(escalation);
+      resolve();
+    });
+    proc.kill(signal);
   });
 }
 
