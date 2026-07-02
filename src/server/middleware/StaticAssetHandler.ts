@@ -1,6 +1,5 @@
 import { createReadStream, readdirSync } from 'node:fs';
 import { posix as pathPosix } from 'node:path';
-import escapeStringRegexp from 'escape-string-regexp';
 import * as mime from 'mime-types';
 import { getLoggerFor } from '../../logging/LogUtil';
 import { APPLICATION_OCTET_STREAM } from '../../util/ContentTypes';
@@ -11,6 +10,7 @@ import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpErr
 import type { SystemError } from '../../util/errors/SystemError';
 import { ensureTrailingSlash, joinFilePath, resolveAssetPath, trimLeadingSlashes } from '../../util/PathUtil';
 import { pipeSafely } from '../../util/StreamUtil';
+import { escapeStringRegexp } from '../../util/StringUtil';
 import type { HttpHandlerInput } from '../HttpHandler';
 import { HttpHandler } from '../HttpHandler';
 import type { HttpRequest } from '../HttpRequest';

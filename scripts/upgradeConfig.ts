@@ -1,9 +1,9 @@
 #!/usr/bin/env ts-node
 /* eslint-disable no-console */
-import escapeStringRegexp from 'escape-string-regexp';
 import { readdir, readFile, writeFile } from 'fs-extra';
 import simpleGit from 'simple-git';
 import { joinFilePath, readPackageJson } from '../src/util/PathUtil';
+import { escapeStringRegexp } from '../src/util/StringUtil';
 
 /**
  * Script: upgradeConfigs.ts

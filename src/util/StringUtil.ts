@@ -83,3 +83,21 @@ export function msToDuration(ms: number): string {
 
   return stringParts.join('');
 }
+
+/**
+ * Escapes all special regular expression characters in a string,
+ * so it can be used as a literal match inside a regular expression.
+ * This is a local implementation of the `escape-string-regexp` v4 library.
+ *
+ * @param value - String to escape.
+ *
+ * @returns The escaped string.
+ */
+export function escapeStringRegexp(value: string): string {
+  // Escape characters with special meaning either inside or outside character sets.
+  // Use a simple backslash escape when it's always valid,
+  // and a `\x2d` escape when the simpler form would be disallowed by Unicode patterns' stricter grammar.
+  return value
+    .replaceAll(/[|\\{}()[\]^$+*?.]/gu, '\\$&')
+    .replaceAll('-', '\\x2d');
+}
