@@ -1,4 +1,5 @@
-import { createReadStream, readdirSync } from 'node:fs';
+import type { Stats } from 'node:fs';
+import { createReadStream, promises as fsPromises, readdirSync } from 'node:fs';
 import { posix as pathPosix } from 'node:path';
 import escapeStringRegexp from 'escape-string-regexp';
 import * as mime from 'mime-types';
@@ -11,6 +12,7 @@ import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpErr
 import type { SystemError } from '../../util/errors/SystemError';
 import { ensureTrailingSlash, joinFilePath, resolveAssetPath, trimLeadingSlashes } from '../../util/PathUtil';
 import { pipeSafely } from '../../util/StreamUtil';
+import { splitCommaSeparated } from '../../util/StringUtil';
 import type { HttpHandlerInput } from '../HttpHandler';
 import { HttpHandler } from '../HttpHandler';
 import type { HttpRequest } from '../HttpRequest';
@@ -169,30 +171,71 @@ export class StaticAssetHandler extends HttpHandler {
     const filePath = this.getFilePath(request);
     this.logger.debug(`Serving ${request.url} via static asset ${filePath}`);
 
+    // Read the file metadata first, so conditional requests and HEAD requests never need to open the file
+    let stats: Stats;
+    try {
+      stats = await fsPromises.stat(filePath);
+    } catch (error: unknown) {
+      const { code } = error as SystemError;
+      // When the file is not found or a folder, signal a 404
+      if (code === 'ENOENT' || code === 'EISDIR') {
+        this.logger.debug(`Static asset ${filePath} not found`);
+        throw new NotFoundHttpError(`Cannot find ${request.url}`);
+      }
+      // In other cases, just hang up
+      this.logger.warn(`Error reading asset ${filePath}: ${createErrorMessage(error)}`);
+      response.end();
+      return;
+    }
+
+    // `stat` succeeds on folders, so an explicit check is needed to keep signaling a 404 for those
+    if (stats.isDirectory()) {
+      this.logger.debug(`Static asset ${filePath} not found`);
+      throw new NotFoundHttpError(`Cannot find ${request.url}`);
+    }
+
+    const validatorHeaders = this.getValidatorHeaders(stats);
+
+    // Respond with a 304 when the client already has an up-to-date version of the asset
+    if (this.isNotModified(request, validatorHeaders.etag, stats.mtime)) {
+      response.writeHead(304, { ...validatorHeaders, ...this.getCacheHeaders() });
+      response.end();
+      return;
+    }
+
+    const contentType = mime.lookup(filePath) || APPLICATION_OCTET_STREAM;
+
+    // With HEAD, only write the headers, without opening the file
+    if (request.method === 'HEAD') {
+      response.writeHead(200, {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        'content-type': contentType,
+        ...validatorHeaders,
+        ...this.getCacheHeaders(),
+      });
+      response.end();
+      return;
+    }
+
     // Resolve when asset loading succeeds
     const asset = createReadStream(filePath);
     return new Promise((resolve, reject): void => {
       // Write a 200 response when the asset becomes readable
       asset.once('readable', (): void => {
-        const contentType = mime.lookup(filePath) || APPLICATION_OCTET_STREAM;
         response.writeHead(200, {
           // eslint-disable-next-line @typescript-eslint/naming-convention
           'content-type': contentType,
+          ...validatorHeaders,
           ...this.getCacheHeaders(),
         });
 
-        // With HEAD, only write the headers
-        if (request.method === 'HEAD') {
-          response.end();
-          asset.destroy();
-        // With GET, pipe the entire response
-        } else {
-          pipeSafely(asset, response);
-        }
+        // Pipe the entire response
+        pipeSafely(asset, response);
         resolve();
       });
 
-      // Pass the error when something goes wrong
+      // Pass the error when something goes wrong,
+      // e.g., when the file was removed between the `stat` call and opening it
       asset.once('error', (error): void => {
         const { code } = error as SystemError;
         // When the file if not found or a folder, signal a 404
@@ -208,6 +251,54 @@ export class StaticAssetHandler extends HttpHandler {
         }
       });
     });
+  }
+
+  /**
+   * Generates the validator headers for the given file metadata:
+   * a weak ETag based on the file size and last modified date, and a Last-Modified header.
+   *
+   * @param stats - Stats of the file being served.
+   */
+  private getValidatorHeaders(stats: Stats): Record<string, string> {
+    return {
+      etag: `W/"${stats.size}-${stats.mtimeMs}"`,
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      'last-modified': stats.mtime.toUTCString(),
+    };
+  }
+
+  /**
+   * Verifies if the client already has an up-to-date version of the asset,
+   * based on the `If-None-Match` and `If-Modified-Since` request headers.
+   *
+   * @param request - The incoming request.
+   * @param eTag - The current ETag of the asset.
+   * @param mtime - The last modified date of the asset.
+   */
+  private isNotModified(request: HttpRequest, eTag: string, mtime: Date): boolean {
+    const ifNoneMatch = request.headers['if-none-match'];
+    if (ifNoneMatch) {
+      // RFC 9110, §13.1.2: a recipient MUST use the weak comparison function when comparing entity tags
+      // for If-None-Match, so `W/` prefixes are ignored on both sides.
+      const tags = new Set(splitCommaSeparated(ifNoneMatch.trim())
+        .map((tag): string => tag.replace(/^W\//u, '')));
+      return tags.has('*') || tags.has(eTag.replace(/^W\//u, ''));
+    }
+
+    // RFC 9110, §13.1.3: a recipient MUST ignore If-Modified-Since
+    // if the request contains an If-None-Match header field
+    const ifModifiedSince = request.headers['if-modified-since'];
+    if (ifModifiedSince) {
+      const timestamp = Date.parse(ifModifiedSince);
+      if (!Number.isNaN(timestamp)) {
+        // The If-Modified-Since value does not include milliseconds
+        const modified = new Date(mtime);
+        modified.setMilliseconds(0);
+        return modified.getTime() <= timestamp;
+      }
+    }
+
+    return false;
   }
 
   private getCacheHeaders(): Record<string, string> {
