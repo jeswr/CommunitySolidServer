@@ -15,6 +15,7 @@
         "DELETE"
       ],
       "options_credentials": true,
+      "options_maxAge": 3600,
       "options_preflightContinue": false,
       "options_exposedHeaders": [
         "Accept-Patch",
