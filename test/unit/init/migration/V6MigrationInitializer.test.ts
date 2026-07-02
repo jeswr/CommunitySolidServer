@@ -224,8 +224,12 @@ describe('A V6MigrationInitializer', (): void => {
   });
 
   describe('with prompts enabled', (): void => {
+    const originalIsTTY = process.stdin.isTTY;
+
     beforeEach(async(): Promise<void> => {
       jest.clearAllMocks();
+      questionMock.mockImplementation((input, callback): void => callback('y'));
+      (process.stdin as { isTTY?: boolean }).isTTY = true;
 
       initializer = new V6MigrationInitializer({
         versionKey,
@@ -237,6 +241,10 @@ describe('A V6MigrationInitializer', (): void => {
         newSetupStorage,
         skipConfirmation: false,
       });
+    });
+
+    afterEach((): void => {
+      (process.stdin as { isTTY?: boolean }).isTTY = originalIsTTY;
     });
 
     it('shows a prompt before migrating the data.', async(): Promise<void> => {
@@ -252,6 +260,28 @@ describe('A V6MigrationInitializer', (): void => {
     it('throws an error to stop the server if no positive answer is received.', async(): Promise<void> => {
       questionMock.mockImplementation((input, callback): void => callback('n'));
       await expect(initializer.handle()).rejects.toThrow('Stopping server as migration was cancelled.');
+      expect(newAccountStorage.create).toHaveBeenCalledTimes(0);
+    });
+
+    it('throws an error instead of prompting if stdin is not a TTY.', async(): Promise<void> => {
+      (process.stdin as { isTTY?: boolean }).isTTY = false;
+      await expect(initializer.handle()).rejects.toThrow(
+        'A v6 data migration is required, but no TTY is available to ask for confirmation. ' +
+        'Either start the server interactively to confirm the migration, ' +
+        'or start it with the --confirmMigration flag to migrate without confirmation.',
+      );
+      expect(questionMock).toHaveBeenCalledTimes(0);
+      expect(newAccountStorage.create).toHaveBeenCalledTimes(0);
+    });
+
+    it('throws an error instead of prompting if the TTY status of stdin is unknown.', async(): Promise<void> => {
+      (process.stdin as { isTTY?: boolean }).isTTY = undefined;
+      await expect(initializer.handle()).rejects.toThrow(
+        'A v6 data migration is required, but no TTY is available to ask for confirmation. ' +
+        'Either start the server interactively to confirm the migration, ' +
+        'or start it with the --confirmMigration flag to migrate without confirmation.',
+      );
+      expect(questionMock).toHaveBeenCalledTimes(0);
       expect(newAccountStorage.create).toHaveBeenCalledTimes(0);
     });
   });
