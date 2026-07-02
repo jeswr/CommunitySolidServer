@@ -3,7 +3,7 @@ import { RepresentationMetadata } from '../../../../src/http/representation/Repr
 import { BadRequestHttpError } from '../../../../src/util/errors/BadRequestHttpError';
 import { ConflictHttpError } from '../../../../src/util/errors/ConflictHttpError';
 import { ForbiddenHttpError } from '../../../../src/util/errors/ForbiddenHttpError';
-import { generateHttpErrorUri } from '../../../../src/util/errors/HttpError';
+import { generateHttpErrorUri, HttpError } from '../../../../src/util/errors/HttpError';
 import type { HttpErrorClass } from '../../../../src/util/errors/HttpError';
 import { InternalServerError } from '../../../../src/util/errors/InternalServerError';
 import { MethodNotAllowedHttpError } from '../../../../src/util/errors/MethodNotAllowedHttpError';
@@ -131,6 +131,39 @@ describe('HttpError', (): void => {
         .toBe(`${SOLID_ERROR.namespace}H304`);
       expect(instance.metadata.get(HTTP.terms.statusCodeNumber)?.value).toBe('304');
       expect(instance.metadata.get(HH.terms.etag)?.value).toBe(eTag);
+    });
+  });
+
+  describe('stack trace capturing', (): void => {
+    const originalLimit = Error.stackTraceLimit;
+
+    afterEach((): void => {
+      HttpError.captureStackTraces = false;
+    });
+
+    it('does not capture stack frames for client errors by default.', (): void => {
+      const error = new NotFoundHttpError('my message');
+      expect(error.stack).toBe('NotFoundHttpError: my message');
+      expect(Error.stackTraceLimit).toBe(originalLimit);
+    });
+
+    it('does not capture stack frames for the control flow 501 error by default.', (): void => {
+      const error = new NotImplementedHttpError('my message');
+      expect(error.stack).toBe('NotImplementedHttpError: my message');
+      expect(Error.stackTraceLimit).toBe(originalLimit);
+    });
+
+    it('captures stack frames for client errors if captureStackTraces is enabled.', (): void => {
+      HttpError.captureStackTraces = true;
+      const error = new NotFoundHttpError('my message');
+      expect(error.stack).toContain('\n    at ');
+      expect(Error.stackTraceLimit).toBe(originalLimit);
+    });
+
+    it('always captures stack frames for server errors.', (): void => {
+      const error = new InternalServerError('my message');
+      expect(error.stack).toContain('\n    at ');
+      expect(Error.stackTraceLimit).toBe(originalLimit);
     });
   });
 });

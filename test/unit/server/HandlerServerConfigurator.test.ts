@@ -5,6 +5,7 @@ import type { Logger } from '../../../src/logging/Logger';
 import { getLoggerFor } from '../../../src/logging/LogUtil';
 import { HandlerServerConfigurator } from '../../../src/server/HandlerServerConfigurator';
 import type { HttpHandler } from '../../../src/server/HttpHandler';
+import { HttpError } from '../../../src/util/errors/HttpError';
 import { flushPromises } from '../../util/Util';
 
 jest.mock('../../../src/logging/LogUtil', (): any => {
@@ -49,6 +50,11 @@ describe('A HandlerServerConfigurator', (): void => {
 
     listener = new HandlerServerConfigurator(handler);
     await listener.handle(server);
+  });
+
+  afterEach(async(): Promise<void> => {
+    // Prevent side effects on other tests as this is a static field
+    HttpError.captureStackTraces = false;
   });
 
   it('sends incoming requests to the handler.', async(): Promise<void> => {
@@ -139,5 +145,20 @@ describe('A HandlerServerConfigurator', (): void => {
     expect(response.writeHead).toHaveBeenLastCalledWith(500);
     expect(response.end).toHaveBeenCalledTimes(1);
     expect(response.end).toHaveBeenLastCalledWith(`${error.stack}\n`);
+  });
+
+  it('does not enable HttpError stack trace capturing if showStackTrace is disabled.', async(): Promise<void> => {
+    // The listener created in `beforeEach` has `showStackTrace` disabled
+    expect(HttpError.captureStackTraces).toBe(false);
+    const error = new HttpError(404, 'NotFoundHttpError', 'dummyError');
+    expect(error.stack).toBe('NotFoundHttpError: dummyError');
+  });
+
+  it('enables HttpError stack trace capturing if showStackTrace is enabled.', async(): Promise<void> => {
+    expect(HttpError.captureStackTraces).toBe(false);
+    listener = new HandlerServerConfigurator(handler, true);
+    expect(HttpError.captureStackTraces).toBe(true);
+    const error = new HttpError(404, 'NotFoundHttpError', 'dummyError');
+    expect(error.stack).toContain('\n    at ');
   });
 });

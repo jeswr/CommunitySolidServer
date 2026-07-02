@@ -1,6 +1,7 @@
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { getLoggerFor } from '../logging/LogUtil';
 import { isError } from '../util/errors/ErrorUtil';
+import { HttpError } from '../util/errors/HttpError';
 import { guardStream } from '../util/GuardedStream';
 import type { HttpHandler } from './HttpHandler';
 import { ServerConfigurator } from './ServerConfigurator';
@@ -22,10 +23,25 @@ export class HandlerServerConfigurator extends ServerConfigurator {
   private readonly handler: HttpHandler;
   private readonly showStackTrace: boolean;
 
+  /**
+   * Creates a new configurator with the given settings.
+   *
+   * @param handler - The handler that will handle all incoming requests.
+   * @param showStackTrace - If error stack traces should be part of error outputs.
+   *   When enabled, this also sets {@link HttpError.captureStackTraces} to `true`,
+   *   so errors that skip stack trace capturing by default, for performance reasons,
+   *   capture complete stack traces as well.
+   *   This guarantees that `error.stack` contains stack frames
+   *   whenever it is used to create an error message,
+   *   as that only happens when `showStackTrace` is enabled.
+   */
   public constructor(handler: HttpHandler, showStackTrace = false) {
     super();
     this.handler = handler;
     this.showStackTrace = showStackTrace;
+    if (showStackTrace) {
+      HttpError.captureStackTraces = true;
+    }
   }
 
   public async handle(server: Server): Promise<void> {
@@ -58,6 +74,9 @@ export class HandlerServerConfigurator extends ServerConfigurator {
 
   /**
    * Creates a readable error message based on the error and the `showStackTrace` parameter.
+   * `error.stack` is only used when `showStackTrace` is enabled,
+   * in which case the constructor made sure {@link HttpError.captureStackTraces} is enabled,
+   * so the stack always contains complete stack frames here.
    */
   private createErrorMessage(error: unknown): string {
     if (!isError(error)) {
