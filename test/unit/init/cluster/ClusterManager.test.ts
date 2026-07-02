@@ -10,16 +10,19 @@ jest.mock('node:os', (): any => ({
   cpus: jest.fn().mockImplementation((): any => [{}, {}, {}, {}, {}, {}]),
 }));
 
-const mockWorker = new EventEmitter() as any;
-mockWorker.process = { pid: 666 };
-
 describe('A ClusterManager', (): void => {
-  const emitter = new EventEmitter();
   const mockCluster = jest.requireMock('node:cluster');
-  const mockLogger = { info: jest.fn(), warn: jest.fn() };
+  const mockLogger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
   jest.spyOn(LogUtil, 'getLoggerFor').mockImplementation((): any => mockLogger);
+  let emitter: EventEmitter;
+  let mockWorker: any;
 
-  beforeAll((): void => {
+  beforeEach((): void => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    emitter = new EventEmitter();
+    mockWorker = new EventEmitter() as any;
+    mockWorker.process = { pid: 666 };
     Object.assign(mockCluster, {
       fork: jest.fn().mockImplementation((): any => mockWorker),
       on: jest.fn().mockImplementation(emitter.on.bind(emitter)),
@@ -27,6 +30,10 @@ describe('A ClusterManager', (): void => {
       isMaster: true,
       isWorker: false,
     });
+  });
+
+  afterEach((): void => {
+    jest.useRealTimers();
   });
 
   it('can handle workers input as string.', (): void => {
@@ -70,7 +77,6 @@ describe('A ClusterManager', (): void => {
     const cm = new ClusterManager(-1);
     const workers = cpus().length - 1;
     expect(cpus()).toHaveLength(workers + 1);
-    Object.assign(cm, { logger: mockLogger });
 
     cm.spawnWorkers();
 
@@ -81,26 +87,132 @@ describe('A ClusterManager', (): void => {
     }
 
     expect(cluster.on).toHaveBeenCalledWith('online', expect.any(Function));
+    expect(cluster.on).toHaveBeenCalledWith('exit', expect.any(Function));
     expect(cluster.fork).toHaveBeenCalledTimes(workers);
     expect(mockLogger.info).toHaveBeenLastCalledWith(`All ${workers} requested workers have been started.`);
-
-    expect(cluster.on).toHaveBeenCalledWith('exit', expect.any(Function));
-    const code = 333;
-    const signal = 'exiting';
-    mockCluster.emit('exit', mockWorker, code, signal);
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      `Worker ${mockWorker.process.pid} died with code ${code} and signal ${signal}`,
-    );
-    expect(mockLogger.warn).toHaveBeenCalledWith(`Starting a new worker`);
   });
 
   it('can receive message from spawned workers.', (): void => {
     const cm = new ClusterManager(2);
-    Object.assign(cm, { logger: mockLogger });
 
     cm.spawnWorkers();
     const msg = 'Hi from worker!';
     mockWorker.emit('message', msg);
     expect(mockLogger.info).toHaveBeenCalledWith(msg);
+  });
+
+  it('forks a replacement worker only after the base backoff delay.', (): void => {
+    const cm = new ClusterManager(2);
+    cm.spawnWorkers();
+    expect(cluster.fork).toHaveBeenCalledTimes(2);
+
+    mockCluster.emit('exit', mockWorker, 333, 'SIGKILL');
+    expect(mockLogger.warn).toHaveBeenCalledWith('Worker 666 died with code 333 and signal SIGKILL');
+    expect(mockLogger.warn)
+      .toHaveBeenCalledWith('Starting a new worker in 100 ms (restart 1 of 5 in the last 60000 ms)');
+    expect(cluster.fork).toHaveBeenCalledTimes(2);
+
+    jest.advanceTimersByTime(99);
+    expect(cluster.fork).toHaveBeenCalledTimes(2);
+    jest.advanceTimersByTime(1);
+    expect(cluster.fork).toHaveBeenCalledTimes(3);
+
+    const msg = 'Hi from replacement worker!';
+    mockWorker.emit('message', msg);
+    expect(mockLogger.info).toHaveBeenCalledWith(msg);
+  });
+
+  it('doubles the refork delay for every restart within the rolling window.', (): void => {
+    const cm = new ClusterManager(2);
+    cm.spawnWorkers();
+
+    mockCluster.emit('exit', mockWorker, 1, 'SIGSEGV');
+    expect(mockLogger.warn)
+      .toHaveBeenCalledWith('Starting a new worker in 100 ms (restart 1 of 5 in the last 60000 ms)');
+    jest.advanceTimersByTime(100);
+    expect(cluster.fork).toHaveBeenCalledTimes(3);
+
+    mockCluster.emit('exit', mockWorker, 1, 'SIGSEGV');
+    expect(mockLogger.warn)
+      .toHaveBeenCalledWith('Starting a new worker in 200 ms (restart 2 of 5 in the last 60000 ms)');
+    jest.advanceTimersByTime(199);
+    expect(cluster.fork).toHaveBeenCalledTimes(3);
+    jest.advanceTimersByTime(1);
+    expect(cluster.fork).toHaveBeenCalledTimes(4);
+
+    mockCluster.emit('exit', mockWorker, 1, 'SIGSEGV');
+    expect(mockLogger.warn)
+      .toHaveBeenCalledWith('Starting a new worker in 400 ms (restart 3 of 5 in the last 60000 ms)');
+    jest.advanceTimersByTime(400);
+    expect(cluster.fork).toHaveBeenCalledTimes(5);
+  });
+
+  it('stops reforking and logs an error when the restart budget is exceeded.', (): void => {
+    const cm = new ClusterManager(2);
+    cm.spawnWorkers();
+
+    // Spend the full restart budget of 5 restarts
+    for (let i = 0; i < 5; i++) {
+      mockCluster.emit('exit', mockWorker, 1, 'SIGSEGV');
+      jest.advanceTimersByTime(100 * (2 ** i));
+    }
+    expect(cluster.fork).toHaveBeenCalledTimes(7);
+    expect(mockLogger.warn).toHaveBeenCalledTimes(10);
+    expect(mockLogger.error).toHaveBeenCalledTimes(0);
+
+    mockCluster.emit('exit', mockWorker, 1, 'SIGSEGV');
+    expect(mockLogger.error).toHaveBeenCalledTimes(1);
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      'Worker 666 died with code 1 and signal SIGSEGV. ' +
+      'Not starting a new worker: crash loop exceeded the budget of 5 restarts in the last 60000 ms.',
+    );
+    expect(mockLogger.warn).toHaveBeenCalledTimes(10);
+
+    jest.advanceTimersByTime(30_000);
+    expect(cluster.fork).toHaveBeenCalledTimes(7);
+  });
+
+  it('does not refork or consume the restart budget when a worker exited after disconnect.', (): void => {
+    const cm = new ClusterManager(2);
+    cm.spawnWorkers();
+
+    mockWorker.exitedAfterDisconnect = true;
+    mockCluster.emit('exit', mockWorker, 0, 'SIGTERM');
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'Worker 666 exited intentionally with code 0 and signal SIGTERM. Not starting a new worker.',
+    );
+    expect(mockLogger.warn).toHaveBeenCalledTimes(0);
+    jest.advanceTimersByTime(60_000);
+    expect(cluster.fork).toHaveBeenCalledTimes(2);
+
+    // An unexpected exit afterwards still starts at the base delay
+    mockWorker.exitedAfterDisconnect = false;
+    mockCluster.emit('exit', mockWorker, 1, 'SIGSEGV');
+    expect(mockLogger.warn)
+      .toHaveBeenCalledWith('Starting a new worker in 100 ms (restart 1 of 5 in the last 60000 ms)');
+    jest.advanceTimersByTime(100);
+    expect(cluster.fork).toHaveBeenCalledTimes(3);
+  });
+
+  it('resets the restart budget once previous restarts fall outside the rolling window.', (): void => {
+    const cm = new ClusterManager(2);
+    cm.spawnWorkers();
+
+    for (let i = 0; i < 5; i++) {
+      mockCluster.emit('exit', mockWorker, 1, 'SIGSEGV');
+      jest.advanceTimersByTime(100 * (2 ** i));
+    }
+    mockCluster.emit('exit', mockWorker, 1, 'SIGSEGV');
+    expect(mockLogger.error).toHaveBeenCalledTimes(1);
+    expect(cluster.fork).toHaveBeenCalledTimes(7);
+
+    // Wait until all previous restarts are outside the rolling window
+    jest.advanceTimersByTime(60_000);
+    mockCluster.emit('exit', mockWorker, 1, 'SIGSEGV');
+    expect(mockLogger.warn)
+      .toHaveBeenCalledWith('Starting a new worker in 100 ms (restart 1 of 5 in the last 60000 ms)');
+    jest.advanceTimersByTime(100);
+    expect(cluster.fork).toHaveBeenCalledTimes(8);
+    expect(mockLogger.error).toHaveBeenCalledTimes(1);
   });
 });
