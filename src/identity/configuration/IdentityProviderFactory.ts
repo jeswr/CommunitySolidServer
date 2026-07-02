@@ -164,6 +164,9 @@ export class IdentityProviderFactory implements ProviderFactory {
 
     this.captureErrorResponses(provider);
 
+    // Log the identity for which a token gets issued
+    this.configureGrantLogging(provider);
+
     return provider;
   }
 
@@ -203,6 +206,25 @@ export class IdentityProviderFactory implements ProviderFactory {
       }) as AcceptFn;
 
       return next();
+    });
+  }
+
+  /**
+   * Registers a listener that logs the client and account identifiers of every successful token grant,
+   * so operators can see which identity acquired a token at production log levels.
+   * Only identifiers are logged, never token values or secrets.
+   */
+  private configureGrantLogging(provider: Provider): void {
+    provider.on('grant.success', (ctx: KoaContextWithOIDC): void => {
+      const { Account: account, AccessToken: accessToken, Client: client } = ctx.oidc.entities;
+      const grantType = (ctx.oidc.params?.grant_type ?? 'unknown') as string;
+      let message = `Issued ${grantType} token for client ${client?.clientId ?? 'unknown'}`;
+      // Client credentials grants have no associated account
+      const accountId = account?.accountId ?? accessToken?.accountId;
+      if (accountId) {
+        message += ` and account ${accountId}`;
+      }
+      this.logger.info(message);
     });
   }
 

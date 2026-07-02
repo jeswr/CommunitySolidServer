@@ -46,7 +46,7 @@ export class ClientCredentialsAdapter extends PassthroughAdapter {
         return payload;
       }
 
-      this.logger.debug(`Authenticating as ${credentials.webId} using client credentials`);
+      this.logger.info(`Authenticating as ${credentials.webId} using client credentials token ${label}`);
 
       /* eslint-disable @typescript-eslint/naming-convention */
       payload = {

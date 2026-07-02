@@ -9,8 +9,16 @@ import type {
 } from '../../../../../src/identity/interaction/client-credentials/util/ClientCredentialsStore';
 import type { WebIdStore } from '../../../../../src/identity/interaction/webid/util/WebIdStore';
 import type { AdapterFactory } from '../../../../../src/identity/storage/AdapterFactory';
+import type { Logger } from '../../../../../src/logging/Logger';
+import { getLoggerFor } from '../../../../../src/logging/LogUtil';
+
+jest.mock('../../../../../src/logging/LogUtil', (): any => {
+  const logger: Logger = { error: jest.fn(), info: jest.fn() } as any;
+  return { getLoggerFor: (): Logger => logger };
+});
 
 describe('A ClientCredentialsAdapterFactory', (): void => {
+  const logger: jest.Mocked<Logger> = getLoggerFor('mock') as any;
   const webId = 'http://example.com/card#me';
   const id = '123456';
   const accountId = 'accountId;';
@@ -25,6 +33,9 @@ describe('A ClientCredentialsAdapterFactory', (): void => {
   let factory: ClientCredentialsAdapterFactory;
 
   beforeEach(async(): Promise<void> => {
+    // Clearing the logger mock
+    jest.clearAllMocks();
+
     sourceAdapter = {
       find: jest.fn(),
     } satisfies Partial<Adapter> as any;
@@ -78,6 +89,10 @@ describe('A ClientCredentialsAdapterFactory', (): void => {
     expect(credentialsStore.findByLabel).toHaveBeenLastCalledWith(label);
     expect(credentialsStore.delete).toHaveBeenCalledTimes(1);
     expect(credentialsStore.delete).toHaveBeenLastCalledWith(id);
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenLastCalledWith(
+      `Client credentials token ${label} contains WebID that is no longer linked to the account. Removing...`,
+    );
   });
 
   it('returns valid client_credentials Client metadata if a matching token was found.', async(): Promise<void> => {
@@ -93,5 +108,9 @@ describe('A ClientCredentialsAdapterFactory', (): void => {
     expect(sourceAdapter.find).toHaveBeenLastCalledWith(label);
     expect(credentialsStore.findByLabel).toHaveBeenCalledTimes(1);
     expect(credentialsStore.findByLabel).toHaveBeenLastCalledWith(label);
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenLastCalledWith(
+      `Authenticating as ${webId} using client credentials token ${label}`,
+    );
   });
 });
