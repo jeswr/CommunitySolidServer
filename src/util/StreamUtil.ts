@@ -1,8 +1,7 @@
 import type { DuplexOptions, ReadableOptions, Writable } from 'node:stream';
 import { Readable, Transform } from 'node:stream';
-import { promisify } from 'node:util';
+import { finished } from 'node:stream/promises';
 import arrayifyStream from 'arrayify-stream';
-import eos from 'end-of-stream';
 import { Store } from 'n3';
 import pump from 'pump';
 import { getLoggerFor } from '../logging/LogUtil';
@@ -13,9 +12,20 @@ import { guardStream } from './GuardedStream';
 import type { Json } from './Json';
 import type { PromiseOrValue } from './PromiseUtil';
 
-export const endOfStream = promisify(eos);
-
 const logger = getLoggerFor('StreamUtil');
+
+/**
+ * Waits until the given stream is finished,
+ * either by ending, finishing, erroring, or being closed prematurely.
+ *
+ * @param stream - Stream to wait on.
+ *
+ * @returns A promise that resolves once the stream is finished
+ *          and rejects if the stream errors or closes prematurely.
+ */
+export async function endOfStream(stream: NodeJS.ReadableStream | NodeJS.WritableStream): Promise<void> {
+  return finished(stream);
+}
 
 /**
  * Joins all strings of a stream.
@@ -71,12 +81,23 @@ export async function getSingleItem(stream: Readable): Promise<unknown> {
 
 // These error messages usually indicate expected behaviour so should not give a warning.
 // We compare against the error message instead of the code
-// since the second one is from an external library that does not assign an error code.
-// At the time of writing the first one gets thrown in Node 16 and the second one in Node 14.
+// since the second one is thrown by the `pump` library, which does not assign an error code.
 const safeErrors = new Set([
   'Cannot call write after a stream was destroyed',
   'premature close',
 ]);
+
+/**
+ * Checks if the given error is one that usually indicates expected behaviour when working with streams,
+ * meaning it should not be logged as a warning.
+ *
+ * @param error - Error to check.
+ */
+function isSafeError(error: Error): boolean {
+  // Node.js streams use the `ERR_STREAM_PREMATURE_CLOSE` code (with message 'Premature close')
+  // for the same situation in which `pump` throws its codeless lowercase 'premature close' error.
+  return safeErrors.has(error.message) || (error as NodeJS.ErrnoException).code === 'ERR_STREAM_PREMATURE_CLOSE';
+}
 
 /**
  * Pipes one stream into another and emits errors of the first stream with the second.
@@ -113,7 +134,7 @@ export function pipeSafely<T extends Writable>(
     pump(readable, destination, (error): void => {
       if (error) {
         const msg = `Piped stream errored with ${error.message}`;
-        logger.log(safeErrors.has(error.message) ? 'debug' : 'warn', msg);
+        logger.log(isSafeError(error) ? 'debug' : 'warn', msg);
 
         // Make sure the final error can be handled in a normal streaming fashion
         destination.emit('error', mapError ? mapError(error) : error);
