@@ -107,6 +107,19 @@ docker run --rm -v ~/solid-config:/config -p 3000:3000 -it solidproject/communit
 docker run --rm -v ~/Solid:/data -p 3000:3000 -it -e CSS_CONFIG=config/file-no-setup.json -e CSS_LOGGING_LEVEL=debug solidproject/community-server
 ```
 
+The server in the container runs as the non-root `node` user with uid `1000` and gid `1000`.
+When bind-mounting a host directory on `/data`,
+make sure it is writable by uid `1000`,
+for example by running `chown -R 1000:1000 ~/Solid` on the host.
+Similarly, a directory mounted on `/config` needs to be readable by uid `1000`.
+
+The image contains a health check that periodically requests
+`http://localhost:3000/.well-known/css/health` inside the container.
+It follows the `CSS_PORT` environment variable if you use that to change the port;
+when changing the port in another way, such as the `--port` CLI argument,
+override the health check accordingly
+(for example with the `--health-cmd` flag of `docker run`).
+
 ### Using a Helm Chart
 
 The official [Helm](https://helm.sh/) Chart for Kubernetes deployment is maintained at
