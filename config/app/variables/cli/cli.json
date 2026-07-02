@@ -38,6 +38,15 @@
         },
         {
           "@type": "YargsParameter",
+          "name": "loggingFormat",
+          "options": {
+            "requiresArg": true,
+            "type": "string",
+            "describe": "The format used to output log messages: 'pretty' or 'json'."
+          }
+        },
+        {
+          "@type": "YargsParameter",
           "name": "baseUrl",
           "options": {
             "alias": "b",

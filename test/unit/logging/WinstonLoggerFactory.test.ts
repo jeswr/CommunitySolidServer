@@ -74,4 +74,65 @@ describe('WinstonLoggerFactory', (): void => {
       [Symbol.for('message')]: `${now.toISOString()} [MyLabel] {Primary} ${level}: my message`,
     }));
   });
+
+  it('errors on unknown log formats.', async(): Promise<void> => {
+    expect((): WinstonLoggerFactory => new WinstonLoggerFactory('debug', 'unknown'))
+      .toThrow('Unknown log format unknown, expected one of pretty/json');
+  });
+
+  it('can be created with an explicit pretty format.', async(): Promise<void> => {
+    factory = new WinstonLoggerFactory('debug', 'pretty');
+    (factory as any).createTransports = (): any => [ transport ];
+
+    // Create logger, and log
+    const logger = factory.createLogger('MyLabel');
+    logger.log('debug', 'my message');
+
+    expect(transport.write).toHaveBeenCalledTimes(1);
+    // Need to check level like this as it has color tags
+    const { level } = transport.write.mock.calls[0][0];
+    expect(transport.write.mock.calls[0][0][Symbol.for('message')])
+      .toBe(`${now.toISOString()} [MyLabel] {W-???} ${level}: my message`);
+  });
+
+  it('outputs a line of JSON per message when using the json format.', async(): Promise<void> => {
+    factory = new WinstonLoggerFactory('debug', 'json');
+    (factory as any).createTransports = (): any => [ transport ];
+
+    // Create logger, and log
+    const logger = factory.createLogger('MyLabel');
+    logger.log('debug', 'my message');
+
+    expect(transport.write).toHaveBeenCalledTimes(1);
+    const line: string = transport.write.mock.calls[0][0][Symbol.for('message')];
+    // The JSON format does not apply any color tags
+    // eslint-disable-next-line no-control-regex
+    expect(line).not.toMatch(/\u001B/u);
+    expect(JSON.parse(line)).toEqual({
+      label: 'MyLabel',
+      level: 'debug',
+      message: 'my message',
+      timestamp: now.toISOString(),
+    });
+  });
+
+  it('includes the extra metadata in the JSON output.', async(): Promise<void> => {
+    factory = new WinstonLoggerFactory('debug', 'json');
+    (factory as any).createTransports = (): any => [ transport ];
+
+    // Create logger, and log
+    const logger = factory.createLogger('MyLabel');
+    logger.log('debug', 'my message', { isPrimary: true, pid: 0 });
+
+    expect(transport.write).toHaveBeenCalledTimes(1);
+    const line: string = transport.write.mock.calls[0][0][Symbol.for('message')];
+    expect(JSON.parse(line)).toEqual({
+      label: 'MyLabel',
+      level: 'debug',
+      message: 'my message',
+      timestamp: now.toISOString(),
+      isPrimary: true,
+      pid: 0,
+    });
+  });
 });
