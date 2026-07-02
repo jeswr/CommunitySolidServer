@@ -7,6 +7,7 @@ const portNames = [
   // Integration
   'AccountRecovery',
   'Accounts',
+  'AclCacheInvalidation',
   'AcpServer',
   'Conditions',
   'ContentNegotiation',

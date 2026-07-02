@@ -1,0 +1,26 @@
+{
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@graph": [
+    {
+      "comment": [
+        "Caches quad reads and existence checks of ACL documents across requests to avoid re-reading and",
+        "re-parsing them on every authorization decision. It sits directly below the MonitoringStore and",
+        "invalidates synchronously from the ChangeMap of every write, so read-after-write and notification-driven",
+        "authorization always see fresh data. INVARIANT: all writes MUST flow through this wrapper; any store that",
+        "mutates ACL data while bypassing it would leave the cache stale (the BackendKeyValueStorage path only",
+        "stores locks under /.internal/ and is ACL-irrelevant). KILL SWITCH: set options_ttl to 0 for pure",
+        "passthrough; removing the import of this file and pointing MonitoringStore back at ResourceStore_BinarySlice",
+        "restores the stock stack."
+      ],
+      "@id": "urn:solid-server:default:ResourceStore_Cache",
+      "@type": "CachingResourceStore",
+      "source": { "@id": "urn:solid-server:default:ResourceStore_BinarySlice" },
+      "cacheStrategy": { "@id": "urn:solid-server:default:AclStrategy" },
+      "options_ttl": 30000,
+      "options_maxEntries": 500,
+      "options_maxQuads": 20000,
+      "options_maxQuadsPerDoc": 2000,
+      "options_maxHasEntries": 5000
+    }
+  ]
+}
