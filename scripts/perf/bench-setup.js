@@ -7,8 +7,10 @@
  * 3. creates the requested containers in the pod with a public read/write ACL
  *
  * As a module: `const { setupPod } = require('./bench-setup');`
- *   setupPod({ baseUrl, podName, jose, containers }) → { podRoot, webId, email, accessToken, containers }
+ *   setupPod({ baseUrl, podName, jose, containers })
+ *     → { podRoot, webId, email, accessToken, containers, authed }
  *   `jose` must be the `jose` library instance resolved from the *server's* dependency tree.
+ *   `authed(url, init?)` performs a fetch authenticated as the pod owner (DPoP-bound token).
  * As a CLI: node bench-setup.js <baseUrl> [podName]  (requires `jose` resolvable from cwd; prints JSON)
  *
  * The public ACL means the load generator can hit the created containers without
@@ -111,7 +113,7 @@ async function setupPod({ baseUrl, podName = 'bench', jose, containers = [ 'scra
     }
     containerUrls[dir.replace(/\/$/u, '')] = url;
   }
-  return { podRoot: pod.pod, webId: pod.webId, email, accessToken: tok.access_token, containers: containerUrls };
+  return { podRoot: pod.pod, webId: pod.webId, email, accessToken: tok.access_token, containers: containerUrls, authed };
 }
 
 module.exports = { setupPod };
