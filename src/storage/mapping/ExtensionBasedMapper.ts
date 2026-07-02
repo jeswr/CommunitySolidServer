@@ -47,18 +47,43 @@ export class ExtensionBasedMapper extends BaseFileIdentifierMapper {
 
     // Existing file
     if (!contentType) {
-      // Find a matching file
-      const [ , folder, documentName ] = /^(.*\/)([^/]*)$/u.exec(filePath)!;
-      let fileName: string | undefined;
+      // Fast path: if a file exists at the direct translation of the identifier, use it as is.
+      // This avoids the more expensive folder scan below.
+      // The server never stores both the direct file and a `$.{extension}` variant for the same resource,
+      // as the stale one gets removed when writing (see `FileDataAccessor.verifyExistingExtension`),
+      // making this semantics-preserving for any server-produced state.
+      // Should both exist anyway, due to files being created externally,
+      // the direct match now deterministically takes precedence,
+      // whereas previously the result depended on the file order returned by `readdir`.
+      let resolved = false;
       try {
-        const files = await fsPromises.readdir(folder);
-        fileName = files.find((file): boolean =>
-          file.startsWith(documentName) && /^(?:\$\..+)?$/u.test(file.slice(documentName.length)));
+        resolved = (await fsPromises.stat(filePath)).isFile();
       } catch {
-        // Parent folder does not exist (or is not a folder)
+        // No file at the direct translation (or it is inaccessible)
       }
-      if (fileName) {
-        filePath = joinFilePath(folder, fileName);
+
+      // Metadata resources are always serialized as turtle,
+      // which matches the content-type of their `.meta` extension,
+      // so the server never stores them with a `$.{extension}` suffix.
+      // The folder scan below can thus never find a match and can be skipped.
+      if (!resolved && this.isMetadataPath(filePath)) {
+        resolved = true;
+      }
+
+      if (!resolved) {
+        // Find a matching file
+        const [ , folder, documentName ] = /^(.*\/)([^/]*)$/u.exec(filePath)!;
+        let fileName: string | undefined;
+        try {
+          const files = await fsPromises.readdir(folder);
+          fileName = files.find((file): boolean =>
+            file.startsWith(documentName) && /^(?:\$\..+)?$/u.test(file.slice(documentName.length)));
+        } catch {
+          // Parent folder does not exist (or is not a folder)
+        }
+        if (fileName) {
+          filePath = joinFilePath(folder, fileName);
+        }
       }
       contentType = await this.getContentTypeFromPath(filePath);
     // If the extension of the identifier matches a different content-type than the one that is given,
