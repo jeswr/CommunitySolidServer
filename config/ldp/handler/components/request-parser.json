@@ -24,7 +24,10 @@
         "@type": "WaterfallHandler",
         "handlers": [
           { "@id": "urn:solid-server:default:PatchBodyParser" },
-          { "@type": "RawBodyParser" }
+          {
+            "comment": "Set the optional 'maxSize' parameter to limit the allowed request body size in bytes.",
+            "@type": "RawBodyParser"
+          }
         ]
       }
     },
@@ -36,8 +39,14 @@
       "source": {
         "@type": "WaterfallHandler",
         "handlers": [
-          { "@type": "N3PatchBodyParser" },
-          { "@type": "SparqlUpdateBodyParser" }
+          {
+            "comment": "Set the optional 'maxSize' parameter to limit the allowed request body size in bytes.",
+            "@type": "N3PatchBodyParser"
+          },
+          {
+            "comment": "Set the optional 'maxSize' parameter to limit the allowed request body size in bytes.",
+            "@type": "SparqlUpdateBodyParser"
+          }
         ]
       }
     }

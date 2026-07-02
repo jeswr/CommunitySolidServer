@@ -1,6 +1,7 @@
 import type { Algebra } from 'sparqlalgebrajs';
 import { translate } from 'sparqlalgebrajs';
 import { getLoggerFor } from '../../../logging/LogUtil';
+import { limitBodySize } from '../../../util/BodySizeUtil';
 import { APPLICATION_SPARQL_UPDATE } from '../../../util/ContentTypes';
 import { BadRequestHttpError } from '../../../util/errors/BadRequestHttpError';
 import { createErrorMessage } from '../../../util/errors/ErrorUtil';
@@ -17,6 +18,16 @@ import { BodyParser } from './BodyParser';
 export class SparqlUpdateBodyParser extends BodyParser {
   protected readonly logger = getLoggerFor(this);
 
+  private readonly maxSize?: number;
+
+  /**
+   * @param maxSize - The maximum allowed size of the request body in bytes. If undefined, there is no limit.
+   */
+  public constructor(maxSize?: number) {
+    super();
+    this.maxSize = maxSize;
+  }
+
   public async canHandle({ metadata }: BodyParserArgs): Promise<void> {
     if (metadata.contentType !== APPLICATION_SPARQL_UPDATE) {
       throw new UnsupportedMediaTypeHttpError('This parser only supports SPARQL UPDATE data.');
@@ -24,7 +35,7 @@ export class SparqlUpdateBodyParser extends BodyParser {
   }
 
   public async handle({ request, metadata }: BodyParserArgs): Promise<SparqlUpdatePatch> {
-    const sparql = await readableToString(request);
+    const sparql = await readableToString(limitBodySize(request, this.maxSize));
     let algebra: Algebra.Operation;
     try {
       algebra = translate(sparql, { quads: true, baseIRI: metadata.identifier.value }) as Algebra.Update;

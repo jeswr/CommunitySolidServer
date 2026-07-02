@@ -1,6 +1,7 @@
 import type { NamedNode, Quad, Quad_Subject, Variable } from '@rdfjs/types';
 import { DataFactory, Parser, Store } from 'n3';
 import { getBlankNodes, getTerms, getVariables } from 'rdf-terms';
+import { limitBodySize } from '../../../util/BodySizeUtil';
 import { TEXT_N3 } from '../../../util/ContentTypes';
 import { BadRequestHttpError } from '../../../util/errors/BadRequestHttpError';
 import { createErrorMessage } from '../../../util/errors/ErrorUtil';
@@ -19,6 +20,16 @@ const defaultGraph = DataFactory.defaultGraph();
  * Requirements can be found at Solid Protocol, §5.3.1: https://solid.github.io/specification/protocol#n3-patch
  */
 export class N3PatchBodyParser extends BodyParser {
+  private readonly maxSize?: number;
+
+  /**
+   * @param maxSize - The maximum allowed size of the request body in bytes. If undefined, there is no limit.
+   */
+  public constructor(maxSize?: number) {
+    super();
+    this.maxSize = maxSize;
+  }
+
   public async canHandle({ metadata }: BodyParserArgs): Promise<void> {
     if (metadata.contentType !== TEXT_N3) {
       throw new UnsupportedMediaTypeHttpError('This parser only supports N3 Patch documents.');
@@ -26,7 +37,7 @@ export class N3PatchBodyParser extends BodyParser {
   }
 
   public async handle({ request, metadata }: BodyParserArgs): Promise<N3Patch> {
-    const n3 = await readableToString(request);
+    const n3 = await readableToString(limitBodySize(request, this.maxSize));
     const parser = new Parser({ format: TEXT_N3, baseIRI: metadata.identifier.value });
     let store: Store;
     try {

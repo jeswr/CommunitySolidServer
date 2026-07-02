@@ -1,4 +1,5 @@
 import { getLoggerFor } from '../../../logging/LogUtil';
+import { limitBodySize } from '../../../util/BodySizeUtil';
 import { BadRequestHttpError } from '../../../util/errors/BadRequestHttpError';
 import { BasicRepresentation } from '../../representation/BasicRepresentation';
 import type { Representation } from '../../representation/Representation';
@@ -10,6 +11,16 @@ import { BodyParser } from './BodyParser';
  */
 export class RawBodyParser extends BodyParser {
   protected readonly logger = getLoggerFor(this);
+
+  private readonly maxSize?: number;
+
+  /**
+   * @param maxSize - The maximum allowed size of the request body in bytes. If undefined, there is no limit.
+   */
+  public constructor(maxSize?: number) {
+    super();
+    this.maxSize = maxSize;
+  }
 
   // Note that the only reason this is a union is in case the body is empty.
   // If this check gets moved away from the BodyParsers this union could be removed
@@ -36,6 +47,6 @@ export class RawBodyParser extends BodyParser {
       throw new BadRequestHttpError('HTTP request body was passed without a Content-Type header');
     }
 
-    return new BasicRepresentation(request, metadata);
+    return new BasicRepresentation(limitBodySize(request, this.maxSize), metadata);
   }
 }

@@ -4,7 +4,8 @@ import type { BodyParserArgs } from '../../../../../src/http/input/body/BodyPars
 import { RawBodyParser } from '../../../../../src/http/input/body/RawBodyParser';
 import { RepresentationMetadata } from '../../../../../src/http/representation/RepresentationMetadata';
 import type { HttpRequest } from '../../../../../src/server/HttpRequest';
-import { guardedStreamFrom } from '../../../../../src/util/StreamUtil';
+import { PayloadHttpError } from '../../../../../src/util/errors/PayloadHttpError';
+import { guardedStreamFrom, readableToString } from '../../../../../src/util/StreamUtil';
 
 describe('A RawBodyparser', (): void => {
   const bodyParser = new RawBodyParser();
@@ -71,5 +72,28 @@ describe('A RawBodyparser', (): void => {
     await expect(arrayifyStream(result.data)).resolves.toEqual(
       [ '<http://test.com/s> <http://test.com/p> <http://test.com/o>.' ],
     );
+  });
+
+  it('errors immediately if the Content-Length header exceeds the maximum allowed size.', async(): Promise<void> => {
+    const limitedParser = new RawBodyParser(4);
+    input.request = guardedStreamFrom([ 'more than four bytes' ]) as HttpRequest;
+    input.request.headers = { 'content-length': '20', 'content-type': 'text/turtle' };
+    await expect(limitedParser.handle(input)).rejects.toThrow(PayloadHttpError);
+  });
+
+  it('errors if the body exceeds the maximum allowed size.', async(): Promise<void> => {
+    const limitedParser = new RawBodyParser(4);
+    input.request = guardedStreamFrom([ 'more than four bytes' ]) as HttpRequest;
+    input.request.headers = { 'transfer-encoding': 'chunked', 'content-type': 'text/turtle' };
+    const result = await limitedParser.handle(input);
+    await expect(readableToString(result.data)).rejects.toThrow(PayloadHttpError);
+  });
+
+  it('supports bodies that do not exceed the maximum allowed size.', async(): Promise<void> => {
+    const limitedParser = new RawBodyParser(4);
+    input.request = guardedStreamFrom([ 'abcd' ]) as HttpRequest;
+    input.request.headers = { 'transfer-encoding': 'chunked', 'content-type': 'text/turtle' };
+    const result = await limitedParser.handle(input);
+    await expect(readableToString(result.data)).resolves.toBe('abcd');
   });
 });
