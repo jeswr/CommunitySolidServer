@@ -125,4 +125,78 @@ describe('A JsonResourceStorage', (): void => {
       [ subPath, 'subDocument' ],
     ]);
   });
+
+  it('returns all entries when given an empty prefix.', async(): Promise<void> => {
+    await expect(storage.set(path1, 'path1')).resolves.toBe(storage);
+    await expect(storage.set(path2, 'path2')).resolves.toBe(storage);
+    data.set(containerIdentifier, '');
+
+    const entries = [];
+    for await (const entry of storage.entries('')) {
+      entries.push(entry);
+    }
+    expect(entries).toEqual([
+      [ path1, 'path1' ],
+      [ path2, 'path2' ],
+    ]);
+    expect(store.getRepresentation).toHaveBeenCalledWith({ path: containerIdentifier }, {});
+  });
+
+  it('starts iterating from the root container when given a prefix without a slash.', async(): Promise<void> => {
+    await expect(storage.set(path1, 'path1')).resolves.toBe(storage);
+    await expect(storage.set(path2, 'path2')).resolves.toBe(storage);
+    data.set(containerIdentifier, '');
+
+    const entries = [];
+    for await (const entry of storage.entries('fo')) {
+      entries.push(entry);
+    }
+    expect(entries).toEqual([[ path1, 'path1' ]]);
+    expect(store.getRepresentation).toHaveBeenCalledWith({ path: containerIdentifier }, {});
+  });
+
+  it('starts iterating from the container matching the directory part of the prefix.', async(): Promise<void> => {
+    await expect(storage.set(path1, 'path1')).resolves.toBe(storage);
+    await expect(storage.set(subPath, 'subDocument')).resolves.toBe(storage);
+    data.set(containerIdentifier, '');
+    data.set(subContainerIdentifier, '');
+
+    const entries = [];
+    for await (const entry of storage.entries('container/')) {
+      entries.push(entry);
+    }
+    expect(entries).toEqual([[ subPath, 'subDocument' ]]);
+    expect(store.getRepresentation).toHaveBeenCalledTimes(2);
+    expect(store.getRepresentation).toHaveBeenCalledWith({ path: subContainerIdentifier }, {});
+    expect(store.getRepresentation).not.toHaveBeenCalledWith({ path: containerIdentifier }, expect.anything());
+  });
+
+  it('only returns the entries in the subcontainer matching the full prefix.', async(): Promise<void> => {
+    await expect(storage.set(subPath, 'subDocument')).resolves.toBe(storage);
+    await expect(storage.set('container/other', 'other')).resolves.toBe(storage);
+    data.set(containerIdentifier, '');
+    data.set(subContainerIdentifier, '');
+
+    const entries = [];
+    for await (const entry of storage.entries('container/doc')) {
+      entries.push(entry);
+    }
+    expect(entries).toEqual([[ subPath, 'subDocument' ]]);
+    expect(store.getRepresentation).toHaveBeenCalledWith({ path: subContainerIdentifier }, {});
+    expect(store.getRepresentation).not.toHaveBeenCalledWith({ path: containerIdentifier }, expect.anything());
+  });
+
+  it('returns no entries if the container matching the prefix does not exist.', async(): Promise<void> => {
+    await expect(storage.set(path1, 'path1')).resolves.toBe(storage);
+    data.set(containerIdentifier, '');
+    store.getRepresentation.mockClear();
+
+    const entries = [];
+    for await (const entry of storage.entries('missing/document')) {
+      entries.push(entry);
+    }
+    expect(entries).toHaveLength(0);
+    expect(store.getRepresentation).toHaveBeenCalledTimes(1);
+    expect(store.getRepresentation).toHaveBeenLastCalledWith({ path: joinUrl(containerIdentifier, 'missing/') }, {});
+  });
 });

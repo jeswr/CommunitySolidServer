@@ -115,6 +115,24 @@ describe('A WrappedExpiringStorage', (): void => {
     await expect(it.next()).resolves.toEqual(
       expect.objectContaining({ value: [ 'key3', 'data3' ]}),
     );
+    expect(source.entries).toHaveBeenCalledTimes(1);
+    expect(source.entries).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it('forwards the prefix unchanged to the source when iterating entries.', async(): Promise<void> => {
+    const data = [
+      [ 'key1', createExpires('data1', tomorrow) ],
+    ];
+    source.entries.mockImplementationOnce(function* (): any {
+      yield* data;
+    });
+    const results = [];
+    for await (const entry of storage.entries('key')) {
+      results.push(entry);
+    }
+    expect(source.entries).toHaveBeenCalledTimes(1);
+    expect(source.entries).toHaveBeenLastCalledWith('key');
+    expect(results).toEqual([[ 'key1', 'data1' ]]);
   });
 
   it('removes expired entries after a given time.', async(): Promise<void> => {

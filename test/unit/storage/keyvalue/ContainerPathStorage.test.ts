@@ -44,4 +44,35 @@ describe('An ContainerPathStorage', (): void => {
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual([ 'key', data ]);
   });
+
+  it('forwards the prefix prepended with the base path to the source.', async(): Promise<void> => {
+    const data = 'data';
+    const mockedSource: jest.Mocked<KeyValueStorage<string, unknown>> = {
+      has: jest.fn(),
+      get: jest.fn(),
+      set: jest.fn(),
+      delete: jest.fn(),
+      entries: jest.fn(async function* (): AsyncIterableIterator<[string, unknown]> {
+        yield [ `${relativePath}key`, data ];
+        yield [ '/otherContainer/key2', data ];
+      }),
+    };
+    storage = new ContainerPathStorage(mockedSource, relativePath);
+
+    let results = [];
+    for await (const entry of storage.entries('ke')) {
+      results.push(entry);
+    }
+    expect(mockedSource.entries).toHaveBeenCalledTimes(1);
+    expect(mockedSource.entries).toHaveBeenLastCalledWith(`${relativePath}ke`);
+    expect(results).toEqual([[ 'key', data ]]);
+
+    results = [];
+    for await (const entry of storage.entries()) {
+      results.push(entry);
+    }
+    expect(mockedSource.entries).toHaveBeenCalledTimes(2);
+    expect(mockedSource.entries).toHaveBeenLastCalledWith(relativePath);
+    expect(results).toEqual([[ 'key', data ]]);
+  });
 });

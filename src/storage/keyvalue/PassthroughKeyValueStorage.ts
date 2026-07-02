@@ -33,10 +33,14 @@ export abstract class PassthroughKeyValueStorage<TVal> implements KeyValueStorag
     return this.source.delete(path);
   }
 
-  public async* entries(): AsyncIterableIterator<[string, TVal]> {
+  public async* entries(matchPrefix?: string): AsyncIterableIterator<[string, TVal]> {
+    // The prefix is not forwarded to the source storage,
+    // as the key transformation could invalidate it.
     for await (const [ path, value ] of this.source.entries()) {
       const key = this.toOriginalKey(path);
-      yield [ key, value ];
+      if (key.startsWith(matchPrefix ?? '')) {
+        yield [ key, value ];
+      }
     }
   }
 

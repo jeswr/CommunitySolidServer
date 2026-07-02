@@ -47,9 +47,20 @@ export class MaxKeyLengthStorage<T> implements KeyValueStorage<string, T> {
     return this.source.delete(this.getKey(key));
   }
 
-  public async* entries(): AsyncIterableIterator<[string, T]> {
-    for await (const [ , val ] of this.source.entries()) {
-      yield [ val.key, val.payload ];
+  public async* entries(matchPrefix?: string): AsyncIterableIterator<[string, T]> {
+    let sourcePrefix = matchPrefix;
+    if (typeof matchPrefix === 'string' && !matchPrefix.endsWith('/')) {
+      // Only the final segment of a key gets hashed,
+      // so a prefix containing a partial final segment might not match the corresponding hashed source keys.
+      // For that reason, only the part up to and including the last `/` gets forwarded.
+      sourcePrefix = matchPrefix.slice(0, matchPrefix.lastIndexOf('/') + 1);
+    }
+    for await (const [ , val ] of this.source.entries(sourcePrefix)) {
+      // The stored original keys still need to be filtered by the full prefix,
+      // as the source could only match on a part of it.
+      if (val.key.startsWith(matchPrefix ?? '')) {
+        yield [ val.key, val.payload ];
+      }
     }
   }
 
