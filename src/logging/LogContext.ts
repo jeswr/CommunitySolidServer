@@ -17,6 +17,20 @@ export function runWithRequestId<T>(fn: () => T): T {
 }
 
 /**
+ * Runs the given function outside of any logging context,
+ * so that it, and any asynchronous work it schedules, has no request identifier.
+ * This is useful for deferred work, such as a scheduled timer,
+ * that is armed while handling a request but should not be attributed to that request when it later runs.
+ *
+ * @param fn - The function to run.
+ *
+ * @returns The result of calling the given function.
+ */
+export function runWithoutRequestId<T>(fn: () => T): T {
+  return requestIdStorage.exit(fn);
+}
+
+/**
  * Returns the request identifier of the current logging context,
  * or `undefined` when called outside a {@link runWithRequestId} context.
  */
