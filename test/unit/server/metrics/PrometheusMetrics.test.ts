@@ -45,4 +45,17 @@ describe('A PrometheusMetrics', (): void => {
     expect(histogram?.values.some((value): boolean =>
       value.labels.method === 'POST' && value.labels.code === 500)).toBe(true);
   });
+
+  it('creates a css_notification_deliveries_total counter labelled by type and outcome.', async(): Promise<void> => {
+    expect(metrics.registry.getSingleMetric('css_notification_deliveries_total')).toBeDefined();
+
+    metrics.notificationDeliveriesTotal.inc({ type: 'WebhookChannel2023', outcome: 'failure' });
+
+    const json = await metrics.registry.getMetricsAsJSON();
+    const counter = json.find((metric): boolean => metric.name === 'css_notification_deliveries_total');
+    expect(counter?.type).toBe('counter');
+    expect(counter?.values).toContainEqual(
+      expect.objectContaining({ value: 1, labels: { type: 'WebhookChannel2023', outcome: 'failure' }}),
+    );
+  });
 });

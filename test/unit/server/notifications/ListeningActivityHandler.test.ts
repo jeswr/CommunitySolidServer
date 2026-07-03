@@ -14,7 +14,7 @@ import { AS } from '../../../../src/util/Vocabularies';
 import { flushPromises } from '../../../util/Util';
 
 jest.mock('../../../../src/logging/LogUtil', (): any => {
-  const logger: Logger = { error: jest.fn() } as any;
+  const logger: Logger = { error: jest.fn(), debug: jest.fn() } as any;
   return { getLoggerFor: (): Logger => logger };
 });
 
@@ -27,6 +27,7 @@ describe('A ListeningActivityHandler', (): void => {
   let storage: jest.Mocked<NotificationChannelStorage>;
   let emitter: ActivityEmitter;
   let notificationHandler: jest.Mocked<NotificationHandler>;
+  let metrics: { notificationDeliveriesTotal: { inc: jest.Mock }};
 
   beforeEach(async(): Promise<void> => {
     jest.clearAllMocks();
@@ -48,8 +49,10 @@ describe('A ListeningActivityHandler', (): void => {
       handleSafe: jest.fn().mockResolvedValue(undefined),
     } as any;
 
+    metrics = { notificationDeliveriesTotal: { inc: jest.fn() }};
+
     // eslint-disable-next-line no-new
-    new ListeningActivityHandler(storage, emitter, notificationHandler);
+    new ListeningActivityHandler(storage, emitter, notificationHandler, metrics as any);
   });
 
   it('calls the NotificationHandler if there is an event.', async(): Promise<void> => {
@@ -104,7 +107,17 @@ describe('A ListeningActivityHandler', (): void => {
     expect(logger.error).toHaveBeenCalledTimes(0);
   });
 
-  it('does not stop if one channel causes an error.', async(): Promise<void> => {
+  it('records a successful delivery on the metrics counter.', async(): Promise<void> => {
+    emitter.emit('changed', topic, activity, metadata);
+
+    await flushPromises();
+
+    expect(metrics.notificationDeliveriesTotal.inc).toHaveBeenCalledTimes(1);
+    expect(metrics.notificationDeliveriesTotal.inc)
+      .toHaveBeenLastCalledWith({ type: channel.type, outcome: 'success' });
+  });
+
+  it('does not stop and records a failure if one channel errors.', async(): Promise<void> => {
     storage.getAll.mockResolvedValue([ channel.id, channel.id ]);
     notificationHandler.handleSafe.mockRejectedValueOnce(new Error('bad input'));
 
@@ -113,8 +126,28 @@ describe('A ListeningActivityHandler', (): void => {
     await flushPromises();
 
     expect(notificationHandler.handleSafe).toHaveBeenCalledTimes(2);
-    expect(logger.error).toHaveBeenCalledTimes(1);
-    expect(logger.error).toHaveBeenLastCalledWith(`Error trying to handle notification for ${channel.id}: bad input`);
+    expect(logger.error).toHaveBeenCalledTimes(0);
+    expect(logger.debug).toHaveBeenCalledTimes(1);
+    expect(logger.debug).toHaveBeenLastCalledWith(`Error trying to handle notification for ${channel.id}: bad input`);
+    expect(metrics.notificationDeliveriesTotal.inc).toHaveBeenCalledTimes(2);
+    expect(metrics.notificationDeliveriesTotal.inc).toHaveBeenCalledWith({ type: channel.type, outcome: 'failure' });
+    expect(metrics.notificationDeliveriesTotal.inc).toHaveBeenCalledWith({ type: channel.type, outcome: 'success' });
+  });
+
+  it('works without a PrometheusMetrics instance.', async(): Promise<void> => {
+    const otherEmitter = new EventEmitter() as any;
+    storage.getAll.mockResolvedValue([ channel.id, channel.id ]);
+    notificationHandler.handleSafe.mockRejectedValueOnce(new Error('bad input'));
+    // eslint-disable-next-line no-new
+    new ListeningActivityHandler(storage, otherEmitter, notificationHandler);
+
+    otherEmitter.emit('changed', topic, activity, metadata);
+
+    await flushPromises();
+
+    expect(notificationHandler.handleSafe).toHaveBeenCalledTimes(2);
+    expect(logger.debug).toHaveBeenCalledTimes(1);
+    expect(metrics.notificationDeliveriesTotal.inc).toHaveBeenCalledTimes(0);
   });
 
   it('logs an error if something goes wrong handling the event.', async(): Promise<void> => {

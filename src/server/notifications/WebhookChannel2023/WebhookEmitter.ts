@@ -7,6 +7,7 @@ import { getLoggerFor } from '../../../logging/LogUtil';
 import { NotImplementedHttpError } from '../../../util/errors/NotImplementedHttpError';
 import { trimTrailingSlashes } from '../../../util/PathUtil';
 import { readableToString } from '../../../util/StreamUtil';
+import type { PrometheusMetrics } from '../../metrics/PrometheusMetrics';
 import type { NotificationEmitterInput } from '../NotificationEmitter';
 import { NotificationEmitter } from '../NotificationEmitter';
 import type { WebhookChannel2023 } from './WebhookChannel2023Type';
@@ -22,6 +23,9 @@ import { isWebhook2023Channel } from './WebhookChannel2023Type';
  *
  * The `expiration` input parameter is how long the generated token should be valid in minutes.
  * Default is 20.
+ *
+ * When a {@link PrometheusMetrics} instance is provided, every delivery attempt increments its
+ * `css_notification_deliveries_total` counter with the channel `type` and the delivery `outcome`.
  */
 export class WebhookEmitter extends NotificationEmitter {
   protected readonly logger = getLoggerFor(this);
@@ -30,13 +34,28 @@ export class WebhookEmitter extends NotificationEmitter {
   private readonly webId: string;
   private readonly jwkGenerator: JwkGenerator;
   private readonly expiration: number;
+  private readonly metrics?: PrometheusMetrics;
 
-  public constructor(baseUrl: string, webIdRoute: InteractionRoute, jwkGenerator: JwkGenerator, expiration = 20) {
+  /**
+   * @param baseUrl - The base URL of the server.
+   * @param webIdRoute - The route to the WebID used to sign the notification requests.
+   * @param jwkGenerator - Generates the key pair used to sign the notification requests.
+   * @param expiration - How long the generated token should be valid, in minutes. Default is 20.
+   * @param metrics - Optional {@link PrometheusMetrics} used to record delivery outcomes. Default is none.
+   */
+  public constructor(
+    baseUrl: string,
+    webIdRoute: InteractionRoute,
+    jwkGenerator: JwkGenerator,
+    expiration = 20,
+    metrics?: PrometheusMetrics,
+  ) {
     super();
     this.issuer = trimTrailingSlashes(baseUrl);
     this.webId = webIdRoute.getPath();
     this.jwkGenerator = jwkGenerator;
     this.expiration = expiration * 60;
+    this.metrics = metrics;
   }
 
   public async canHandle({ channel }: NotificationEmitterInput): Promise<void> {
@@ -98,8 +117,13 @@ export class WebhookEmitter extends NotificationEmitter {
       body: await readableToString(representation.data),
     });
     if (response.status >= 400) {
-      this.logger.error(`There was an issue emitting a Webhook notification with target ${webhookChannel.sendTo}: ${
+      this.metrics?.notificationDeliveriesTotal.inc({ type: webhookChannel.type, outcome: 'failure' });
+      // Demoted from `error` to `debug`: the aggregate failure rate is now captured by the metric above,
+      // and the target URL and response body are attacker-influenced, so they must not be logged at info level.
+      this.logger.debug(`There was an issue emitting a Webhook notification with target ${webhookChannel.sendTo}: ${
         await response.text()}`);
+    } else {
+      this.metrics?.notificationDeliveriesTotal.inc({ type: webhookChannel.type, outcome: 'success' });
     }
   }
 }

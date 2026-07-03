@@ -52,6 +52,7 @@ describe('A WebhookEmitter', (): void => {
   let privateJwk: AlgJwk;
   let publicJwk: AlgJwk;
   let jwkGenerator: jest.Mocked<JwkGenerator>;
+  let metrics: { notificationDeliveriesTotal: { inc: jest.Mock }};
   let emitter: WebhookEmitter;
 
   beforeEach(async(): Promise<void> => {
@@ -70,7 +71,9 @@ describe('A WebhookEmitter', (): void => {
       getPublicKey: jest.fn().mockResolvedValue(publicJwk),
     };
 
-    emitter = new WebhookEmitter(baseUrl, webIdRoute, jwkGenerator);
+    metrics = { notificationDeliveriesTotal: { inc: jest.fn() }};
+
+    emitter = new WebhookEmitter(baseUrl, webIdRoute, jwkGenerator, 20, metrics as any);
   });
 
   it('errors if the channel type is wrong.', async(): Promise<void> => {
@@ -134,16 +137,39 @@ describe('A WebhookEmitter', (): void => {
     jest.useRealTimers();
   });
 
-  it('logs an error if the fetch request receives an invalid status code.', async(): Promise<void> => {
+  it('records a successful delivery on the metrics counter.', async(): Promise<void> => {
+    await expect(emitter.handle({ channel, representation })).resolves.toBeUndefined();
+
+    expect(metrics.notificationDeliveriesTotal.inc).toHaveBeenCalledTimes(1);
+    expect(metrics.notificationDeliveriesTotal.inc)
+      .toHaveBeenLastCalledWith({ type: channel.type, outcome: 'success' });
+  });
+
+  it('logs at debug and records a failure on an invalid status code.', async(): Promise<void> => {
     const logger = getLoggerFor('mock');
     representation = new BasicRepresentation(JSON.stringify(notification), {});
 
     fetchMock.mockResolvedValue({ status: 400, text: async(): Promise<string> => 'invalid request' });
     await expect(emitter.handle({ channel, representation })).resolves.toBeUndefined();
 
-    expect(logger.error).toHaveBeenCalledTimes(1);
-    expect(logger.error).toHaveBeenLastCalledWith(
+    expect(logger.error).toHaveBeenCalledTimes(0);
+    expect(logger.debug).toHaveBeenLastCalledWith(
       `There was an issue emitting a Webhook notification with target ${channel.sendTo}: invalid request`,
     );
+    expect(metrics.notificationDeliveriesTotal.inc).toHaveBeenCalledTimes(1);
+    expect(metrics.notificationDeliveriesTotal.inc)
+      .toHaveBeenLastCalledWith({ type: channel.type, outcome: 'failure' });
+  });
+
+  it('works without a PrometheusMetrics instance.', async(): Promise<void> => {
+    emitter = new WebhookEmitter(baseUrl, webIdRoute, jwkGenerator);
+
+    await expect(emitter.handle({ channel, representation })).resolves.toBeUndefined();
+
+    const failRepresentation = new BasicRepresentation(JSON.stringify(notification), 'application/ld+json');
+    fetchMock.mockResolvedValue({ status: 400, text: async(): Promise<string> => 'invalid request' });
+    await expect(emitter.handle({ channel, representation: failRepresentation })).resolves.toBeUndefined();
+
+    expect(metrics.notificationDeliveriesTotal.inc).toHaveBeenCalledTimes(0);
   });
 });

@@ -11,11 +11,16 @@ import { collectDefaultMetrics, Counter, Histogram, Registry } from 'prom-client
  * request `method` and the response status `code`.
  * The request target/path is deliberately *not* used as a label:
  * the unbounded number of resource URLs would cause a cardinality explosion in the time-series database.
+ *
+ * For the same reason the notification delivery instrument is only labelled by the channel `type` and the
+ * delivery `outcome` (`success` or `failure`): the target URL, channel id or remote address are deliberately
+ * *not* used as labels, as those are unbounded (and attacker-influenced) and would explode the time-series database.
  */
 export class PrometheusMetrics {
   public readonly registry: Registry;
   public readonly requestsTotal: Counter<'code' | 'method'>;
   public readonly requestDuration: Histogram<'code' | 'method'>;
+  public readonly notificationDeliveriesTotal: Counter<'outcome' | 'type'>;
 
   public constructor() {
     this.registry = new Registry();
@@ -33,6 +38,15 @@ export class PrometheusMetrics {
       name: 'http_request_duration_seconds',
       help: 'Duration of HTTP requests in seconds, labelled by request method and response status code.',
       labelNames: [ 'method', 'code' ],
+      registers: [ this.registry ],
+    });
+
+    this.notificationDeliveriesTotal = new Counter({
+      name: 'css_notification_deliveries_total',
+      help:
+        'Total number of notification delivery attempts, labelled by channel type and delivery outcome ' +
+        '(success or failure). Target URL and channel id are deliberately not labelled to bound cardinality.',
+      labelNames: [ 'type', 'outcome' ],
       registers: [ this.registry ],
     });
   }

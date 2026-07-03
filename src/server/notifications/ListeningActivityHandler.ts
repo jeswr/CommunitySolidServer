@@ -4,6 +4,7 @@ import { getLoggerFor } from '../../logging/LogUtil';
 import { createErrorMessage } from '../../util/errors/ErrorUtil';
 import { StaticHandler } from '../../util/handlers/StaticHandler';
 import type { AS, VocabularyTerm } from '../../util/Vocabularies';
+import type { PrometheusMetrics } from '../metrics/PrometheusMetrics';
 import type { ActivityEmitter } from './ActivityEmitter';
 import type { NotificationChannelStorage } from './NotificationChannelStorage';
 import type { NotificationHandler } from './NotificationHandler';
@@ -17,17 +18,33 @@ import type { NotificationHandler } from './NotificationHandler';
  * Extends {@link StaticHandler} so it can be more easily injected into a Components.js configuration.
  * No class takes this one as input, so to make sure Components.js instantiates it,
  * it needs to be added somewhere where its presence has no impact, such as the list of initializers.
+ *
+ * When a {@link PrometheusMetrics} instance is provided, every delivery attempt increments its
+ * `css_notification_deliveries_total` counter with the channel `type` and the delivery `outcome`.
  */
 export class ListeningActivityHandler extends StaticHandler {
   protected readonly logger = getLoggerFor(this);
 
   private readonly storage: NotificationChannelStorage;
   private readonly handler: NotificationHandler;
+  private readonly metrics?: PrometheusMetrics;
 
-  public constructor(storage: NotificationChannelStorage, emitter: ActivityEmitter, handler: NotificationHandler) {
+  /**
+   * @param storage - Storage containing the notification channels.
+   * @param emitter - Emitter of the activities the channels are listening to.
+   * @param handler - Handler to call for every matching notification channel.
+   * @param metrics - Optional {@link PrometheusMetrics} used to record delivery outcomes. Default is none.
+   */
+  public constructor(
+    storage: NotificationChannelStorage,
+    emitter: ActivityEmitter,
+    handler: NotificationHandler,
+    metrics?: PrometheusMetrics,
+  ) {
     super();
     this.storage = storage;
     this.handler = handler;
+    this.metrics = metrics;
 
     emitter.on('changed', (topic, activity, metadata): void => {
       this.emit(topic, activity, metadata).catch((error: unknown): void => {
@@ -64,6 +81,7 @@ export class ListeningActivityHandler extends StaticHandler {
       // Prevent failed notification from blocking other notifications.
       this.handler.handleSafe({ channel, activity, topic, metadata })
         .then(async(): Promise<void> => {
+          this.metrics?.notificationDeliveriesTotal.inc({ type: channel.type, outcome: 'success' });
           // Update the `lastEmit` value if the channel has a rate limit
           if (channel.rate) {
             channel.lastEmit = Date.now();
@@ -71,7 +89,10 @@ export class ListeningActivityHandler extends StaticHandler {
           }
         })
         .catch((error: unknown): void => {
-          this.logger.error(`Error trying to handle notification for ${id}: ${createErrorMessage(error)}`);
+          this.metrics?.notificationDeliveriesTotal.inc({ type: channel.type, outcome: 'failure' });
+          // Demoted from `error` to `debug`: the aggregate failure rate is now captured by the metric above,
+          // and the per-channel identifier is unaggregable noise at info level.
+          this.logger.debug(`Error trying to handle notification for ${id}: ${createErrorMessage(error)}`);
         });
     }
   }
