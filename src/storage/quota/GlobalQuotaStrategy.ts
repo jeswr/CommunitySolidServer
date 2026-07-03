@@ -13,6 +13,11 @@ export class GlobalQuotaStrategy extends QuotaStrategy {
     this.base = base;
   }
 
+  public async getQuotaScope(): Promise<string> {
+    // A global quota is shared by the whole server, so every write reserves against the same scope.
+    return this.base;
+  }
+
   protected async getTotalSpaceUsed(): Promise<Size> {
     return this.reporter.getSize({ path: this.base });
   }

@@ -77,4 +77,15 @@ describe('PodQuotaStrategy', (): void => {
       await expect(result).rejects.toThrow('error');
     });
   });
+
+  describe('getQuotaScope()', (): void => {
+    it('should return the pim:storage container path when writing inside a pod.', async(): Promise<void> => {
+      await expect(strategy.getQuotaScope({ path: `${base}nested/nested2/file.txt` }))
+        .resolves.toBe(`${base}nested/`);
+    });
+
+    it('should return an empty string when writing outside a pod.', async(): Promise<void> => {
+      await expect(strategy.getQuotaScope({ path: `${base}file.txt` })).resolves.toBe('');
+    });
+  });
 });

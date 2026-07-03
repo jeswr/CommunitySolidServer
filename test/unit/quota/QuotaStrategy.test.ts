@@ -14,6 +14,7 @@ class QuotaStrategyWrapper extends QuotaStrategy {
   }
 
   public getAvailableSpace = async(): Promise<Size> => ({ unit: UNIT_BYTES, amount: 5 });
+  public getQuotaScope = async(): Promise<string> => 'scope';
   protected getTotalSpaceUsed = async(): Promise<Size> => ({ unit: UNIT_BYTES, amount: 5 });
 }
 
