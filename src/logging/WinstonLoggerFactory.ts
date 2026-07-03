@@ -32,18 +32,24 @@ const CONTROL_CHARACTERS = /[\u0000-\u0008\u000A-\u001F\u007F-\u009F]/gu;
 export class WinstonLoggerFactory implements LoggerFactory {
   private readonly level: string;
   private readonly logFormat: LogFormat;
+  private readonly colorize: boolean;
 
   /**
    * @param level - The most detailed level of log messages that should be output.
    * @param logFormat - The format used to output log messages:
    *                    `pretty` for human-readable colorized lines, or `json` for a line of JSON per message.
+   * @param colorize - Whether the level in the `pretty` output is colorized with ANSI escape codes.
+   *                   Defaults to `true` to preserve the historical output. Set to `false` for plain,
+   *                   ANSI-free lines (e.g. when piping the output to a file), which also removes the
+   *                   per-line colorization cost. Has no effect on the `json` format, which is never colorized.
    */
-  public constructor(level: string, logFormat = 'pretty') {
+  public constructor(level: string, logFormat = 'pretty', colorize = true) {
     this.level = level;
     if (!(LOG_FORMATS as readonly string[]).includes(logFormat)) {
       throw new Error(`Unknown log format ${logFormat}, expected one of ${LOG_FORMATS.join('/')}`);
     }
     this.logFormat = logFormat as LogFormat;
+    this.colorize = colorize;
   }
 
   private readonly clusterInfo = (meta: LogMetadata): string => {
@@ -103,9 +109,14 @@ export class WinstonLoggerFactory implements LoggerFactory {
         format.json(),
       );
     }
-    return format.combine(
-      format.label({ label }),
-      format.colorize(),
+    // Colorizing the level is purely cosmetic, so it is only added when enabled.
+    // This keeps the default output byte-compatible while letting operators drop the
+    // per-line colorization cost (and produce ANSI-free lines) by disabling it.
+    const prettyFormats: Logform.Format[] = [ format.label({ label }) ];
+    if (this.colorize) {
+      prettyFormats.push(format.colorize());
+    }
+    prettyFormats.push(
       format.timestamp(),
       format.metadata({ fillExcept: [ 'level', 'timestamp', 'label', 'message' ]}),
       format.printf(
@@ -115,6 +126,7 @@ export class WinstonLoggerFactory implements LoggerFactory {
           `${this.requestInfo(meta as LogMetadata)} ${levelInner}: ${this.sanitize(String(message))}`,
       ),
     );
+    return format.combine(...prettyFormats);
   }
 
   protected createTransports(): Transport[] {

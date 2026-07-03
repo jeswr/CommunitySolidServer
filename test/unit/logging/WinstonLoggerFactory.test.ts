@@ -95,6 +95,37 @@ describe('WinstonLoggerFactory', (): void => {
       .toBe(`${now.toISOString()} [MyLabel] {W-???} ${level}: my message`);
   });
 
+  it('colorizes the level in the pretty output by default.', async(): Promise<void> => {
+    (factory as any).createTransports = (): any => [ transport ];
+
+    // Create logger, and log
+    const logger = factory.createLogger('MyLabel');
+    logger.log('debug', 'my message');
+
+    expect(transport.write).toHaveBeenCalledTimes(1);
+    const line: string = transport.write.mock.calls[0][0][Symbol.for('message')];
+    // The default output wraps the level in ANSI color codes.
+    // eslint-disable-next-line no-control-regex
+    expect(line).toMatch(/\u001B\[\d+m/u);
+  });
+
+  it('omits ANSI colors from the pretty output when colorization is disabled.', async(): Promise<void> => {
+    factory = new WinstonLoggerFactory('debug', 'pretty', false);
+    (factory as any).createTransports = (): any => [ transport ];
+
+    // Create logger, and log
+    const logger = factory.createLogger('MyLabel');
+    logger.log('debug', 'my message');
+
+    expect(transport.write).toHaveBeenCalledTimes(1);
+    const line: string = transport.write.mock.calls[0][0][Symbol.for('message')];
+    // No ANSI escape codes are present anywhere in the line.
+    // eslint-disable-next-line no-control-regex
+    expect(line).not.toMatch(/\u001B/u);
+    // The line is otherwise identical to the colorized output: same fields, plain level.
+    expect(line).toBe(`${now.toISOString()} [MyLabel] {W-???} debug: my message`);
+  });
+
   it('adds the request identifier to the output when there is one.', async(): Promise<void> => {
     (factory as any).createTransports = (): any => [ transport ];
 
