@@ -129,6 +129,15 @@
             "type": "boolean",
             "describe": "Skips the confirmation prompts during migration from older versions."
           }
+        },
+        {
+          "@type": "YargsParameter",
+          "name": "storageEncryptionKey",
+          "options": {
+            "requiresArg": true,
+            "type": "string",
+            "describe": "Secret passphrase used to encrypt internal key-value secrets at rest (opt-in). This is a secret, so prefer setting it through the CSS_STORAGE_ENCRYPTION_KEY environment variable rather than on the command line."
+          }
         }
       ],
       "options": {

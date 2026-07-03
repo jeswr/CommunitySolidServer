@@ -3,27 +3,14 @@ import type { KeyValueStorage } from '../../../../src/storage/keyvalue/KeyValueS
 
 describe('An EncryptingKeyValueStorage', (): void => {
   const secret = 'test-secret-passphrase';
-  let originalEnv: string | undefined;
   let map: Map<string, unknown>;
   let source: KeyValueStorage<string, unknown>;
   let storage: EncryptingKeyValueStorage<unknown>;
 
   beforeEach((): void => {
-    // Make sure the environment does not leak into the key resolution of these tests.
-    originalEnv = process.env.CSS_STORAGE_ENCRYPTION_KEY;
-    delete process.env.CSS_STORAGE_ENCRYPTION_KEY;
-
     map = new Map<string, unknown>();
     source = map as unknown as KeyValueStorage<string, unknown>;
     storage = new EncryptingKeyValueStorage(source, secret);
-  });
-
-  afterEach((): void => {
-    if (typeof originalEnv === 'string') {
-      process.env.CSS_STORAGE_ENCRYPTION_KEY = originalEnv;
-    } else {
-      delete process.env.CSS_STORAGE_ENCRYPTION_KEY;
-    }
   });
 
   it('stores values encrypted and decrypts them on read.', async(): Promise<void> => {
@@ -124,8 +111,8 @@ describe('An EncryptingKeyValueStorage', (): void => {
     await expect(storage.get('key')).rejects.toThrow('Unable to decrypt a stored value');
   });
 
-  describe('without an available key', (): void => {
-    it('throws when neither a key argument nor the environment variable is set.', (): void => {
+  describe('without a passphrase', (): void => {
+    it('throws when no key is provided.', (): void => {
       expect((): EncryptingKeyValueStorage<unknown> => new EncryptingKeyValueStorage(source))
         .toThrow('no encryption key was provided');
     });
@@ -133,13 +120,6 @@ describe('An EncryptingKeyValueStorage', (): void => {
     it('throws when the provided key is an empty string.', (): void => {
       expect((): EncryptingKeyValueStorage<unknown> => new EncryptingKeyValueStorage(source, ''))
         .toThrow('no encryption key was provided');
-    });
-
-    it('derives the key from the CSS_STORAGE_ENCRYPTION_KEY environment variable.', async(): Promise<void> => {
-      process.env.CSS_STORAGE_ENCRYPTION_KEY = 'environment-secret';
-      const envStorage = new EncryptingKeyValueStorage(source);
-      await envStorage.set('key', { v: 1 });
-      await expect(envStorage.get('key')).resolves.toEqual({ v: 1 });
     });
   });
 });

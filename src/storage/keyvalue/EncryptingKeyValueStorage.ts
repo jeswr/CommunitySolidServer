@@ -3,11 +3,6 @@ import { createErrorMessage } from '../../util/errors/ErrorUtil';
 import type { KeyValueStorage } from './KeyValueStorage';
 import { PassthroughKeyValueStorage } from './PassthroughKeyValueStorage';
 
-/**
- * Name of the environment variable operators use to provide the encryption secret.
- */
-const ENCRYPTION_KEY_ENV = 'CSS_STORAGE_ENCRYPTION_KEY';
-
 // AES-256-GCM parameters.
 const ALGORITHM = 'aes-256-gcm';
 const KEY_LENGTH = 32;
@@ -62,10 +57,11 @@ function isEncryptedEnvelope(value: unknown): value is EncryptedEnvelope {
  *
  * Keys are never encrypted or otherwise modified.
  *
- * The encryption key is derived with scrypt from an operator-provided secret passphrase.
- * The passphrase is taken from the `key` constructor argument, or, when that is not set,
- * from the `CSS_STORAGE_ENCRYPTION_KEY` environment variable. If neither is set, construction
- * fails with a clear error rather than silently storing plaintext.
+ * The encryption key is derived with scrypt from an operator-provided secret passphrase,
+ * passed as the `key` constructor argument. In the server configuration this is wired to the
+ * `storageEncryptionKey` variable, which operators set through the `--storageEncryptionKey`
+ * CLI argument or the `CSS_STORAGE_ENCRYPTION_KEY` environment variable. If the passphrase is
+ * empty or absent, construction fails with a clear error rather than silently storing plaintext.
  *
  * WARNING: losing the secret makes every encrypted value permanently unrecoverable.
  */
@@ -75,18 +71,18 @@ export class EncryptingKeyValueStorage<TVal> extends PassthroughKeyValueStorage<
   /**
    * @param source - The storage to wrap. Its values will hold encrypted envelopes.
    * @param key - The secret passphrase to derive the encryption key from.
-   *              Defaults to the `CSS_STORAGE_ENCRYPTION_KEY` environment variable.
+   *              Wired to the `storageEncryptionKey` variable in the server configuration.
    */
   public constructor(source: KeyValueStorage<string, TVal>, key?: string) {
     super(source);
-    const secret = key ?? process.env[ENCRYPTION_KEY_ENV];
-    if (typeof secret !== 'string' || secret.length === 0) {
+    if (typeof key !== 'string' || key.length === 0) {
       throw new Error(
-        `Storage encryption is enabled but no encryption key was provided. ` +
-        `Set the ${ENCRYPTION_KEY_ENV} environment variable to a secret passphrase.`,
+        `Storage encryption is enabled but no encryption key was provided. Set the storageEncryptionKey ` +
+        `variable through the --storageEncryptionKey CLI argument or the CSS_STORAGE_ENCRYPTION_KEY ` +
+        `environment variable.`,
       );
     }
-    this.cryptoKey = scryptSync(secret, KEY_SALT, KEY_LENGTH);
+    this.cryptoKey = scryptSync(key, KEY_SALT, KEY_LENGTH);
   }
 
   public async get(key: string): Promise<TVal | undefined> {
@@ -167,7 +163,7 @@ export class EncryptingKeyValueStorage<TVal> extends PassthroughKeyValueStorage<
       return JSON.parse(plaintext.toString('utf-8')) as TVal;
     } catch (error: unknown) {
       throw new Error(
-        `Unable to decrypt a stored value. The ${ENCRYPTION_KEY_ENV} key may be incorrect ` +
+        `Unable to decrypt a stored value. The encryption passphrase may be incorrect ` +
         `or the stored data may be corrupted. ${createErrorMessage(error)}`,
       );
     }
