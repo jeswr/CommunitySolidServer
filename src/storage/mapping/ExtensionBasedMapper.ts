@@ -47,6 +47,14 @@ export class ExtensionBasedMapper extends BaseFileIdentifierMapper {
 
     // Existing file
     if (!contentType) {
+      // Metadata resources are always serialized as turtle,
+      // which matches the content-type of their `.meta` extension,
+      // so the server never stores them with a `$.{extension}` suffix.
+      // The folder scan below can thus never find a match, and the direct `stat` can never
+      // change the outcome either (the file path is returned as is regardless of whether the file exists),
+      // so both filesystem calls are skipped for metadata paths.
+      let resolved = this.isMetadataPath(filePath);
+
       // Fast path: if a file exists at the direct translation of the identifier, use it as is.
       // This avoids the more expensive folder scan below.
       // The server never stores both the direct file and a `$.{extension}` variant for the same resource,
@@ -55,19 +63,12 @@ export class ExtensionBasedMapper extends BaseFileIdentifierMapper {
       // Should both exist anyway, due to files being created externally,
       // the direct match now deterministically takes precedence,
       // whereas previously the result depended on the file order returned by `readdir`.
-      let resolved = false;
-      try {
-        resolved = (await fsPromises.stat(filePath)).isFile();
-      } catch {
-        // No file at the direct translation (or it is inaccessible)
-      }
-
-      // Metadata resources are always serialized as turtle,
-      // which matches the content-type of their `.meta` extension,
-      // so the server never stores them with a `$.{extension}` suffix.
-      // The folder scan below can thus never find a match and can be skipped.
-      if (!resolved && this.isMetadataPath(filePath)) {
-        resolved = true;
+      if (!resolved) {
+        try {
+          resolved = (await fsPromises.stat(filePath)).isFile();
+        } catch {
+          // No file at the direct translation (or it is inaccessible)
+        }
       }
 
       if (!resolved) {

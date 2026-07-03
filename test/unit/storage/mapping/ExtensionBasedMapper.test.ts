@@ -149,14 +149,15 @@ describe('An ExtensionBasedMapper', (): void => {
       expect(fsPromises.readdir).toHaveBeenCalledTimes(1);
     });
 
-    it('does not read the folder for metadata paths without a matching file.', async(): Promise<void> => {
+    it('does not stat or read the folder for metadata paths without a matching file.', async(): Promise<void> => {
       await expect(mapper.mapUrlToFilePath({ path: `${base}test` }, true)).resolves.toEqual({
         identifier: { path: `${base}test` },
         filePath: `${rootFilepath}test.meta`,
         contentType: 'text/turtle',
         isMetadata: true,
       });
-      expect(fsPromises.stat).toHaveBeenCalledTimes(1);
+      // The metadata check short-circuits before both the direct stat and the folder scan
+      expect(fsPromises.stat).toHaveBeenCalledTimes(0);
       expect(fsPromises.readdir).toHaveBeenCalledTimes(0);
     });
 
