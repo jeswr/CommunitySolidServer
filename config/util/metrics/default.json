@@ -4,8 +4,9 @@
     {
       "comment": [
         "OPT-IN Prometheus metrics. This file is NOT imported by any shipped config: add it next to your main config, e.g. `community-solid-server -c config/file.json -c config/util/metrics/default.json`.",
-        "SECURITY: the /metrics endpoint is UNAUTHENTICATED and exposes internal counters (request rates, latencies, process cpu/memory). Restrict it at your reverse proxy or firewall; never expose it to the public internet.",
-        "This recipe assumes the default handler waterfall (config/http/handler/default.json). If you use a different handler configuration, adjust the Override list below to match its handlers."
+        "SECURITY: the /metrics endpoint is UNAUTHENTICATED and exposes internal counters (request rates, latencies, process cpu/memory, saturation gauges). Restrict it at your reverse proxy or firewall; never expose it to the public internet.",
+        "This recipe assumes the default handler waterfall (config/http/handler/default.json). If you use a different handler configuration, adjust the Override list below to match its handlers.",
+        "The saturation gauges below assume the default single-threaded stack: the in-memory resource locker (config/util/resource-locker/memory.json) and the WebSocket + Streaming HTTP notifications (config/http/notifications/all.json), exactly as in config/default.json. Each source is OPTIONAL: if your config omits one (e.g. a non in-memory locker, or config/http/notifications/disabled.json), remove the matching `locker`/`webSocketMap`/`streamingHttpMap` reference from the collector below so Components.js does not fail to resolve a missing @id."
       ]
     },
     {
@@ -18,6 +19,19 @@
       "@id": "urn:solid-server:metrics:MetricsServerConfigurator",
       "@type": "MetricsServerConfigurator",
       "metrics": { "@id": "urn:solid-server:metrics:PrometheusMetrics" }
+    },
+    {
+      "comment": [
+        "Observe-only saturation gauges: current held resource locks (solid_resource_locks) and active notification connections (solid_notification_connections{type}).",
+        "Read lazily on each /metrics scrape via a prom-client collect callback (Map.size / lock count), so nothing runs on the request/notification hot path and no lock is ever taken.",
+        "Each source is optional; see the top-of-file comment before removing one for a non-default stack."
+      ],
+      "@id": "urn:solid-server:metrics:MetricsSaturationCollector",
+      "@type": "MetricsSaturationCollector",
+      "metrics": { "@id": "urn:solid-server:metrics:PrometheusMetrics" },
+      "locker": { "@id": "urn:solid-server:default:MemoryResourceLocker" },
+      "webSocketMap": { "@id": "urn:solid-server:default:WebSocketMap" },
+      "streamingHttpMap": { "@id": "urn:solid-server:default:StreamingHttpMap" }
     },
     {
       "comment": "Adds the observe-only metrics configurator to the existing (parallel) set of server configurators.",

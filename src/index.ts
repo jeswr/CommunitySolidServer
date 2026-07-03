@@ -382,6 +382,7 @@ export * from './server/middleware/WebSocketAdvertiser';
 
 // Server/Metrics
 export * from './server/metrics/MetricsHandler';
+export * from './server/metrics/MetricsSaturationCollector';
 export * from './server/metrics/MetricsServerConfigurator';
 export * from './server/metrics/PrometheusMetrics';
 

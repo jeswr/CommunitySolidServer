@@ -14,6 +14,14 @@ describe('A MemoryResourceLocker', (): void => {
     await expect(locker.release(identifier)).resolves.toBeUndefined();
   });
 
+  it('reports the number of currently held locks.', async(): Promise<void> => {
+    expect(locker.getLockCount()).toBe(0);
+    await locker.acquire({ path: 'path1' });
+    expect(locker.getLockCount()).toBe(1);
+    await locker.acquire({ path: 'path2' });
+    expect(locker.getLockCount()).toBe(2);
+  });
+
   it('can lock a resource again after it was unlocked.', async(): Promise<void> => {
     await expect(locker.acquire(identifier)).resolves.toBeUndefined();
     await expect(locker.release(identifier)).resolves.toBeUndefined();

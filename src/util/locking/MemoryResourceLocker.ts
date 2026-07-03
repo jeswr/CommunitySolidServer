@@ -46,9 +46,13 @@ export class MemoryResourceLocker implements ResourceLocker, SingleThreaded {
   }
 
   /**
-   * Counts the number of active locks.
+   * The number of resource locks currently held by this locker.
+   *
+   * This is a pure, side-effect-free read of the in-memory lock bookkeeping: it never acquires or
+   * releases a lock and never mutates any state. It is exposed for observability (e.g. saturation
+   * metrics) so operators can see how many locks are active at any moment.
    */
-  private getLockCount(): number {
+  public getLockCount(): number {
     return Object.keys(this.unlockCallbacks).length;
   }
 }

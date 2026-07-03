@@ -8,6 +8,8 @@
       "locker": {
         "@type": "GreedyReadWriteLocker",
         "locker": {
+          "comment": "Named so its held-lock count can be observed by the opt-in saturation metrics.",
+          "@id": "urn:solid-server:default:MemoryResourceLocker",
           "@type": "MemoryResourceLocker"
         },
         "storage": { "@id": "urn:solid-server:default:LockStorage" }
