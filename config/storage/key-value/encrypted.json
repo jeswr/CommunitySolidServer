@@ -1,0 +1,69 @@
+{
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "import": [
+    "css:config/storage/key-value/storages/storages.json"
+  ],
+  "comment": [
+    "OPT-IN drop-in replacement for css:config/storage/key-value/resource-store.json that encrypts internal values at rest with AES-256-GCM.",
+    "To enable, replace the import of resource-store.json with this file and set the CSS_STORAGE_ENCRYPTION_KEY environment variable to a secret passphrase.",
+    "Enabling this on an existing deployment is safe: previously written plaintext values are still readable and are re-encrypted on their next write.",
+    "WARNING: losing the CSS_STORAGE_ENCRYPTION_KEY value makes all encrypted secrets (including the OIDC signing key) permanently unrecoverable.",
+    "Locks are stored through BackendKeyValueStorage and are intentionally left unencrypted."
+  ],
+  "@graph": [
+    {
+      "comment": [
+        "A storage that writes directly to a low-level store. This is necessary to prevent infinite loops with stores that also use storage.",
+        "Currently only used for storing locks, where keys are always hashed, which is why this is not wrapped by a MaxKeyLengthStorage for now."
+      ],
+      "@id": "urn:solid-server:default:BackendKeyValueStorage",
+      "@type": "JsonResourceStorage",
+      "source": { "@id": "urn:solid-server:default:ResourceStore_Backend" },
+      "baseUrl": { "@id": "urn:solid-server:default:variable:baseUrl" },
+      "container": "/.internal/"
+    },
+    {
+      "comment": "Internal value storage, transparently encrypting values at rest with the key from CSS_STORAGE_ENCRYPTION_KEY.",
+      "@id": "urn:solid-server:default:KeyValueStorage",
+      "@type": "EncryptingKeyValueStorage",
+      "source": {
+        "@type": "MaxKeyLengthStorage",
+        "source": {
+          "@id": "urn:solid-server:default:JsonResourceStorage",
+          "@type": "JsonResourceStorage",
+          "source": { "@id": "urn:solid-server:default:ResourceStore" },
+          "baseUrl": { "@id": "urn:solid-server:default:variable:baseUrl" },
+          "container": "/.internal/"
+        }
+      }
+    },
+    {
+      "comment": "Block external access to the storage containers to avoid exposing internal data.",
+      "@id": "urn:solid-server:default:PathBasedReader",
+      "@type": "PathBasedReader",
+      "paths": [
+        {
+          "PathBasedReader:_paths_key": "^/.internal(/.*)?$",
+          "PathBasedReader:_paths_value": {
+            "@type": "AllStaticReader",
+            "allow": false
+          }
+        }
+      ]
+    },
+    {
+      "comment": "Marks the /.internal/ storage container as an auxiliary resource, thereby hiding it from container representations.",
+      "@id": "urn:solid-server:default:AuxiliaryStrategy",
+      "@type": "RoutingAuxiliaryStrategy",
+      "sources": [
+        {
+          "@type": "ComposedAuxiliaryStrategy",
+          "identifierStrategy": {
+            "@type": "SuffixAuxiliaryIdentifierStrategy",
+            "suffix": "/.internal/"
+          }
+        }
+      ]
+    }
+  ]
+}

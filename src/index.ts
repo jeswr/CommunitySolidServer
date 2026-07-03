@@ -478,6 +478,7 @@ export * from './storage/conversion/TypedRepresentationConverter';
 // Storage/KeyValue
 export * from './storage/keyvalue/Base64EncodingStorage';
 export * from './storage/keyvalue/ContainerPathStorage';
+export * from './storage/keyvalue/EncryptingKeyValueStorage';
 export * from './storage/keyvalue/ExpiringStorage';
 export * from './storage/keyvalue/HashEncodingStorage';
 export * from './storage/keyvalue/IndexedStorage';
