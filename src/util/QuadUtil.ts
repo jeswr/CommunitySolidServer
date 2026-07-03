@@ -3,6 +3,7 @@ import type { NamedNode, Quad, Term } from '@rdfjs/types';
 import arrayifyStream from 'arrayify-stream';
 import type { ParserOptions, Store } from 'n3';
 import { StreamParser, StreamWriter } from 'n3';
+import { BadRequestHttpError } from './errors/BadRequestHttpError';
 import type { Guarded } from './GuardedStream';
 import { guardedStreamFrom, pipeSafely } from './StreamUtil';
 import { toNamedTerm } from './TermUtil';
@@ -90,15 +91,27 @@ export type SimpleBinding = Record<string, Term>;
 /**
  * Finds the matching bindings in the given data set for the given BGP query.
  *
+ * BGPs are solved with a nested-loop join, so the number of intermediate solution bindings can grow
+ * combinatorially (up to `data.size ^ bgp.length`) for a query whose patterns share few or no variables.
+ * `maxBindings` bounds this work: as soon as the running set of intermediate bindings for a pattern exceeds
+ * the limit, evaluation is aborted with a {@link BadRequestHttpError} instead of exhausting CPU and memory.
+ * The default is `Number.POSITIVE_INFINITY`, keeping the original unbounded behaviour for direct callers.
+ *
  * @param bgp - BGP to solve
  * @param data - Dataset to query.
+ * @param maxBindings - Maximum number of intermediate solution bindings allowed before aborting. Defaults to no limit.
  */
-export function solveBgp(bgp: Quad[], data: Store): SimpleBinding[] {
+export function solveBgp(bgp: Quad[], data: Store, maxBindings = Number.POSITIVE_INFINITY): SimpleBinding[] {
   let result: SimpleBinding[] = [{}];
   for (const pattern of bgp) {
     const newResult: SimpleBinding[] = [];
     for (const binding of result) {
       newResult.push(...getAppliedBindings(pattern, binding, data));
+      if (newResult.length > maxBindings) {
+        throw new BadRequestHttpError(
+          `The patch conditions produced more than the allowed ${maxBindings} intermediate bindings.`,
+        );
+      }
     }
     result = newResult;
   }

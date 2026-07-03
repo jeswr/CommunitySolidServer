@@ -85,7 +85,11 @@
       "@id": "urn:solid-server:default:PatchHandler_RDF",
       "@type": "WaterfallHandler",
       "handlers": [
-        { "@type": "N3Patcher" },
+        {
+          "@type": "N3Patcher",
+          "comment": "maxConditionBindings caps the intermediate bindings the solid:where conditions may produce, bounding the nested-loop join to prevent a combinatorial DoS. Far above any realistic patch.",
+          "maxConditionBindings": 1000000
+        },
         { "@type": "SparqlUpdatePatcher" }
       ]
     }
