@@ -14,7 +14,12 @@ export class WinstonLogger extends BaseLogger {
   }
 
   public log(level: LogLevel, message: string, meta?: unknown): this {
-    this.logger.log(level, message, meta);
+    // Skip the (expensive) logform formatting pipeline for entries that would be filtered out anyway.
+    // `isLevelEnabled` mirrors winston's own per-transport level check, so the emitted output is identical:
+    // it only returns `false` when no transport would write anything for this level.
+    if (this.logger.isLevelEnabled(level)) {
+      this.logger.log(level, message, meta);
+    }
     return this;
   }
 }
