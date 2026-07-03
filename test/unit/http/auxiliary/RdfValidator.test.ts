@@ -1,7 +1,10 @@
+import { Readable } from 'node:stream';
 import { RdfValidator } from '../../../../src/http/auxiliary/RdfValidator';
 import { BasicRepresentation } from '../../../../src/http/representation/BasicRepresentation';
 import type { ResourceIdentifier } from '../../../../src/http/representation/ResourceIdentifier';
 import type { RepresentationConverter } from '../../../../src/storage/conversion/RepresentationConverter';
+import { PayloadHttpError } from '../../../../src/util/errors/PayloadHttpError';
+import { guardStream } from '../../../../src/util/GuardedStream';
 import { readableToString } from '../../../../src/util/StreamUtil';
 import { StaticAsyncHandler } from '../../../util/StaticAsyncHandler';
 import 'jest-rdf';
@@ -43,5 +46,46 @@ describe('An RdfValidator', (): void => {
     await expect(validator.handle({ representation, identifier })).rejects.toThrow('bad data!');
     // Make sure the data on the readable has not been reset
     expect(representation.data.destroyed).toBe(true);
+  });
+
+  it('validates a document that stays within the maximum size.', async(): Promise<void> => {
+    const handleSafe = jest.spyOn(converter, 'handleSafe')
+      .mockResolvedValue(new BasicRepresentation('transformedData', 'wrong/type'));
+    validator = new RdfValidator(converter, 1024);
+    const representation = new BasicRepresentation('a'.repeat(512), 'content/type');
+    await expect(validator.handle({ representation, identifier })).resolves.toBeDefined();
+    // The under-cap document is still fully available afterwards.
+    await expect(readableToString(representation.data)).resolves.toBe('a'.repeat(512));
+    expect(handleSafe).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an oversized document before it is fully buffered.', async(): Promise<void> => {
+    const handleSafe = jest.spyOn(converter, 'handleSafe');
+    let emitted = 0;
+    const source = guardStream(new Readable({
+      read(): void {
+        emitted += 1;
+        // Would emit 1000 KiB in total if it were ever fully read.
+        this.push(emitted <= 1000 ? Buffer.alloc(1024, 0x61) : null);
+      },
+    }));
+    const representation = new BasicRepresentation(source, 'content/type', true);
+    validator = new RdfValidator(converter, 4096);
+    await expect(validator.handle({ representation, identifier })).rejects.toThrow(PayloadHttpError);
+    // The converter is never invoked, proving the document was not buffered/converted in full.
+    expect(handleSafe).not.toHaveBeenCalled();
+    // The stream was aborted long before all 1000 chunks were read.
+    expect(emitted).toBeLessThan(1000);
+    expect(representation.data.destroyed).toBe(true);
+  });
+
+  it('does not limit the size when maxSize is 0.', async(): Promise<void> => {
+    const handleSafe = jest.spyOn(converter, 'handleSafe')
+      .mockResolvedValue(new BasicRepresentation('transformedData', 'wrong/type'));
+    validator = new RdfValidator(converter, 0);
+    // Far larger than the tests above reject, but accepted because the check is disabled.
+    const representation = new BasicRepresentation('a'.repeat(100000), 'content/type');
+    await expect(validator.handle({ representation, identifier })).resolves.toBeDefined();
+    expect(handleSafe).toHaveBeenCalledTimes(1);
   });
 });
