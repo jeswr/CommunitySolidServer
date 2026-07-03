@@ -1,5 +1,6 @@
 import fetch from 'cross-fetch';
 import { calculateJwkThumbprint, exportJWK, generateKeyPair, importJWK, jwtVerify } from 'jose';
+import * as jose from 'jose';
 import { BasicRepresentation } from '../../../../../src/http/representation/BasicRepresentation';
 import type { Representation } from '../../../../../src/http/representation/Representation';
 import type { AlgJwk, JwkGenerator } from '../../../../../src/identity/configuration/JwkGenerator';
@@ -145,5 +146,57 @@ describe('A WebhookEmitter', (): void => {
     expect(logger.error).toHaveBeenLastCalledWith(
       `There was an issue emitting a Webhook notification with target ${channel.sendTo}: invalid request`,
     );
+  });
+
+  it('imports the signing key and calculates its thumbprint only once across emissions.', async(): Promise<void> => {
+    const importSpy = jest.spyOn(jose, 'importJWK');
+    const thumbprintSpy = jest.spyOn(jose, 'calculateJwkThumbprint');
+    fetchMock.mockClear();
+
+    await expect(emitter.handle({ channel, representation })).resolves.toBeUndefined();
+    // The data stream is consumed by the first emission, so a fresh representation is needed.
+    representation = new BasicRepresentation(JSON.stringify(notification), 'application/ld+json');
+    await expect(emitter.handle({ channel, representation })).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // The expensive key import and thumbprint calculation only happen for the first emission.
+    expect(importSpy).toHaveBeenCalledTimes(1);
+    expect(thumbprintSpy).toHaveBeenCalledTimes(1);
+    // The generator keys are also only read while populating the cache.
+    expect(jwkGenerator.getPrivateKey).toHaveBeenCalledTimes(1);
+    expect(jwkGenerator.getPublicKey).toHaveBeenCalledTimes(1);
+
+    importSpy.mockRestore();
+    thumbprintSpy.mockRestore();
+  });
+
+  it('keeps signing correctly when reusing the cached key.', async(): Promise<void> => {
+    fetchMock.mockClear();
+
+    await expect(emitter.handle({ channel, representation })).resolves.toBeUndefined();
+    // The data stream is consumed by the first emission, so a fresh representation is needed.
+    representation = new BasicRepresentation(JSON.stringify(notification), 'application/ld+json');
+    await expect(emitter.handle({ channel, representation })).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // Verify the second emission specifically, as it is signed with the cached key.
+    const { authorization, dpop } = fetchMock.mock.calls[1][1].headers;
+    expect(matchesAuthorizationScheme('DPoP', authorization)).toBe(true);
+    const encodedDpopToken = authorization.slice('DPoP '.length);
+
+    const publicObject = await importJWK(publicJwk);
+    const keyThumbprint = await calculateJwkThumbprint(publicJwk, 'sha256');
+
+    const decodedDpopToken = await jwtVerify(encodedDpopToken, publicObject, { issuer: trimTrailingSlashes(baseUrl) });
+    expect(decodedDpopToken.payload).toMatchObject({
+      webid: serverWebId,
+      cnf: { jkt: keyThumbprint },
+    });
+    expect(decodedDpopToken.protectedHeader).toMatchObject({ alg: 'ES256', kid: keyThumbprint });
+
+    const decodedDpopProof = await jwtVerify(dpop, publicObject);
+    expect(decodedDpopProof.payload).toMatchObject({ htu: channel.sendTo, htm: 'POST' });
+    expect(decodedDpopProof.protectedHeader).toMatchObject({ alg: 'ES256', typ: 'dpop+jwt', jwk: publicJwk });
   });
 });
