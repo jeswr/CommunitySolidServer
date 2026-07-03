@@ -8,12 +8,34 @@
   `example-https-file.json`, `https-file-cli.json`, `oidc.json`, `quota-file.json`, `restrict-idp.json`,
   and `sparql-file-storage.json`) now import `css:config/util/resource-locker/in-memory.json`
   instead of `css:config/util/resource-locker/file.json`,
-  so locks are no longer written to the file system.
-  This significantly reduces the number of file system operations per request.
-  Deployments that run with more than 1 worker thread need to import
-  `css:config/util/resource-locker/file.json` or `css:config/util/resource-locker/redis.json` instead,
-  as locks are no longer shared between processes with the new default;
-  the server will error on startup when this is required.
+  so locks are kept in memory instead of being written to the file system.
+
+  **Recommendation: use the in-memory locker (the new default) for any single-process deployment,
+  and switch to the file-based or Redis locker only when you run more than one process.**
+
+  - **In-memory locker (`in-memory.json`, new default) — recommended for the standard single-process server.**
+    Acquiring and releasing a lock no longer touches the disk, which removes several file system
+    operations from every write and eliminates the disk polling a contended lock otherwise performs.
+    On the fork's benchmark (`config/file.json`, single process, write-heavy load),
+    LDP `PUT` dropped from ~48 to ~33 file system operations per request (about a third fewer),
+    with ~8% higher `PUT` throughput and ~24% lower p99 latency, while a run with 40 abandoned
+    writers went from ~1,200 idle file system operations per second (continuous lock-file polling)
+    to zero. Read-only and single-hot-resource workloads see little change, since their lock cost
+    is small and amortized. The trade-off is that these locks are per-process and non-durable:
+    they are not shared between workers or server instances. This is safe here because the file-based
+    configurations run single-process only and their locks are ephemeral (wiped on every start
+    regardless of the locker).
+
+  - **File-based locker (`file.json`) or Redis locker (`redis.json`) — required for multi-process deployments.**
+    Any deployment that runs with more than 1 worker thread, or multiple server instances sharing the
+    same file backend, must import `css:config/util/resource-locker/file.json` or
+    `css:config/util/resource-locker/redis.json` instead, because the in-memory locker does not
+    coordinate locks across processes. The file-based locker is safe across processes on shared
+    storage but does substantially more IO: it performs `mkdir`/`stat`/`rmdir` syscalls for every lock
+    acquire and release and polls the disk while waiting on a contended lock. Redis coordinates locks
+    across separate hosts at the cost of a network round-trip per lock operation.
+    To prevent silent corruption, the server errors on startup if the in-memory locker is used with
+    more than 1 worker, so an unsafe configuration cannot start unnoticed.
 
 ## v7.0.0
 
