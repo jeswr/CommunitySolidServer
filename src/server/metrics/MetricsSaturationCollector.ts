@@ -63,30 +63,36 @@ export class MetricsSaturationCollector extends Initializer {
    * Called once at server start-up through the primary initializer chain.
    */
   public async handle(): Promise<void> {
+    // Capture the sources as locals so the `collect` callbacks (regular functions, whose `this` is the
+    // gauge) can read them without aliasing the collector's `this`.
+    const { locker, webSocketMap, streamingHttpMap } = this;
+
     const resourceLocks = new Gauge({
       name: 'solid_resource_locks',
       help: 'Number of resource locks currently held by the in-memory resource locker.',
-      registers: [ this.metrics.registry ],
+      registers: [],
+      collect(): void {
+        if (locker) {
+          this.set(locker.getLockCount());
+        }
+      },
     });
-    resourceLocks.collect = (): void => {
-      if (this.locker) {
-        resourceLocks.set(this.locker.getLockCount());
-      }
-    };
+    this.metrics.registry.registerMetric(resourceLocks);
 
     const notificationConnections = new Gauge<'type'>({
       name: 'solid_notification_connections',
       help: 'Number of currently open notification connections, labelled by channel type.',
       labelNames: [ 'type' ],
-      registers: [ this.metrics.registry ],
+      registers: [],
+      collect(): void {
+        if (webSocketMap) {
+          this.set({ type: 'websocket' }, webSocketMap.size);
+        }
+        if (streamingHttpMap) {
+          this.set({ type: 'streaming' }, streamingHttpMap.size);
+        }
+      },
     });
-    notificationConnections.collect = (): void => {
-      if (this.webSocketMap) {
-        notificationConnections.set({ type: 'websocket' }, this.webSocketMap.size);
-      }
-      if (this.streamingHttpMap) {
-        notificationConnections.set({ type: 'streaming' }, this.streamingHttpMap.size);
-      }
-    };
+    this.metrics.registry.registerMetric(notificationConnections);
   }
 }
