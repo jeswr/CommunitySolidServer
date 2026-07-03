@@ -13,6 +13,15 @@ export const LOG_FORMATS = [ 'pretty', 'json' ] as const;
 export type LogFormat = typeof LOG_FORMATS[number];
 
 /**
+ * Matches the characters that must be escaped before being written to the `pretty` log output:
+ * every C0 control character except tab (`\t`), the DEL character, and the C1 control range.
+ * These can otherwise be abused by attacker-influenced log fields (e.g. a WebID or request URL)
+ * to forge additional log lines or emit terminal escape (ANSI) sequences.
+ */
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARACTERS = /[\u0000-\u0008\u000A-\u001F\u007F-\u009F]/gu;
+
+/**
  * Uses the winston library to create loggers for the given logging level.
  * By default, it will print to the console with colorized logging levels.
  * The `json` format can be used instead to output every log entry
@@ -51,6 +60,30 @@ export class WinstonLoggerFactory implements LoggerFactory {
     return '';
   };
 
+  /**
+   * Escapes control characters in an attacker-influenceable value so it cannot forge additional
+   * lines or emit terminal escape sequences in the `pretty` log output.
+   * Newlines and carriage returns become the literal two-character `\n`/`\r` sequences, tab is
+   * kept as-is, and every other control character becomes its `\uXXXX` escape.
+   * Legitimate printable Unicode (including backslashes) is left untouched.
+   *
+   * @param value - The value to escape.
+   *
+   * @returns The value with all dangerous control characters escaped.
+   */
+  private sanitize(value: string): string {
+    return value.replaceAll(CONTROL_CHARACTERS, (char: string): string => {
+      switch (char) {
+        case '\n':
+          return '\\n';
+        case '\r':
+          return '\\r';
+        default:
+          return `\\u${char.codePointAt(0)!.toString(16).padStart(4, '0')}`;
+      }
+    });
+  }
+
   public createLogger(label: string): Logger {
     return new WinstonLogger(createLogger({
       level: this.level,
@@ -78,8 +111,8 @@ export class WinstonLoggerFactory implements LoggerFactory {
       format.printf(
         ({ level: levelInner, message, label: labelInner, timestamp, metadata: meta }: Logform.TransformableInfo):
         string =>
-          `${timestamp} [${labelInner}] {${this.clusterInfo(meta as LogMetadata)}}` +
-          `${this.requestInfo(meta as LogMetadata)} ${levelInner}: ${message}`,
+          `${timestamp} [${this.sanitize(String(labelInner))}] {${this.clusterInfo(meta as LogMetadata)}}` +
+          `${this.requestInfo(meta as LogMetadata)} ${levelInner}: ${this.sanitize(String(message))}`,
       ),
     );
   }
