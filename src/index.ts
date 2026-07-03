@@ -68,6 +68,7 @@ export * from './http/input/identifier/TargetExtractor';
 
 // HTTP/Input/Metadata
 export * from './http/input/metadata/AuthorizationParser';
+export * from './http/input/metadata/ClientIpParser';
 export * from './http/input/metadata/ContentLengthParser';
 export * from './http/input/metadata/ContentTypeParser';
 export * from './http/input/metadata/CookieParser';
@@ -222,6 +223,10 @@ export * from './identity/interaction/routing/IdInteractionRoute';
 export * from './identity/interaction/routing/InteractionRoute';
 export * from './identity/interaction/routing/InteractionRouteHandler';
 export * from './identity/interaction/routing/RelativePathInteractionRoute';
+
+// Identity/Interaction/Util
+export * from './identity/interaction/util/RateLimitHandler';
+export * from './identity/interaction/util/RateLimiter';
 
 // Identity/Interaction/WebID/Util
 export * from './identity/interaction/webid/util/BaseWebIdStore';
@@ -563,6 +568,7 @@ export * from './util/errors/PreconditionFailedHttpError';
 export * from './util/errors/RangeNotSatisfiedHttpError';
 export * from './util/errors/RedirectHttpError';
 export * from './util/errors/SystemError';
+export * from './util/errors/TooManyRequestsHttpError';
 export * from './util/errors/UnauthorizedHttpError';
 export * from './util/errors/UnsupportedMediaTypeHttpError';
 

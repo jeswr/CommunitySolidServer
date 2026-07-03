@@ -2,6 +2,7 @@
   "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
   "import": [
     "css:config/ldp/metadata-parser/parsers/authorization.json",
+    "css:config/ldp/metadata-parser/parsers/client-ip.json",
     "css:config/ldp/metadata-parser/parsers/content-type.json",
     "css:config/ldp/metadata-parser/parsers/cookie.json",
     "css:config/ldp/metadata-parser/parsers/link.json",
@@ -15,6 +16,7 @@
       "@type": "ParallelHandler",
       "handlers": [
         { "@id": "urn:solid-server:default:AuthorizationParser" },
+        { "@id": "urn:solid-server:default:ClientIpParser" },
         { "@id": "urn:solid-server:default:CookieParser" },
         { "@id": "urn:solid-server:default:ContentTypeParser" },
         { "@id": "urn:solid-server:default:LinkRelParser" },

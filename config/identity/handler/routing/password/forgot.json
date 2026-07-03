@@ -14,17 +14,30 @@
       "source": {
         "@type": "ViewInteractionHandler",
         "source": {
-          "@id": "urn:solid-server:default:ForgotPasswordHandler",
-          "@type": "ForgotPasswordHandler",
-          "passwordStore": { "@id": "urn:solid-server:default:PasswordStore" },
-          "forgotPasswordStore": { "@id": "urn:solid-server:default:ForgotPasswordStore" },
-          "templateEngine": {
-            "@type": "StaticTemplateEngine",
-            "templateEngine": { "@id": "urn:solid-server:default:TemplateEngine" },
-            "template": "@css:templates/identity/password/reset-email.html.ejs"
+          "comment": "Rate-limits forgot-password requests per IP/account to prevent password-reset email bombing. Set `enabled` to false to disable.",
+          "@id": "urn:solid-server:default:ForgotPasswordRateLimitHandler",
+          "@type": "RateLimitHandler",
+          "enabled": true,
+          "resetOnSuccess": false,
+          "limiter": {
+            "@id": "urn:solid-server:default:ForgotPasswordRateLimiter",
+            "@type": "RateLimiter",
+            "maxCount": 5,
+            "windowMs": 3600000
           },
-          "emailSender": { "@id": "urn:solid-server:default:EmailSender" },
-          "resetRoute": { "@id": "urn:solid-server:default:ResetPasswordRoute" }
+          "source": {
+            "@id": "urn:solid-server:default:ForgotPasswordHandler",
+            "@type": "ForgotPasswordHandler",
+            "passwordStore": { "@id": "urn:solid-server:default:PasswordStore" },
+            "forgotPasswordStore": { "@id": "urn:solid-server:default:ForgotPasswordStore" },
+            "templateEngine": {
+              "@type": "StaticTemplateEngine",
+              "templateEngine": { "@id": "urn:solid-server:default:TemplateEngine" },
+              "template": "@css:templates/identity/password/reset-email.html.ejs"
+            },
+            "emailSender": { "@id": "urn:solid-server:default:EmailSender" },
+            "resetRoute": { "@id": "urn:solid-server:default:ResetPasswordRoute" }
+          }
         }
       }
     },

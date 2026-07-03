@@ -14,11 +14,24 @@
       "source": {
         "@type": "ViewInteractionHandler",
         "source": {
-          "@id": "urn:solid-server:default:PasswordLoginHandler",
-          "@type": "PasswordLoginHandler",
-          "accountStore": { "@id": "urn:solid-server:default:AccountStore" },
-          "passwordStore": { "@id": "urn:solid-server:default:PasswordStore" },
-          "cookieStore": { "@id": "urn:solid-server:default:CookieStore" }
+          "comment": "Rate-limits failed password login attempts per IP/account to slow down brute-force attacks. Set `enabled` to false to disable.",
+          "@id": "urn:solid-server:default:LoginRateLimitHandler",
+          "@type": "RateLimitHandler",
+          "enabled": true,
+          "resetOnSuccess": true,
+          "limiter": {
+            "@id": "urn:solid-server:default:LoginRateLimiter",
+            "@type": "RateLimiter",
+            "maxCount": 10,
+            "windowMs": 60000
+          },
+          "source": {
+            "@id": "urn:solid-server:default:PasswordLoginHandler",
+            "@type": "PasswordLoginHandler",
+            "accountStore": { "@id": "urn:solid-server:default:AccountStore" },
+            "passwordStore": { "@id": "urn:solid-server:default:PasswordStore" },
+            "cookieStore": { "@id": "urn:solid-server:default:CookieStore" }
+          }
         }
       }
     },
