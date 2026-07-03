@@ -337,10 +337,19 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
     }
     this.renewalTimers.clear();
     try {
-      // On controlled server shutdown: clean up all existing locks.
-      await this.clearLocks();
+      if (this.clearLocksOnStart) {
+        // Single-instance mode (the same mode that wipes on boot): this instance exclusively owns the
+        // namespace, so on a controlled shutdown it cleans up every lock it left behind.
+        await this.clearLocks();
+      } else {
+        // Multiple instances may share this namespace to coordinate (HA). A gracefully stopping instance
+        // cannot tell its own locks from the live locks of its peers, so it must NOT wipe the namespace on
+        // shutdown: deleting a peer's held lock would open the same corruption window as a boot-time wipe.
+        // This instance's own locks self-heal via their TTL leases once it stops renewing them above.
+        this.logger.debug('Skipping shutdown lock cleanup; relying on lock TTLs (clearLocksOnStart is disabled).');
+      }
     } finally {
-      // Always quit the redis client
+      // Always quit the redis client, whether or not the namespace was cleared, so no connection leaks.
       await this.redis.quit();
     }
   }
