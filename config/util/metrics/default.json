@@ -34,6 +34,14 @@
       "streamingHttpMap": { "@id": "urn:solid-server:default:StreamingHttpMap" }
     },
     {
+      "comment": "Instantiates the saturation collector and registers its gauges at start-up by adding it to the primary initializer chain (these initializers always run in single-threaded mode, which the in-memory locker requires).",
+      "@id": "urn:solid-server:default:PrimaryParallelInitializer",
+      "@type": "ParallelHandler",
+      "handlers": [
+        { "@id": "urn:solid-server:metrics:MetricsSaturationCollector" }
+      ]
+    },
+    {
       "comment": "Adds the observe-only metrics configurator to the existing (parallel) set of server configurators.",
       "@id": "urn:solid-server:default:ServerConfigurator",
       "@type": "ParallelHandler",

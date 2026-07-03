@@ -1,11 +1,13 @@
 import { Gauge } from 'prom-client';
+import { Initializer } from '../../init/Initializer';
 import type { MemoryResourceLocker } from '../../util/locking/MemoryResourceLocker';
 import type { StreamingHttpMap } from '../notifications/StreamingHttpChannel2023/StreamingHttpMap';
 import type { WebSocketMap } from '../notifications/WebSocketChannel2023/WebSocketMap';
 import type { PrometheusMetrics } from './PrometheusMetrics';
 
 /**
- * Registers runtime *saturation* gauges on the {@link PrometheusMetrics} registry.
+ * An {@link Initializer} that registers runtime *saturation* gauges on the {@link PrometheusMetrics}
+ * registry when the server starts.
  *
  * Where the {@link PrometheusMetrics} request instruments describe throughput (how much traffic is
  * flowing), these gauges describe *pressure*: how close the running server is to exhausting a bounded
@@ -31,13 +33,11 @@ import type { PrometheusMetrics } from './PrometheusMetrics';
  * callback performs pure, side-effect-free reads (`Map.size` / a lock count): it never mutates, locks,
  * iterates with side effects, or otherwise disturbs the observed state.
  */
-export class MetricsSaturationCollector {
+export class MetricsSaturationCollector extends Initializer {
+  private readonly metrics: PrometheusMetrics;
   private readonly locker?: MemoryResourceLocker;
   private readonly webSocketMap?: WebSocketMap;
   private readonly streamingHttpMap?: StreamingHttpMap;
-
-  private readonly resourceLocks: Gauge;
-  private readonly notificationConnections: Gauge<'type'>;
 
   /**
    * @param metrics - The {@link PrometheusMetrics} whose registry the gauges are registered on.
@@ -51,34 +51,42 @@ export class MetricsSaturationCollector {
     webSocketMap?: WebSocketMap,
     streamingHttpMap?: StreamingHttpMap,
   ) {
+    super();
+    this.metrics = metrics;
     this.locker = locker;
     this.webSocketMap = webSocketMap;
     this.streamingHttpMap = streamingHttpMap;
+  }
 
-    this.resourceLocks = new Gauge({
+  /**
+   * Registers the saturation gauges on the shared metrics registry.
+   * Called once at server start-up through the primary initializer chain.
+   */
+  public async handle(): Promise<void> {
+    const resourceLocks = new Gauge({
       name: 'solid_resource_locks',
       help: 'Number of resource locks currently held by the in-memory resource locker.',
-      registers: [ metrics.registry ],
-      collect: (): void => {
-        if (this.locker) {
-          this.resourceLocks.set(this.locker.getLockCount());
-        }
-      },
+      registers: [ this.metrics.registry ],
     });
+    resourceLocks.collect = (): void => {
+      if (this.locker) {
+        resourceLocks.set(this.locker.getLockCount());
+      }
+    };
 
-    this.notificationConnections = new Gauge({
+    const notificationConnections = new Gauge<'type'>({
       name: 'solid_notification_connections',
       help: 'Number of currently open notification connections, labelled by channel type.',
       labelNames: [ 'type' ],
-      registers: [ metrics.registry ],
-      collect: (): void => {
-        if (this.webSocketMap) {
-          this.notificationConnections.set({ type: 'websocket' }, this.webSocketMap.size);
-        }
-        if (this.streamingHttpMap) {
-          this.notificationConnections.set({ type: 'streaming' }, this.streamingHttpMap.size);
-        }
-      },
+      registers: [ this.metrics.registry ],
     });
+    notificationConnections.collect = (): void => {
+      if (this.webSocketMap) {
+        notificationConnections.set({ type: 'websocket' }, this.webSocketMap.size);
+      }
+      if (this.streamingHttpMap) {
+        notificationConnections.set({ type: 'streaming' }, this.streamingHttpMap.size);
+      }
+    };
   }
 }

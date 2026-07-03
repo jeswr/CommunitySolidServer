@@ -21,17 +21,20 @@ describe('A MetricsSaturationCollector', (): void => {
     return json.find((metric): boolean => metric.name === name);
   }
 
-  it('registers both saturation gauges on the metrics registry.', (): void => {
-    // eslint-disable-next-line no-new
-    new MetricsSaturationCollector(metrics);
+  it('only registers the gauges once it is initialized.', async(): Promise<void> => {
+    const collector = new MetricsSaturationCollector(metrics);
+    expect(metrics.registry.getSingleMetric('solid_resource_locks')).toBeUndefined();
+    expect(metrics.registry.getSingleMetric('solid_notification_connections')).toBeUndefined();
+
+    await collector.handle();
+
     expect(metrics.registry.getSingleMetric('solid_resource_locks')).toBeDefined();
     expect(metrics.registry.getSingleMetric('solid_notification_connections')).toBeDefined();
   });
 
   it('reports the current held-lock count when a locker is provided.', async(): Promise<void> => {
     const locker = { getLockCount: jest.fn().mockReturnValue(3) } as unknown as jest.Mocked<MemoryResourceLocker>;
-    // eslint-disable-next-line no-new
-    new MetricsSaturationCollector(metrics, locker);
+    await new MetricsSaturationCollector(metrics, locker).handle();
 
     const gauge = await getGauge('solid_resource_locks');
     expect(gauge?.type).toBe('gauge');
@@ -42,8 +45,7 @@ describe('A MetricsSaturationCollector', (): void => {
   it('reads the lock count fresh on every scrape.', async(): Promise<void> => {
     const getLockCount = jest.fn<number, []>().mockReturnValueOnce(1).mockReturnValueOnce(4);
     const locker = { getLockCount } as unknown as MemoryResourceLocker;
-    // eslint-disable-next-line no-new
-    new MetricsSaturationCollector(metrics, locker);
+    await new MetricsSaturationCollector(metrics, locker).handle();
 
     expect((await getGauge('solid_resource_locks'))?.values).toContainEqual(expect.objectContaining({ value: 1 }));
     expect((await getGauge('solid_resource_locks'))?.values).toContainEqual(expect.objectContaining({ value: 4 }));
@@ -51,8 +53,7 @@ describe('A MetricsSaturationCollector', (): void => {
   });
 
   it('reports 0 held locks when no locker is provided.', async(): Promise<void> => {
-    // eslint-disable-next-line no-new
-    new MetricsSaturationCollector(metrics);
+    await new MetricsSaturationCollector(metrics).handle();
 
     const gauge = await getGauge('solid_resource_locks');
     expect(gauge?.values).toEqual([ expect.objectContaining({ value: 0, labels: {}}) ]);
@@ -61,8 +62,7 @@ describe('A MetricsSaturationCollector', (): void => {
   it('reports active connections per channel type when both maps are provided.', async(): Promise<void> => {
     const webSocketMap = { size: 2 } as unknown as WebSocketMap;
     const streamingHttpMap = { size: 5 } as unknown as StreamingHttpMap;
-    // eslint-disable-next-line no-new
-    new MetricsSaturationCollector(metrics, undefined, webSocketMap, streamingHttpMap);
+    await new MetricsSaturationCollector(metrics, undefined, webSocketMap, streamingHttpMap).handle();
 
     const gauge = await getGauge('solid_notification_connections');
     expect(gauge?.type).toBe('gauge');
@@ -72,16 +72,14 @@ describe('A MetricsSaturationCollector', (): void => {
 
   it('omits a channel type label when its map is not provided.', async(): Promise<void> => {
     const webSocketMap = { size: 7 } as unknown as WebSocketMap;
-    // eslint-disable-next-line no-new
-    new MetricsSaturationCollector(metrics, undefined, webSocketMap);
+    await new MetricsSaturationCollector(metrics, undefined, webSocketMap).handle();
 
     const gauge = await getGauge('solid_notification_connections');
     expect(gauge?.values).toEqual([ expect.objectContaining({ value: 7, labels: { type: 'websocket' }}) ]);
   });
 
   it('omits the connection gauge values entirely when no maps are provided.', async(): Promise<void> => {
-    // eslint-disable-next-line no-new
-    new MetricsSaturationCollector(metrics);
+    await new MetricsSaturationCollector(metrics).handle();
 
     const gauge = await getGauge('solid_notification_connections');
     expect(gauge?.values).toEqual([]);
