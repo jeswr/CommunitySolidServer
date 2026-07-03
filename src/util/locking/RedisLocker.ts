@@ -44,6 +44,19 @@ export interface RedisSettings {
    * the in-process lock expiration. Defaults to {@link DEFAULT_TTL} (30000ms).
    */
   ttl?: number;
+  /**
+   * Whether to delete every lock in this namespace when the locker starts (see {@link RedisLocker.initialize}).
+   *
+   * This is only safe when a single instance exclusively owns the Redis namespace: it lets that
+   * instance recover from locks left behind by a previous crashed run. When multiple instances share
+   * a namespace (the setup required for HA coordination) a restarting instance cannot tell its own
+   * stale locks from the live locks of its peers, so wiping the namespace on boot would corrupt peers
+   * that still hold those locks. Because a crashed holder's lock now auto-expires through its TTL lease
+   * (see {@link RedisSettings.ttl}), boot-time clearing is no longer needed for correctness, so this
+   * defaults to `false` (multi-instance-safe). Set it to `true` for a single-instance deployment that
+   * prefers stale locks cleared immediately on boot rather than waiting for the TTL to elapse.
+   */
+  clearLocksOnStart?: boolean;
 }
 
 /**
@@ -82,6 +95,7 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
   private readonly attemptSettings: Required<AttemptSettings>;
   private readonly namespacePrefix: string;
   private readonly ttl: number;
+  private readonly clearLocksOnStart: boolean;
   private readonly renewalInterval: number;
   private readonly renewalTimers = new Map<string, NodeJS.Timeout>();
   private finalized = false;
@@ -99,11 +113,13 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
     redisSettings?: RedisSettings,
   ) {
     redisSettings = { namespacePrefix: '', ...redisSettings };
-    const { namespacePrefix, ttl, ...options } = redisSettings;
+    const { namespacePrefix, ttl, clearLocksOnStart, ...options } = redisSettings;
     this.redis = this.createRedisClient(redisClient, options);
     this.attemptSettings = { ...attemptDefaults, ...attemptSettings };
     this.namespacePrefix = namespacePrefix!;
     this.ttl = ttl ?? DEFAULT_TTL;
+    // Default to NOT wiping the namespace on boot so peers sharing it (HA) are never disturbed.
+    this.clearLocksOnStart = clearLocksOnStart ?? false;
     // Renew at half the TTL so a live holder refreshes its lock long before it could expire.
     this.renewalInterval = Math.max(1, Math.floor(this.ttl / 2));
 
@@ -122,7 +138,10 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
    * @param redisClientString - A string that contains either a host address and a
    *                            port number like '127.0.0.1:6379' or just a port number like '6379'.
    */
-  private createRedisClient(redisClientString: string, options: Omit<RedisSettings, 'namespacePrefix' | 'ttl'>): Redis {
+  private createRedisClient(
+    redisClientString: string,
+    options: Omit<RedisSettings, 'namespacePrefix' | 'ttl' | 'clearLocksOnStart'>,
+  ): Redis {
     if (redisClientString.length > 0) {
       // Check if port number or ip with port number
       // Definitely not perfect, but configuring this is only for experienced users
@@ -297,7 +316,16 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
   /* Initializer & Finalizer methods */
 
   public async initialize(): Promise<void> {
-    // On server start: remove all existing (dangling) locks, so new requests are not blocked.
+    if (!this.clearLocksOnStart) {
+      // Multiple instances may share this namespace to coordinate (HA). This instance cannot tell its
+      // own stale locks from the live locks of its peers, so it must NOT wipe the namespace on boot:
+      // deleting a peer's held lock would open a corruption window. A crashed holder's lock instead
+      // self-heals via its TTL lease. Single-instance deployments can opt back in via `clearLocksOnStart`.
+      this.logger.debug('Skipping boot-time lock cleanup; relying on lock TTLs (clearLocksOnStart is disabled).');
+      return;
+    }
+    // On server start (single-instance only): remove all existing (dangling) locks left behind by a
+    // previous crashed run, so new requests are not blocked while waiting for those locks' TTLs.
     return this.clearLocks();
   }
 
