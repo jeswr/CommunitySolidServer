@@ -73,6 +73,39 @@ They are prefixed with `CSS_` and converted from `camelCase` to `CAMEL_CASE`
 
 Command-line arguments will always override environment variables.
 
+## Validating a configuration
+
+Before deploying a custom configuration it can be validated offline,
+without starting the server or binding a port.
+This builds the configuration, resolves all variable bindings,
+and instantiates the entire application graph exactly as a normal start would,
+but stops right before the server is started.
+It exits with code `0` when the configuration is valid,
+and with a non-zero code (printing the error) when it is not,
+which makes it convenient to run in CI or a deployment pipeline.
+
+It accepts the same parameters and environment variables as the start command
+(such as `-c` for the configuration and any variable flags):
+
+```shell
+node ./bin/validate.js -c config/default.json
+```
+
+When installed as a package the `validate:config` npm script exposes the same entry point:
+
+```shell
+npm run validate:config -- -c @css:config/file.json -f data/
+```
+
+Because the entry point is shipped in `bin/` and only relies on the built `dist/`,
+it also works inside the Docker image, so a mounted configuration can be checked before going live:
+
+```shell
+docker run --rm -v ~/solid-config:/config -it \
+  --entrypoint node solidproject/community-server \
+  bin/validate.js -c /config/my-config.json
+```
+
 ## Alternative ways to run the server
 
 ### From source

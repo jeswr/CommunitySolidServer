@@ -587,6 +587,87 @@ describe('AppRunner', (): void => {
     });
   });
 
+  describe('validateCli', (): void => {
+    it('instantiates the configuration without starting the server.', async(): Promise<void> => {
+      await expect(new AppRunner().validateCli([ 'node', 'script' ])).resolves.toBeUndefined();
+
+      // The full instantiation path is used, exactly like when starting the server.
+      expect(ComponentsManager.build).toHaveBeenCalledTimes(1);
+      expect(ComponentsManager.build).toHaveBeenCalledWith({
+        logLevel: 'info',
+        mainModulePath: joinFilePath(__dirname, '../../../'),
+        typeChecking: false,
+        dumpErrorState: false,
+      });
+      expect(manager.configRegistry.register).toHaveBeenCalledTimes(1);
+      expect(manager.configRegistry.register)
+        .toHaveBeenCalledWith(joinFilePath(__dirname, '/../../../config/default.json'));
+      expect(manager.instantiate).toHaveBeenCalledTimes(2);
+      expect(manager.instantiate).toHaveBeenNthCalledWith(1, 'urn:solid-server-app-setup:default:CliResolver', {});
+      expect(manager.instantiate)
+        .toHaveBeenNthCalledWith(2, 'urn:solid-server:default:App', { variables: defaultVariables });
+      expect(cliExtractor.handleSafe).toHaveBeenCalledTimes(1);
+      expect(shorthandResolver.handleSafe).toHaveBeenCalledTimes(1);
+
+      // The crucial difference with the run path: the server is never started.
+      expect(app.start).toHaveBeenCalledTimes(0);
+    });
+
+    it('rejects if the configuration is invalid.', async(): Promise<void> => {
+      jest.mocked(manager.configRegistry.register).mockRejectedValueOnce(new Error('Fatal'));
+
+      let caughtError: Error = new Error('should disappear');
+      try {
+        await new AppRunner().validateCli([ 'node', 'script' ]);
+      } catch (error: unknown) {
+        caughtError = error as Error;
+      }
+      expect(caughtError.message).toMatch(/^Could not build the config files from .*default\.json/mu);
+      expect(caughtError.message).toMatch(/^Error: Fatal/mu);
+
+      expect(app.start).toHaveBeenCalledTimes(0);
+      expect(write).toHaveBeenCalledTimes(0);
+      expect(exit).toHaveBeenCalledTimes(0);
+    });
+  });
+
+  describe('validateCliSync', (): void => {
+    it('exits with code 0 if the configuration is valid.', async(): Promise<void> => {
+      // eslint-disable-next-line no-sync
+      new AppRunner().validateCliSync({ argv: [ 'node', 'script' ]});
+
+      // Wait until validateCli has resolved, because we can't await validateCliSync.
+      await flushPromises();
+
+      expect(manager.instantiate).toHaveBeenCalledTimes(2);
+      expect(manager.instantiate)
+        .toHaveBeenNthCalledWith(2, 'urn:solid-server:default:App', { variables: defaultVariables });
+      expect(app.start).toHaveBeenCalledTimes(0);
+
+      expect(write).toHaveBeenCalledTimes(0);
+      expect(exit).toHaveBeenCalledTimes(1);
+      expect(exit).toHaveBeenLastCalledWith(0);
+    });
+
+    it('exits with a non-zero code and writes to stderr if the configuration is invalid.', async(): Promise<void> => {
+      manager.instantiate.mockRejectedValueOnce(new Error('Fatal'));
+
+      // eslint-disable-next-line no-sync
+      new AppRunner().validateCliSync({ argv: [ 'node', 'script' ]});
+
+      // Wait until validateCli has rejected, because we can't await validateCliSync.
+      await flushPromises();
+
+      expect(app.start).toHaveBeenCalledTimes(0);
+
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(write).toHaveBeenLastCalledWith(expect.stringMatching(/Error: Fatal/u));
+
+      expect(exit).toHaveBeenCalledTimes(1);
+      expect(exit).toHaveBeenLastCalledWith(1);
+    });
+  });
+
   describe('runCli', (): void => {
     it('runs the server.', async(): Promise<void> => {
       await expect(new AppRunner().runCli([ 'node', 'script' ])).resolves.toBeUndefined();
