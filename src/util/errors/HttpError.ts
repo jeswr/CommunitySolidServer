@@ -25,7 +25,15 @@ export class HttpError<T extends number = number> extends Error implements HttpE
   public readonly statusCode: T;
   public readonly cause?: unknown;
   public readonly errorCode: string;
-  public readonly metadata: RepresentationMetadata;
+
+  /**
+   * Backing store for {@link HttpError.metadata}.
+   * `HttpError` instances are frequently created purely as control flow
+   * (e.g., `canHandle` declines during content negotiation and handler probing)
+   * and never have their metadata read, so building it is deferred to first access.
+   * It is only populated during construction when the caller provides `options.metadata`.
+   */
+  private lazyMetadata?: RepresentationMetadata;
 
   /**
    * Creates a new HTTP error. Subclasses should call this with their fixed status code.
@@ -41,14 +49,35 @@ export class HttpError<T extends number = number> extends Error implements HttpE
     this.name = name;
     this.cause = options.cause;
     this.errorCode = options.errorCode ?? `H${statusCode}`;
-    this.metadata = options.metadata ?? new RepresentationMetadata();
-    this.generateMetadata();
+    // When the caller provides metadata we keep building it eagerly:
+    // the existing behaviour mutates that exact object during construction,
+    // so the provided object must already contain the generated triples afterwards.
+    // Otherwise the metadata is built lazily on first access (see the `metadata` getter).
+    if (options.metadata) {
+      this.lazyMetadata = options.metadata;
+      this.generateMetadata();
+    }
   }
 
   public static isInstance(error: unknown): error is HttpError {
+    // `errorCode` is a string on every `HttpError` instance and is checked instead of `metadata`
+    // so that a type check never forces the (otherwise lazy) metadata to be built.
     return isError(error) &&
       typeof (error as HttpError).statusCode === 'number' &&
-      Boolean((error as HttpError).metadata);
+      typeof (error as HttpError).errorCode === 'string';
+  }
+
+  /**
+   * The metadata describing this error.
+   * Built on first access if it was not provided through the constructor options,
+   * producing exactly the same triples as an eagerly built instance.
+   */
+  public get metadata(): RepresentationMetadata {
+    if (!this.lazyMetadata) {
+      this.lazyMetadata = new RepresentationMetadata();
+      this.generateMetadata();
+    }
+    return this.lazyMetadata;
   }
 
   /**
