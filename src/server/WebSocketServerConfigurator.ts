@@ -2,6 +2,7 @@ import type { IncomingMessage, Server } from 'node:http';
 import type { Socket } from 'node:net';
 import type { WebSocket } from 'ws';
 import { WebSocketServer } from 'ws';
+import { runWithRequestId } from '../logging/LogContext';
 import { getLoggerFor } from '../logging/LogUtil';
 import { createErrorMessage } from '../util/errors/ErrorUtil';
 import { guardStream } from '../util/GuardedStream';
@@ -28,15 +29,18 @@ export class WebSocketServerConfigurator extends ServerConfigurator {
     const webSocketServer = new WebSocketServer({ noServer: true });
     server.on('upgrade', (upgradeRequest: IncomingMessage, socket: Socket, head: Buffer): void => {
       // eslint-disable-next-line @typescript-eslint/no-misused-promises
-      webSocketServer.handleUpgrade(upgradeRequest, socket, head, async(webSocket: WebSocket): Promise<void> => {
-        try {
-          await this.handler.handleSafe({ upgradeRequest: guardStream(upgradeRequest), webSocket });
-        } catch (error: unknown) {
-          this.logger.error(`Something went wrong handling a WebSocket connection: ${createErrorMessage(error)}`);
-          webSocket.send(`There was an error opening this WebSocket: ${createErrorMessage(error)}`);
-          webSocket.close();
-        }
-      });
+      webSocketServer.handleUpgrade(upgradeRequest, socket, head, async(webSocket: WebSocket): Promise<void> =>
+        // Handle every connection within its own logging context that has a unique request identifier,
+        // so all log messages emitted while setting up and handling this connection can be correlated.
+        runWithRequestId(async(): Promise<void> => {
+          try {
+            await this.handler.handleSafe({ upgradeRequest: guardStream(upgradeRequest), webSocket });
+          } catch (error: unknown) {
+            this.logger.error(`Something went wrong handling a WebSocket connection: ${createErrorMessage(error)}`);
+            webSocket.send(`There was an error opening this WebSocket: ${createErrorMessage(error)}`);
+            webSocket.close();
+          }
+        }));
     });
   }
 }

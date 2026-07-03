@@ -1,5 +1,6 @@
 import type { RepresentationMetadata } from '../../http/representation/RepresentationMetadata';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
+import { runWithoutRequestId } from '../../logging/LogContext';
 import { getLoggerFor } from '../../logging/LogUtil';
 import { createErrorMessage } from '../../util/errors/ErrorUtil';
 import { StaticHandler } from '../../util/handlers/StaticHandler';
@@ -30,8 +31,13 @@ export class ListeningActivityHandler extends StaticHandler {
     this.handler = handler;
 
     emitter.on('changed', (topic, activity, metadata): void => {
-      this.emit(topic, activity, metadata).catch((error: unknown): void => {
-        this.logger.error(`Something went wrong emitting notifications: ${createErrorMessage(error)}`);
+      // The `changed` event is emitted synchronously within the logging context of the request that wrote the resource.
+      // Delivering notifications to subscribers is separate async work that outlives that request,
+      // so detach it from the writer's request identifier to avoid misattributing the fan-out log messages to it.
+      runWithoutRequestId((): void => {
+        this.emit(topic, activity, metadata).catch((error: unknown): void => {
+          this.logger.error(`Something went wrong emitting notifications: ${createErrorMessage(error)}`);
+        });
       });
     });
   }
