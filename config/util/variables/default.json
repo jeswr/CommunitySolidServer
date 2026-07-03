@@ -38,6 +38,11 @@
       "@type": "Variable"
     },
     {
+      "comment": "Whether the 'pretty' log format colorizes the log level. Disable for plain, ANSI-free output.",
+      "@id": "urn:solid-server:default:variable:loggingColorize",
+      "@type": "Variable"
+    },
+    {
       "comment": "Whether error stack traces should be shown in the server responses.",
       "@id": "urn:solid-server:default:variable:showStackTrace",
       "@type": "Variable"
