@@ -140,6 +140,47 @@ to have a custom Components.js configuration for their own pod.
 When using such a configuration, a JSON file will be written containing all the information of the user pods,
 so they can be recreated when the server restarts.
 
+### Restricting dynamic client registration
+
+Solid-OIDC clients authenticate primarily through
+[Client ID Documents](https://solid.github.io/solid-oidc/#clientids-document),
+but the server also enables
+[OpenID Dynamic Client Registration](https://openid.net/specs/openid-connect-registration-1_0.html)
+([RFC 7591](https://www.rfc-editor.org/rfc/rfc7591.html)) on `POST /.oidc/reg`,
+which many Solid apps rely on to register on the fly.
+For that reason registration is **open by default and stays that way**:
+changing the default could break those clients.
+
+Open registration does have a downside: anyone can `POST /.oidc/reg` and persist a client without authenticating,
+which is a storage-growth spam vector.
+If you understand your client population and want to harden the server against this,
+you can *opt in* to requiring an
+[initial access token](https://openid.net/specs/openid-connect-registration-1_0.html#Terminology)
+by adding the following import to your configuration:
+
+```json
+"css:config/identity/handler/base/provider-factory-restricted-registration.json"
+```
+
+This overrides only the OIDC provider configuration so that `POST /.oidc/reg`
+requires a valid initial access token as a bearer token; every other default is left untouched.
+It sets `features.registration.initialAccessToken` to `true`, meaning the server accepts
+adapter-backed initial access tokens that you mint yourself, for example:
+
+```js
+new (provider.InitialAccessToken)({}).save().then(console.log);
+```
+
+Alternatively, you can edit the imported file to use a single fixed secret instead of minting tokens
+by replacing `"initialAccessToken": true` with `"initialAccessToken": "<your-secret-token>"`,
+or fully disable dynamic registration by replacing the registration entry with `{ "enabled": false }`
+(which makes the endpoint return a 404).
+
+**Trade-off:** requiring a token or disabling registration can break Solid clients
+that depend on open dynamic registration, so only enable this if you can hand out tokens to
+(or otherwise pre-register) the clients that need them.
+When in doubt, keep the default open registration.
+
 ## Adding a new login method to the server
 
 Due to its modular nature,
