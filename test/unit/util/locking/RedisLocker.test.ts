@@ -87,12 +87,15 @@ const redis: jest.Mocked<Redis & RedisResourceLock & RedisReadWriteLock> = {
     store.acquireReadLock(key)),
   acquireWriteLock: jest.fn().mockImplementation(async(key: string): Promise<number | null | 'OK'> =>
     store.acquireWriteLock(key)),
+  renewReadLock: jest.fn().mockResolvedValue(1),
+  renewWriteLock: jest.fn().mockResolvedValue(1),
   releaseReadLock: jest.fn().mockImplementation(async(key: string): Promise<number> =>
     store.releaseReadLock(key)),
   releaseWriteLock: jest.fn().mockImplementation(async(key: string): Promise<number | null> =>
     store.releaseWriteLock(key)),
   acquireLock: jest.fn().mockImplementation(async(key: string): Promise<number | null | 'OK'> =>
     store.acquireLock(key)),
+  renewLock: jest.fn().mockResolvedValue(1),
   releaseLock: jest.fn().mockImplementation(async(key: string): Promise<number | null | string> =>
     store.releaseLock(key)),
 } as any;
@@ -124,6 +127,8 @@ describe('A RedisLocker', (): void => {
     afterEach(async(): Promise<void> => {
     // In case some locks are not released by a test the timers will still be running
       jest.clearAllTimers();
+      // Restore real timers in case a test enabled fake timers for renewal assertions
+      jest.useRealTimers();
     });
 
     it('will fill in default arguments when constructed with empty arguments.', (): void => {
@@ -418,6 +423,93 @@ describe('A RedisLocker', (): void => {
       await expect(promise).rejects.toThrow('Unexpected Redis answer received! (unexpected)');
     });
 
+    describe('lock TTL', (): void => {
+      const key = `__RW__${resource1.path}`;
+
+      it('sets the default TTL when acquiring a read lock.', async(): Promise<void> => {
+        await locker.withReadLock(resource1, (): number => 5);
+        expect(redis.acquireReadLock).toHaveBeenCalledTimes(1);
+        expect(redis.acquireReadLock).toHaveBeenCalledWith(key, 30000);
+      });
+
+      it('sets the default TTL when acquiring a write lock.', async(): Promise<void> => {
+        await locker.withWriteLock(resource1, (): number => 5);
+        expect(redis.acquireWriteLock).toHaveBeenCalledTimes(1);
+        expect(redis.acquireWriteLock).toHaveBeenCalledWith(key, 30000);
+      });
+
+      it('uses a custom TTL when one is configured.', async(): Promise<void> => {
+        const customLocker = new RedisLocker('6379', {}, { ttl: 12000 });
+        await customLocker.withWriteLock(resource1, (): number => 5);
+        expect(redis.acquireWriteLock).toHaveBeenCalledWith(key, 12000);
+      });
+
+      it('renews the write lock TTL while the lock is held, and stops after release.', async(): Promise<void> => {
+        jest.useFakeTimers();
+        const emitter = new EventEmitter();
+        const promise = locker.withWriteLock(resource1, async(): Promise<void> =>
+          new Promise<void>((resolve): any => emitter.on('release', resolve)));
+
+        // Allow the acquire to resolve and the renewal timer to be scheduled
+        await flushPromises();
+
+        // The renewal fires at half the TTL and refreshes the write lock key with the full TTL
+        jest.advanceTimersByTime(15000);
+        expect(redis.renewWriteLock).toHaveBeenCalledTimes(1);
+        expect(redis.renewWriteLock).toHaveBeenLastCalledWith(key, 30000);
+        jest.advanceTimersByTime(15000);
+        expect(redis.renewWriteLock).toHaveBeenCalledTimes(2);
+
+        emitter.emit('release');
+        await promise;
+
+        // Once released the renewal timer is cleared and no further renewals happen
+        jest.advanceTimersByTime(60000);
+        expect(redis.renewWriteLock).toHaveBeenCalledTimes(2);
+      });
+
+      it('renews the read lock counter TTL while the lock is held.', async(): Promise<void> => {
+        jest.useFakeTimers();
+        const emitter = new EventEmitter();
+        const promise = locker.withReadLock(resource1, async(): Promise<void> =>
+          new Promise<void>((resolve): any => emitter.on('release', resolve)));
+
+        await flushPromises();
+
+        jest.advanceTimersByTime(15000);
+        expect(redis.renewReadLock).toHaveBeenCalledTimes(1);
+        expect(redis.renewReadLock).toHaveBeenLastCalledWith(key, 30000);
+
+        emitter.emit('release');
+        await promise;
+
+        jest.advanceTimersByTime(60000);
+        expect(redis.renewReadLock).toHaveBeenCalledTimes(1);
+      });
+
+      it('logs a warning when a lock renewal fails.', async(): Promise<void> => {
+        jest.useFakeTimers();
+        const logger = (locker as any).logger;
+        const warnSpy = jest.spyOn(logger, 'warn').mockImplementation((): any => undefined);
+        redis.renewWriteLock.mockRejectedValueOnce(new Error('renewal boom'));
+
+        const emitter = new EventEmitter();
+        const promise = locker.withWriteLock(resource1, async(): Promise<void> =>
+          new Promise<void>((resolve): any => emitter.on('release', resolve)));
+
+        await flushPromises();
+        jest.advanceTimersByTime(15000);
+        // Allow the rejected renewal promise to settle so the catch handler runs
+        await flushPromises();
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(warnSpy).toHaveBeenLastCalledWith(expect.stringContaining('Could not renew Redis lock TTL'));
+
+        emitter.emit('release');
+        await promise;
+        warnSpy.mockRestore();
+      });
+    });
+
     describe('finalize()', (): void => {
       it('should call quit and clear Read-Write locks when finalize() is called.', async(): Promise<void> => {
         const promise = locker.withWriteLock(resource1, async(): Promise<any> => {
@@ -443,6 +535,8 @@ describe('A RedisLocker', (): void => {
     afterEach(async(): Promise<void> => {
     // In case some locks are not released by a test the timers will still be running
       jest.clearAllTimers();
+      // Restore real timers in case a test enabled fake timers for renewal assertions
+      jest.useRealTimers();
     });
 
     it('will fill in default arguments when constructed with empty arguments.', (): void => {
@@ -455,6 +549,38 @@ describe('A RedisLocker', (): void => {
       await expect(locker.release(identifier)).resolves.toBeUndefined();
       expect(redis.acquireLock).toHaveBeenCalledTimes(1);
       expect(redis.releaseLock).toHaveBeenCalledTimes(1);
+    });
+
+    it('sets a TTL when acquiring a resource lock.', async(): Promise<void> => {
+      await locker.acquire(identifier);
+      expect(redis.acquireLock).toHaveBeenCalledTimes(1);
+      expect(redis.acquireLock).toHaveBeenCalledWith(`__L__${identifier.path}`, 30000);
+      await locker.release(identifier);
+    });
+
+    it('renews a held resource lock TTL until it is released.', async(): Promise<void> => {
+      jest.useFakeTimers();
+      const key = `__L__${identifier.path}`;
+      await locker.acquire(identifier);
+
+      jest.advanceTimersByTime(15000);
+      expect(redis.renewLock).toHaveBeenCalledTimes(1);
+      expect(redis.renewLock).toHaveBeenLastCalledWith(key, 30000);
+
+      await locker.release(identifier);
+
+      // No renewals happen once the resource lock is released
+      jest.advanceTimersByTime(60000);
+      expect(redis.renewLock).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops renewing held resource locks on finalize.', async(): Promise<void> => {
+      jest.useFakeTimers();
+      await locker.acquire({ path: 'path1' });
+      await locker.finalize();
+
+      jest.advanceTimersByTime(60000);
+      expect(redis.renewLock).not.toHaveBeenCalled();
     });
 
     it('can lock a resource again after it was unlocked.', async(): Promise<void> => {
