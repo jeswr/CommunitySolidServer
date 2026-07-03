@@ -1,11 +1,9 @@
 {
   "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
-  "import": [
-    "css:config/identity/handler/base/provider-factory.json"
-  ],
   "@graph": [
     {
       "comment": [
+        "USAGE: import this ADDITIONALLY, after a config that already provides the identity handler (e.g. @css:config/file.json) \u2014 do NOT also rely on this file to declare the base provider factory. It only contributes the Override; the base IdentityProviderFactory must be declared by your main config (importing it twice causes a Components.js 'multiple values' error).",
         "OPT-IN HARDENING. Importing this file does NOT change any default: it overrides the OIDC provider config of the already-declared IdentityProviderFactory so that dynamic client registration (RFC 7591, POST /.oidc/reg) requires a valid initial access token as a bearer token.",
         "WHY: with the default (open) registration anyone can POST /.oidc/reg and persist a client unauthenticated, which is a storage-growth spam vector.",
         "TRADE-OFF: many Solid apps register dynamically, so requiring a token (or disabling registration) can break clients that rely on open dynamic registration. Only import this if you understand your client population and have a way to hand out initial access tokens. This is why the server keeps open registration as the default and this restriction is opt-in.",
@@ -13,18 +11,29 @@
         "MAINTENANCE: an Override replaces the whole `config` object, so this block is a copy of provider-factory.json's `config` with ONLY `features.registration.initialAccessToken` added. Keep every other value in sync with provider-factory.json."
       ],
       "@type": "Override",
-      "overrideInstance": { "@id": "urn:solid-server:default:IdentityProviderFactory" },
+      "overrideInstance": {
+        "@id": "urn:solid-server:default:IdentityProviderFactory"
+      },
       "overrideParameters": {
         "@type": "IdentityProviderFactory",
         "config": {
           "claims": {
-            "openid": [ "azp" ],
-            "webid": [ "webid" ]
+            "openid": [
+              "azp"
+            ],
+            "webid": [
+              "webid"
+            ]
           },
           "clockTolerance": 120,
           "cookies": {
-            "long": { "signed": true, "maxAge": 86400000 },
-            "short": { "signed": true }
+            "long": {
+              "signed": true,
+              "maxAge": 86400000
+            },
+            "short": {
+              "signed": true
+            }
           },
           "enabledJWA": {
             "dPoPSigningAlgValues": [
@@ -42,17 +51,41 @@
             ]
           },
           "features": {
-            "claimsParameter": { "enabled": true },
-            "clientCredentials": { "enabled": true },
-            "devInteractions": { "enabled": false },
-            "dPoP": { "enabled": true },
-            "introspection": { "enabled": true },
-            "registration": { "enabled": true, "initialAccessToken": true },
-            "revocation": { "enabled": true },
-            "userinfo": { "enabled": false }
+            "claimsParameter": {
+              "enabled": true
+            },
+            "clientCredentials": {
+              "enabled": true
+            },
+            "devInteractions": {
+              "enabled": false
+            },
+            "dPoP": {
+              "enabled": true
+            },
+            "introspection": {
+              "enabled": true
+            },
+            "registration": {
+              "enabled": true,
+              "initialAccessToken": true
+            },
+            "revocation": {
+              "enabled": true
+            },
+            "userinfo": {
+              "enabled": false
+            }
           },
-          "scopes": [ "openid", "profile", "offline_access", "webid" ],
-          "subjectTypes": [ "public" ],
+          "scopes": [
+            "openid",
+            "profile",
+            "offline_access",
+            "webid"
+          ],
+          "subjectTypes": [
+            "public"
+          ],
           "ttl": {
             "AccessToken": 3600,
             "AuthorizationCode": 600,
