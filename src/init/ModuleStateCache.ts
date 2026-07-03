@@ -6,6 +6,12 @@ import { createErrorMessage } from '../util/errors/ErrorUtil';
 import { joinFilePath, readPackageJson } from '../util/PathUtil';
 
 /**
+ * Counter combined with the process id to generate unique temporary file names,
+ * ensuring concurrent writes never target the same temporary path.
+ */
+let tempCounter = 0;
+
+/**
  * The contents of a module state cache file.
  */
 interface ModuleStateCacheEntry {
@@ -63,13 +69,25 @@ export class ModuleStateCache {
     }
 
     let entry: ModuleStateCacheEntry | null;
-    let key: string;
     try {
       entry = JSON.parse(raw) as ModuleStateCacheEntry | null;
+    } catch (error: unknown) {
+      // The cache file is corrupt and can never become valid again, so it gets removed.
+      this.logger.warn(`Removing corrupt module state cache at ${this.path}: ${createErrorMessage(error)}`);
+      await this.remove();
+      return;
+    }
+
+    let key: string;
+    try {
       key = await this.getKey();
     } catch (error: unknown) {
-      this.logger.warn(`Ignoring invalid module state cache at ${this.path}: ${createErrorMessage(error)}`);
-      await this.remove();
+      // Computing the key can fail because of transient environment issues,
+      // such as a temporarily missing or unreadable package-lock.json or package.json.
+      // The cached entry might still be valid, so it is treated as a miss without being removed.
+      this.logger.warn(
+        `Unable to compute the module state cache key, ignoring cache at ${this.path}: ${createErrorMessage(error)}`,
+      );
       return;
     }
 
@@ -91,16 +109,25 @@ export class ModuleStateCache {
    * @param moduleState - The module state to cache.
    */
   public async save(moduleState: IModuleState): Promise<void> {
+    // Use a temporary file name that is unique per process and per call so concurrent writes
+    // from multiple server instances never target the same temporary file and corrupt each other.
+    const nonce = tempCounter;
+    tempCounter += 1;
+    const tempPath = `${this.path}.${process.pid}.${Date.now()}.${nonce}.tmp`;
     try {
       const entry: ModuleStateCacheEntry = { key: await this.getKey(), moduleState };
       // Write to a temporary file first so an existing cache file does not get corrupted
       // in case an error occurs halfway through the write.
-      const tempPath = `${this.path}.tmp`;
       await fsPromises.writeFile(tempPath, JSON.stringify(entry), 'utf8');
+      // Best-effort removal of the destination before renaming: on some platforms (notably Windows)
+      // `rename` does not reliably overwrite an existing file.
+      await this.remove();
       await fsPromises.rename(tempPath, this.path);
       this.logger.debug(`Stored module state in ${this.path}`);
     } catch (error: unknown) {
       this.logger.warn(`Unable to write module state cache to ${this.path}: ${createErrorMessage(error)}`);
+      // Best-effort cleanup so a failed write does not leave the unique temporary file behind.
+      await this.remove(tempPath);
     }
   }
 
@@ -132,13 +159,15 @@ export class ModuleStateCache {
   }
 
   /**
-   * Removes the cache file, ignoring any errors.
+   * Removes the given file, ignoring any errors.
+   *
+   * @param path - Path of the file to remove. Defaults to the cache file path.
    */
-  private async remove(): Promise<void> {
+  private async remove(path: string = this.path): Promise<void> {
     try {
-      await fsPromises.unlink(this.path);
+      await fsPromises.unlink(path);
     } catch {
-      this.logger.debug(`Unable to remove module state cache at ${this.path}`);
+      this.logger.debug(`Unable to remove file at ${path}`);
     }
   }
 }
