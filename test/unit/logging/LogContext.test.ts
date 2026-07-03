@@ -28,6 +28,11 @@ describe('LogContext', (): void => {
       expect(requestId).not.toBe(requestId2);
     });
 
+    it('uses the provided identifier when one is given.', async(): Promise<void> => {
+      const requestId = runWithRequestId((): string | undefined => getRequestId(), 'seeded-id');
+      expect(requestId).toBe('seeded-id');
+    });
+
     it('retains the identifier across asynchronous calls.', async(): Promise<void> => {
       await runWithRequestId(async(): Promise<void> => {
         const requestId = getRequestId();

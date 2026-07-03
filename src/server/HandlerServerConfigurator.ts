@@ -1,6 +1,7 @@
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { bindToCurrentRequestId, runWithRequestId } from '../logging/LogContext';
 import { getLoggerFor } from '../logging/LogUtil';
+import { extractTraceId } from '../logging/TraceParent';
 import { isError } from '../util/errors/ErrorUtil';
 import { guardStream } from '../util/GuardedStream';
 import type { HttpHandler } from './HttpHandler';
@@ -34,6 +35,8 @@ export class HandlerServerConfigurator extends ServerConfigurator {
       'request',
       // eslint-disable-next-line @typescript-eslint/no-misused-promises
       async(request: IncomingMessage, response: ServerResponse): Promise<void> =>
+        // A valid incoming W3C `traceparent` header seeds the request id so logs correlate with an
+        // upstream trace; an absent or invalid header falls back to a freshly generated id.
         runWithRequestId(async(): Promise<void> => {
           try {
             this.logger.info(`Received ${request.method} request for ${request.url}`);
@@ -54,7 +57,7 @@ export class HandlerServerConfigurator extends ServerConfigurator {
               response.writeHead(404).end();
             }
           }
-        }),
+        }, extractTraceId(request.headers.traceparent)),
     );
   }
 
