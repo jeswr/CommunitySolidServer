@@ -3,8 +3,10 @@ import type { Representation } from '../../http/representation/Representation';
 import { RepresentationMetadata } from '../../http/representation/RepresentationMetadata';
 import type { ValuePreferences } from '../../http/representation/RepresentationPreferences';
 import { getLoggerFor } from '../../logging/LogUtil';
+import { APPLICATION_JSON } from '../../util/ContentTypes';
 import { BadRequestHttpError } from '../../util/errors/BadRequestHttpError';
 import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpError';
+import { isContainerPath } from '../../util/PathUtil';
 import { POSIX } from '../../util/Vocabularies';
 import { cleanPreferences, getBestPreference, getTypeWeight, preferencesToString } from './ConversionUtil';
 import type { RepresentationConverterArgs } from './RepresentationConverter';
@@ -49,6 +51,13 @@ type ConversionPath = {
 };
 
 /**
+ * The maximum number of conversion paths that are cached by a {@link ChainedConverter}.
+ * The `(content-type × preference-set × container-ness)` key space is small and config-fixed,
+ * so this is only a safety cap to prevent unbounded growth if many distinct `Accept` headers are seen.
+ */
+const MAX_PATH_CACHE_SIZE = 1000;
+
+/**
  * A meta converter that takes an array of other converters as input.
  * It chains these converters by finding a path of converters
  * that can go from the given content-type to the given type preferences.
@@ -75,12 +84,19 @@ export class ChainedConverter extends RepresentationConverter {
 
   private readonly converters: TypedRepresentationConverter[];
 
+  /**
+   * Caches computed conversion paths, keyed by the inputs that determine which path gets selected.
+   * The value only depends on those inputs, so reusing it avoids re-running the path search per request.
+   */
+  private readonly pathCache: Map<string, ConversionPath>;
+
   public constructor(converters: TypedRepresentationConverter[]) {
     super();
     if (converters.length === 0) {
       throw new Error('At least 1 converter is required.');
     }
     this.converters = [ ...converters ];
+    this.pathCache = new Map<string, ConversionPath>();
   }
 
   public async canHandle(input: RepresentationConverterArgs): Promise<void> {
@@ -113,12 +129,53 @@ export class ChainedConverter extends RepresentationConverter {
 
   /**
    * Finds a conversion path that can handle the given input.
+   *
+   * The result of the underlying path search only depends on the input content-type,
+   * the (cleaned) output preferences, and whether the identifier is a container
+   * (the only metadata field any of the chained converters inspects while building a path).
+   * The computed path is therefore cached by exactly those inputs and reused on subsequent calls.
+   *
+   * `application/json` inputs bypass the cache: for those the selected path can additionally depend
+   * on other metadata (e.g. the template quads read by a `DynamicJsonToTemplateConverter`),
+   * so caching them by content-type and preferences alone would not be behavior-preserving.
    */
   private async findPath(input: RepresentationConverterArgs): Promise<ConversionPath> {
-    const type = input.representation.metadata.contentType!;
+    const { metadata } = input.representation;
+    const type = metadata.contentType!;
     const preferences = cleanPreferences(input.preferences.type);
 
-    return this.generatePath(type, preferences, input.representation.metadata);
+    if (type === APPLICATION_JSON) {
+      return this.generatePath(type, preferences, metadata);
+    }
+
+    const key = this.getPathCacheKey(type, preferences, metadata);
+    const cached = this.pathCache.get(key);
+    if (cached) {
+      return cached;
+    }
+
+    const path = await this.generatePath(type, preferences, metadata);
+
+    // Bounded cache: reset once the safety cap is reached to prevent unbounded growth.
+    if (this.pathCache.size >= MAX_PATH_CACHE_SIZE) {
+      this.pathCache.clear();
+    }
+    this.pathCache.set(key, path);
+    return path;
+  }
+
+  /**
+   * Generates the cache key that uniquely identifies the conversion path for the given inputs.
+   * Contains every input that can influence which path the search selects:
+   * the input content-type, whether the identifier is a container, and the output preferences.
+   */
+  private getPathCacheKey(inType: string, outPreferences: ValuePreferences, metadata: RepresentationMetadata): string {
+    const isContainer = isContainerPath(metadata.identifier.value);
+    // Sort the preference entries so the key is independent of object key order.
+    const prefKey = Object.keys(outPreferences).sort()
+      .map((preference): string => `${preference}=${outPreferences[preference]}`)
+      .join(';');
+    return `${inType} ${isContainer} ${prefKey}`;
   }
 
   /**
