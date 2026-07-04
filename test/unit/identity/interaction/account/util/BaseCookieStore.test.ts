@@ -45,6 +45,15 @@ describe('A BaseCookieStore', (): void => {
     expect(storage.set).toHaveBeenLastCalledWith(cookie, accountId, 14 * 24 * 60 * 60 * 1000);
   });
 
+  it('reuses a provided account ID to refresh without reading the storage.', async(): Promise<void> => {
+    await expect(store.refresh(cookie, 'other-id'))
+      .resolves.toEqual(new Date(now.getTime() + (14 * 24 * 60 * 60 * 1000)));
+    // The mapping is not re-read when the account ID is already known.
+    expect(storage.get).toHaveBeenCalledTimes(0);
+    expect(storage.set).toHaveBeenCalledTimes(1);
+    expect(storage.set).toHaveBeenLastCalledWith(cookie, 'other-id', 14 * 24 * 60 * 60 * 1000);
+  });
+
   it('does not reset the timer if there is no match.', async(): Promise<void> => {
     storage.get.mockResolvedValueOnce(undefined);
     await expect(store.refresh(cookie)).resolves.toBeUndefined();
