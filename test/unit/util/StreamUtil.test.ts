@@ -34,17 +34,18 @@ describe('StreamUtil', (): void => {
   });
 
   describe('#readableToQuads', (): void => {
-    it('imports all quads from a Readable.', async(): Promise<void> => {
-      const subject = new NamedNode('#subject');
-      const property = new NamedNode('#property');
-      const object = new NamedNode('#object');
-      const literal = new Literal('abcde');
-      const blankNode = new BlankNode('_1');
-      const graph = new NamedNode('#graph');
+    const subject = new NamedNode('#subject');
+    const property = new NamedNode('#property');
+    const object = new NamedNode('#object');
+    const literal = new Literal('abcde');
+    const blankNode = new BlankNode('_1');
+    const graph = new NamedNode('#graph');
 
-      const quad1 = new Quad(subject, property, object, graph);
-      const quad2 = new Quad(subject, property, literal, graph);
-      const quad3 = new Quad(subject, property, blankNode, graph);
+    const quad1 = new Quad(subject, property, object, graph);
+    const quad2 = new Quad(subject, property, literal, graph);
+    const quad3 = new Quad(subject, property, blankNode, graph);
+
+    it('imports all quads from a Readable.', async(): Promise<void> => {
       const quads = new Store();
       quads.add(quad1);
       quads.add(quad2);
@@ -52,6 +53,52 @@ describe('StreamUtil', (): void => {
 
       const stream = Readable.from([ quad1, quad2, quad3 ]);
       await expect(readableToQuads(stream)).resolves.toEqual(quads);
+    });
+
+    it('adds buffered quads synchronously without reading the stream.', async(): Promise<void> => {
+      const quads = new Store();
+      quads.add(quad1);
+      quads.add(quad2);
+      quads.add(quad3);
+
+      const stream = guardedStreamFrom([ quad1, quad2, quad3 ]);
+      await expect(readableToQuads(stream)).resolves.toEqual(quads);
+      expect(stream.readableDidRead).toBe(false);
+      expect(stream.destroyed).toBe(true);
+    });
+
+    it('returns an empty Store for a stream created from an empty array.', async(): Promise<void> => {
+      const stream = guardedStreamFrom([]);
+      const store = await readableToQuads(stream);
+      expect(store.size).toBe(0);
+      expect(stream.destroyed).toBe(true);
+    });
+
+    it('does not use the buffered quads of a stream that is already flowing.', async(): Promise<void> => {
+      const stream = guardedStreamFrom([ quad1, quad2 ]);
+      stream.resume();
+      const store = await readableToQuads(stream);
+      expect(store.size).toBe(2);
+      expect(store.has(quad1)).toBe(true);
+      expect(store.has(quad2)).toBe(true);
+    });
+
+    it('does not use the buffered quads of a stream that was already read from.', async(): Promise<void> => {
+      const stream = guardedStreamFrom([ quad1, quad2 ]);
+      // Wait until data is available so `read` is guaranteed to return the first quad
+      await new Promise<void>((resolve): void => {
+        stream.once('readable', resolve);
+      });
+      expect(stream.read()).toBe(quad1);
+      const store = await readableToQuads(stream);
+      expect(store.size).toBe(1);
+      expect(store.has(quad2)).toBe(true);
+    });
+
+    it('does not use the buffered quads of an errored stream.', async(): Promise<void> => {
+      const stream = guardedStreamFrom([ quad1 ]);
+      stream.destroy(new Error('kaboom'));
+      await expect(readableToQuads(stream)).rejects.toThrow('kaboom');
     });
   });
 
