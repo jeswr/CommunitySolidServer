@@ -2,13 +2,15 @@ import type { Readable } from 'node:stream';
 import type { NamedNode, Quad, Term } from '@rdfjs/types';
 import arrayifyStream from 'arrayify-stream';
 import type { ParserOptions, Store } from 'n3';
-import { StreamParser, StreamWriter } from 'n3';
+import { Parser, Writer } from 'n3';
 import type { Guarded } from './GuardedStream';
-import { guardedStreamFrom, pipeSafely } from './StreamUtil';
+import { guardedStreamFrom } from './StreamUtil';
 import { toNamedTerm } from './TermUtil';
 
 /**
  * Helper function for serializing an array of quads, with as result a Readable object.
+ * Since the quads are already fully in memory,
+ * they are serialized synchronously to avoid the overhead of intermediate stream lifecycles.
  *
  * @param quads - The array of quads.
  * @param contentType - The content-type to serialize to.
@@ -16,11 +18,43 @@ import { toNamedTerm } from './TermUtil';
  * @returns The Readable object.
  */
 export function serializeQuads(quads: Quad[], contentType?: string): Guarded<Readable> {
-  return pipeSafely(guardedStreamFrom(quads), new StreamWriter({ format: contentType }));
+  // The N3.js `Writer` supports a callback when adding a single quad,
+  // which is how its own `StreamWriter` calls it internally,
+  // but this overload is missing from its type definitions.
+  const writer = new Writer({ format: contentType }) as Writer & {
+    addQuad: (quad: Quad, done: (error?: Error) => void) => void;
+  };
+  let error: Error | undefined;
+  for (const quad of quads) {
+    // The callback is called synchronously and is required to capture serialization errors,
+    // which would otherwise be swallowed by the writer.
+    writer.addQuad(quad, (writeError?: Error): void => {
+      error = writeError;
+    });
+    if (error) {
+      break;
+    }
+  }
+
+  if (error) {
+    // Emit errors through the resulting stream, as the previous streaming implementation did.
+    const stream = guardedStreamFrom([]);
+    stream.destroy(error);
+    return stream;
+  }
+
+  let output = '';
+  // This callback is called synchronously since the writer does not wrap an output stream.
+  writer.end((endError, result: string): void => {
+    output = result;
+  });
+  return guardedStreamFrom(output.length > 0 ? [ output ] : []);
 }
 
 /**
  * Helper function to convert a Readable into an array of quads.
+ * The stream is read into memory in its entirety,
+ * after which the quads are parsed synchronously to avoid the overhead of intermediate stream lifecycles.
  *
  * @param readable - The readable object.
  * @param options - Options for the parser.
@@ -28,7 +62,14 @@ export function serializeQuads(quads: Quad[], contentType?: string): Guarded<Rea
  * @returns A promise containing the array of quads.
  */
 export async function parseQuads(readable: Guarded<Readable>, options: ParserOptions = {}): Promise<Quad[]> {
-  return arrayifyStream(pipeSafely(readable, new StreamParser(options)));
+  const chunks = await arrayifyStream<string | Buffer>(readable);
+  // Buffers are concatenated before being decoded,
+  // to prevent the corruption of multi-byte characters that are split across chunks.
+  const data = chunks.every((chunk): chunk is string => typeof chunk === 'string') ?
+      chunks.join('') :
+      Buffer.concat(chunks.map((chunk): Buffer => typeof chunk === 'string' ? Buffer.from(chunk) : chunk))
+        .toString('utf8');
+  return new Parser(options).parse(data);
 }
 
 /**
