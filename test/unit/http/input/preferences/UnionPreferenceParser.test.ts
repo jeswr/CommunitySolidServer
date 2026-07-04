@@ -38,6 +38,22 @@ describe('A UnionPreferenceParser', (): void => {
     });
   });
 
+  it('takes a metadataOnly hint directly instead of merging it.', async(): Promise<void> => {
+    parsers[0].handle.mockResolvedValue({
+      type: { 'text/turtle': 1 },
+      metadataOnly: true,
+    });
+    parsers[1].handle.mockResolvedValue({
+      language: { nl: 0.8 },
+    });
+
+    await expect(parser.handle({} as any)).resolves.toEqual({
+      type: { 'text/turtle': 1 },
+      language: { nl: 0.8 },
+      metadataOnly: true,
+    });
+  });
+
   it('throws an error if multiple parsers return a range.', async(): Promise<void> => {
     parsers[0].handle.mockResolvedValue({
       type: { 'text/turtle': 1 },

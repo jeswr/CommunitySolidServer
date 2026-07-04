@@ -20,12 +20,17 @@ export class UnionPreferenceParser extends UnionHandler<PreferenceParser> {
 
     const preferences: RepresentationPreferences = {};
     for (const result of results) {
-      for (const key of Object.keys(result) as (keyof RepresentationPreferences)[]) {
-        if (key === 'range') {
-          preferences[key] = result[key];
-        } else {
-          preferences[key] = { ...preferences[key], ...result[key] };
-        }
+      // `range` and `metadataOnly` are not per-value preference maps and cannot be merged,
+      // so they are taken directly; the remaining dimensions are `ValuePreferences` maps that are combined.
+      const { range, metadataOnly, ...valuePreferences } = result;
+      if (typeof range !== 'undefined') {
+        preferences.range = range;
+      }
+      if (typeof metadataOnly !== 'undefined') {
+        preferences.metadataOnly = metadataOnly;
+      }
+      for (const key of Object.keys(valuePreferences) as (keyof typeof valuePreferences)[]) {
+        preferences[key] = { ...preferences[key], ...valuePreferences[key] };
       }
     }
     return preferences;

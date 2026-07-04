@@ -811,4 +811,73 @@ describe.each(stores)('An LDP handler allowing all requests %s', (name, { storeC
     expect(response.status).toBe(206);
     await expect(response.text()).resolves.toBe(fullConverted.slice(0, 5));
   });
+
+  // The headers that fully determine a HEAD response; a HEAD must carry exactly the same ones as the GET.
+  const headHeaders = [ 'content-type', 'content-length', 'etag', 'last-modified', 'accept-ranges', 'content-range' ];
+  async function expectHeadMatchesGet(url: string, init?: RequestInit): Promise<Response> {
+    const get = await fetch(url, init);
+    await get.text();
+    const head = await fetch(url, { ...init, method: 'HEAD' });
+    expect(head.status).toBe(get.status);
+    // A HEAD never has a body.
+    await expect(head.text()).resolves.toBe('');
+    for (const header of headHeaders) {
+      expect(head.headers.get(header)).toBe(get.headers.get(header));
+    }
+    return head;
+  }
+
+  it('answers a plain HEAD with the same headers as the GET, without a body.', async(): Promise<void> => {
+    const resourceUrl = joinUrl(baseUrl, 'head-plain');
+    const body = 'HEAD-TEST-BODY';
+    await putResource(resourceUrl, { contentType: 'text/plain', body });
+
+    const head = await expectHeadMatchesGet(resourceUrl);
+    expect(head.status).toBe(200);
+    // The content-length is served from the stored size even though the data was not read.
+    expect(head.headers.get('content-length')).toBe(`${body.length}`);
+    expect(head.headers.get('content-type')).toBe('text/plain');
+  });
+
+  it('answers a converting HEAD (fallback) with the same headers as the converting GET.', async(): Promise<void> => {
+    const resourceUrl = joinUrl(baseUrl, 'head-convert');
+    await putResource(resourceUrl, { contentType: 'text/turtle', body: '<http://ex/s> <http://ex/p> <http://ex/o>.' });
+
+    // The stored type is turtle but n-triples is requested, so the HEAD must still convert (fallback).
+    const head = await expectHeadMatchesGet(resourceUrl, { headers: { accept: 'application/n-triples' }});
+    expect(head.status).toBe(200);
+    expect(head.headers.get('content-type')).toBe('application/n-triples');
+  });
+
+  it('answers a HEAD on a container (fallback) with the same headers as the GET.', async(): Promise<void> => {
+    const containerUrl = joinUrl(baseUrl, 'head-container/');
+    await putResource(containerUrl, { contentType: 'text/turtle' });
+
+    const head = await expectHeadMatchesGet(containerUrl);
+    expect(head.status).toBe(200);
+  });
+
+  it('answers a ranged HEAD (fallback) with the same headers as the ranged GET.', async(): Promise<void> => {
+    const resourceUrl = joinUrl(baseUrl, 'head-range');
+    const body = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    await putResource(resourceUrl, { contentType: 'text/plain', body });
+
+    const head = await expectHeadMatchesGet(resourceUrl, { headers: { range: 'bytes=2-5' }});
+    expect(head.status).toBe(206);
+    expect(head.headers.get('content-range')).toBe(`bytes 2-5/${body.length}`);
+    expect(head.headers.get('content-length')).toBe('4');
+  });
+
+  it('answers a conditional HEAD that matches the ETag with a 304.', async(): Promise<void> => {
+    const resourceUrl = joinUrl(baseUrl, 'head-conditional');
+    await putResource(resourceUrl, { contentType: 'text/plain', body: 'conditional' });
+    const get = await fetch(resourceUrl);
+    await get.text();
+    const eTag = get.headers.get('etag')!;
+    expect(eTag).not.toBeNull();
+
+    const head = await fetch(resourceUrl, { method: 'HEAD', headers: { 'if-none-match': eTag }});
+    expect(head.status).toBe(304);
+    await expect(head.text()).resolves.toBe('');
+  });
 });

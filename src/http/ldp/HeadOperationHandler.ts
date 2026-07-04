@@ -28,7 +28,12 @@ export class HeadOperationHandler extends OperationHandler {
   }
 
   public async handle({ operation }: OperationHandlerInput): Promise<ResponseDescription> {
-    const body = await this.store.getRepresentation(operation.target, operation.preferences, operation.conditions);
+    // A HEAD response only carries the metadata; the data body is always discarded below.
+    // Signal this to the store so a backend that can fully determine the response metadata without
+    // reading the data (no conversion, no range) can skip fetching it. Stores that cannot make this
+    // guarantee ignore the hint and return the data as usual, keeping the response unchanged.
+    const preferences = { ...operation.preferences, metadataOnly: true };
+    const body = await this.store.getRepresentation(operation.target, preferences, operation.conditions);
 
     // Check whether the cached representation is still valid or it is necessary to send a new representation.
     // Generally it doesn't make much sense to use condition headers with a HEAD request, but it should be supported.

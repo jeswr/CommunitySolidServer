@@ -11,7 +11,7 @@ import type { RepresentationPreferences } from '../../representation/Representat
 import { PreferenceParser } from './PreferenceParser';
 
 const parsers: {
-  name: Exclude<keyof RepresentationPreferences, 'range'>;
+  name: Exclude<keyof RepresentationPreferences, 'range' | 'metadataOnly'>;
   header: string;
   parse: (value: string) => AcceptHeader[];
 }[] = [
