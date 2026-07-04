@@ -62,6 +62,53 @@ describe('PathUtil', (): void => {
     });
   });
 
+  describe('#joinUrl', (): void => {
+    it('returns an empty string when there are no parts.', (): void => {
+      expect(joinUrl()).toBe('');
+    });
+
+    it('joins parts with a single slash.', (): void => {
+      expect(joinUrl('http://example.com/', '.account/')).toBe('http://example.com/.account/');
+      expect(joinUrl('http://example.com/', 'other#me')).toBe('http://example.com/other#me');
+      expect(joinUrl('http://example.com', '/a/', '/b/', '/c')).toBe('http://example.com/a/b/c');
+    });
+
+    it('combines a plain protocol part with the next part.', (): void => {
+      expect(joinUrl('http:', 'www.example.com', 'foo/bar')).toBe('http://www.example.com/foo/bar');
+    });
+
+    it('does not combine a lone plain protocol part.', (): void => {
+      expect(joinUrl('http://')).toBe('http:/');
+    });
+
+    it('keeps three slashes for the file protocol.', (): void => {
+      expect(joinUrl('file:///foo', 'bar')).toBe('file:///foo/bar');
+    });
+
+    it('ignores empty components.', (): void => {
+      expect(joinUrl('http://example.com', '', 'a')).toBe('http://example.com/a');
+    });
+
+    it('removes a trailing slash before a hash.', (): void => {
+      expect(joinUrl('http://example.com', 'a/', '#h')).toBe('http://example.com/a#h');
+      expect(joinUrl('http://example.com/', 'foo#bar')).toBe('http://example.com/foo#bar');
+    });
+
+    it('merges multiple query strings using ampersands.', (): void => {
+      expect(joinUrl('http://example.com', 'a?b=1', '?c=2')).toBe('http://example.com/a?b=1&c=2');
+    });
+
+    it('throws if the first part is not a string.', (): void => {
+      expect((): string => joinUrl(undefined as unknown as string))
+        .toThrow('Url must be a string. Received undefined');
+    });
+
+    it('throws if a later part is not a string.', (): void => {
+      expect((): string => joinUrl('http://example.com', undefined as unknown as string))
+        .toThrow('Url must be a string. Received undefined');
+    });
+  });
+
   describe('#ensureTrailingSlash', (): void => {
     it('makes sure there is always exactly 1 slash.', (): void => {
       expect(ensureTrailingSlash('http://test.com')).toBe('http://test.com/');
