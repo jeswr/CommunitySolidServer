@@ -1,4 +1,6 @@
 import 'jest-rdf';
+import type { Quad } from '@rdfjs/types';
+import arrayifyStream from 'arrayify-stream';
 import { DataFactory, Store } from 'n3';
 import { parseQuads, serializeQuads, solveBgp, termToInt, uniqueQuads } from '../../../src/util/QuadUtil';
 import { guardedStreamFrom, readableToString } from '../../../src/util/StreamUtil';
@@ -16,6 +18,38 @@ describe('QuadUtil', (): void => {
       ) ];
       const stream = serializeQuads(quads, 'application/n-triples');
       await expect(readableToString(stream)).resolves.toMatch('<pre:sub> <pre:pred> "obj" .');
+    });
+
+    it('converts quads to turtle if no format was given.', async(): Promise<void> => {
+      const quads = [ quad(
+        namedNode('pre:sub'),
+        namedNode('pre:pred'),
+        literal('obj'),
+      ) ];
+      const stream = serializeQuads(quads);
+      await expect(readableToString(stream)).resolves.toBe('<pre:sub> <pre:pred> "obj".\n');
+    });
+
+    it('returns a stream without data if there are no quads.', async(): Promise<void> => {
+      const stream = serializeQuads([]);
+      await expect(arrayifyStream(stream)).resolves.toEqual([]);
+    });
+
+    it('emits serialization errors through the resulting stream.', async(): Promise<void> => {
+      const quads = [
+        quad(namedNode('pre:sub'), namedNode('pre:pred'), literal('obj')),
+        {} as unknown as Quad,
+      ];
+      const stream = serializeQuads(quads);
+      const promise = readableToString(stream);
+      await expect(promise).rejects.toThrow(TypeError);
+      await expect(promise).rejects.toThrow('Cannot read properties of undefined (reading \'equals\')');
+    });
+
+    it('throws immediately if quads cannot be serialized in a line-based format.', async(): Promise<void> => {
+      expect((): void => {
+        serializeQuads([ {} as unknown as Quad ], 'application/n-triples');
+      }).toThrow(TypeError);
     });
   });
 
@@ -36,6 +70,52 @@ describe('QuadUtil', (): void => {
         namedNode('pre:pred'),
         literal('obj'),
       ) ]);
+    });
+
+    it('parses quads with the given blank node prefix.', async(): Promise<void> => {
+      const stream = guardedStreamFrom([ '_:a <pre:pred> "obj".' ]);
+      const quads = await parseQuads(stream, { blankNodePrefix: 'pre' });
+      expect(quads).toHaveLength(1);
+      expect(quads[0].subject.value).toBe('prea');
+    });
+
+    it('parses buffers without corrupting multi-byte characters split across chunks.', async(): Promise<void> => {
+      const buffer = Buffer.from('<pre:sub> <pre:pred> "héllo".');
+      // Split in the middle of the 2-byte é character
+      const index = buffer.indexOf(Buffer.from('é')) + 1;
+      const stream = guardedStreamFrom([ buffer.subarray(0, index), buffer.subarray(index) ]);
+      await expect(parseQuads(stream)).resolves.toEqualRdfQuadArray([ quad(
+        namedNode('pre:sub'),
+        namedNode('pre:pred'),
+        literal('héllo'),
+      ) ]);
+    });
+
+    it('parses a mix of string and buffer chunks.', async(): Promise<void> => {
+      const stream = guardedStreamFrom([ '<pre:sub> <pre:pred> ', Buffer.from('"obj".') ]);
+      await expect(parseQuads(stream)).resolves.toEqualRdfQuadArray([ quad(
+        namedNode('pre:sub'),
+        namedNode('pre:pred'),
+        literal('obj'),
+      ) ]);
+    });
+
+    it('resolves to an empty array if the stream contains no data.', async(): Promise<void> => {
+      const stream = guardedStreamFrom([]);
+      await expect(parseQuads(stream)).resolves.toEqual([]);
+    });
+
+    it('errors on invalid data.', async(): Promise<void> => {
+      const stream = guardedStreamFrom([ 'this is not turtle' ]);
+      const promise = parseQuads(stream);
+      await expect(promise).rejects.toThrow(Error);
+      await expect(promise).rejects.toThrow('Unexpected "this" on line 1.');
+    });
+
+    it('errors if the input stream errors.', async(): Promise<void> => {
+      const stream = guardedStreamFrom([ '<pre:sub> <pre:pred> "obj".' ]);
+      stream.destroy(new Error('source failure'));
+      await expect(parseQuads(stream)).rejects.toThrow('source failure');
     });
   });
 
