@@ -38,8 +38,8 @@ describe('An IndexRepresentationStore', (): void => {
     const result = await store.getRepresentation({ path: baseUrl }, preferences);
     await expect(readableToString(result.data)).resolves.toBe('index data');
     expect(source.getRepresentation).toHaveBeenCalledTimes(2);
-    expect(source.getRepresentation).toHaveBeenCalledWith({ path: `${baseUrl}index.html` }, preferences, undefined);
-    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: baseUrl }, {}, undefined);
+    expect(source.getRepresentation).toHaveBeenCalledWith({ path: `${baseUrl}index.html` }, preferences);
+    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: baseUrl }, {});
 
     // Use correct metadata
     expect(result.metadata.identifier.value).toBe(baseUrl);
@@ -51,8 +51,8 @@ describe('An IndexRepresentationStore', (): void => {
     const result = await store.getRepresentation({ path: baseUrl }, preferences);
     await expect(readableToString(result.data)).resolves.toBe('index data');
     expect(source.getRepresentation).toHaveBeenCalledTimes(2);
-    expect(source.getRepresentation).toHaveBeenCalledWith({ path: `${baseUrl}index.html` }, preferences, undefined);
-    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: baseUrl }, {}, undefined);
+    expect(source.getRepresentation).toHaveBeenCalledWith({ path: `${baseUrl}index.html` }, preferences);
+    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: baseUrl }, {});
 
     // Use correct metadata
     expect(result.metadata.identifier.value).toBe(baseUrl);
@@ -93,7 +93,6 @@ describe('An IndexRepresentationStore', (): void => {
     expect(source.getRepresentation).toHaveBeenCalledWith(
       { path: `${emptyContainer.path}index.html` },
       preferences,
-      undefined,
     );
     expect(source.getRepresentation).toHaveBeenLastCalledWith(emptyContainer, preferences, undefined);
   });
@@ -115,8 +114,8 @@ describe('An IndexRepresentationStore', (): void => {
     const result = await store.getRepresentation({ path: baseUrl }, preferences);
     await expect(readableToString(result.data)).resolves.toBe('index data');
     expect(source.getRepresentation).toHaveBeenCalledTimes(2);
-    expect(source.getRepresentation).toHaveBeenCalledWith({ path: `${baseUrl}base.html` }, preferences, undefined);
-    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: baseUrl }, {}, undefined);
+    expect(source.getRepresentation).toHaveBeenCalledWith({ path: `${baseUrl}base.html` }, preferences);
+    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: baseUrl }, {});
 
     // Use correct metadata
     expect(result.metadata.identifier.value).toBe(baseUrl);
@@ -132,7 +131,7 @@ describe('An IndexRepresentationStore', (): void => {
     const result = await store.getRepresentation({ path: baseUrl }, preferences);
     await expect(readableToString(result.data)).resolves.toBe('index data');
     expect(source.getRepresentation).toHaveBeenCalledTimes(2);
-    expect(source.getRepresentation).toHaveBeenCalledWith({ path: `${baseUrl}base.html` }, preferences, undefined);
-    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: baseUrl }, {}, undefined);
+    expect(source.getRepresentation).toHaveBeenCalledWith({ path: `${baseUrl}base.html` }, preferences);
+    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: baseUrl }, {});
   });
 });

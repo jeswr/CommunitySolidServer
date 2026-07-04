@@ -70,6 +70,48 @@ export async function cloneRepresentation(representation: Representation): Promi
 }
 
 /**
+ * Determines whether the given conditions and metadata result in a "304 Not Modified" response,
+ * without reading or modifying any data.
+ *
+ * If the conditions are defined and do not match the metadata, a {@link NotModifiedHttpError} is
+ * returned carrying the resource ETag and a copy of the metadata, so that the 304 response sends
+ * exactly the same headers as a full response would. In every other case `undefined` is returned,
+ * meaning a normal response should be sent.
+ *
+ * This uses the strict conditions check which takes the content type into account;
+ * therefore, this should only be called once the output content type is certain:
+ * either after content negotiation, or when it is known that no conversion will happen.
+ *
+ * Unlike {@link assertReadConditions}, this function does not touch any data stream and does not modify
+ * the given metadata, so it is safe to call before the data of a representation has been fetched.
+ *
+ * @param metadata - The metadata to compare the conditions against.
+ * @param eTagHandler - Used to generate the ETag to return with the 304 response.
+ * @param conditions - The conditions to assert.
+ *
+ * @returns A {@link NotModifiedHttpError} to return if the request resolves to a 304, `undefined` otherwise.
+ */
+export function getConditionalNotModifiedError(
+  metadata: RepresentationMetadata,
+  eTagHandler: ETagHandler,
+  conditions?: Conditions,
+): NotModifiedHttpError | undefined {
+  if (conditions && !conditions.matchesMetadata(metadata, true)) {
+    const error = new NotModifiedHttpError(eTagHandler.getETag(metadata));
+
+    // From RFC 9111:
+    // > the cache MUST add each header field in the provided response to the stored response,
+    // > replacing field values that are already present
+    // So we need to make sure to send either no partial headers, or the exact same headers.
+    // By adding the metadata of the original resource here, we ensure we send the same headers.
+    error.metadata.identifier = metadata.identifier;
+    error.metadata.addQuads(metadata.quads());
+
+    return error;
+  }
+}
+
+/**
  * Verify whether the given {@link Representation} matches the given conditions.
  * If true, add the corresponding ETag to the body metadata.
  * If not, destroy the data stream and throw a {@link NotModifiedHttpError} with the same ETag.
@@ -87,20 +129,10 @@ export async function cloneRepresentation(representation: Representation): Promi
  * @param conditions - The conditions to assert.
  */
 export function assertReadConditions(body: Representation, eTagHandler: ETagHandler, conditions?: Conditions): void {
-  const eTag = eTagHandler.getETag(body.metadata);
-  if (conditions && !conditions.matchesMetadata(body.metadata, true)) {
+  const error = getConditionalNotModifiedError(body.metadata, eTagHandler, conditions);
+  if (error) {
     body.data.destroy();
-    const error = new NotModifiedHttpError(eTag);
-
-    // From RFC 9111:
-    // > the cache MUST add each header field in the provided response to the stored response,
-    // > replacing field values that are already present
-    // So we need to make sure to send either no partial headers, or the exact same headers.
-    // By adding the metadata of the original resource here, we ensure we send the same headers.
-    error.metadata.identifier = body.metadata.identifier;
-    error.metadata.addQuads(body.metadata.quads());
-
     throw error;
   }
-  body.metadata.set(HH.terms.etag, eTag);
+  body.metadata.set(HH.terms.etag, eTagHandler.getETag(body.metadata));
 }

@@ -11,6 +11,7 @@ import { RepresentationMetadata } from '../../../src/http/representation/Represe
 import type { RepresentationPreferences } from '../../../src/http/representation/RepresentationPreferences';
 import type { ResourceIdentifier } from '../../../src/http/representation/ResourceIdentifier';
 import type { DataAccessor, RangeOptions } from '../../../src/storage/accessors/DataAccessor';
+import { BasicETagHandler } from '../../../src/storage/conditions/BasicETagHandler';
 import { DataAccessorBasedStore } from '../../../src/storage/DataAccessorBasedStore';
 import { INTERNAL_QUADS } from '../../../src/util/ContentTypes';
 import { BadRequestHttpError } from '../../../src/util/errors/BadRequestHttpError';
@@ -19,17 +20,20 @@ import { ForbiddenHttpError } from '../../../src/util/errors/ForbiddenHttpError'
 import { MethodNotAllowedHttpError } from '../../../src/util/errors/MethodNotAllowedHttpError';
 import { NotFoundHttpError } from '../../../src/util/errors/NotFoundHttpError';
 import { NotImplementedHttpError } from '../../../src/util/errors/NotImplementedHttpError';
+import { NotModifiedHttpError } from '../../../src/util/errors/NotModifiedHttpError';
 import { PreconditionFailedHttpError } from '../../../src/util/errors/PreconditionFailedHttpError';
 import type { Guarded } from '../../../src/util/GuardedStream';
 import { ContentType } from '../../../src/util/Header';
 import { SingleRootIdentifierStrategy } from '../../../src/util/identifiers/SingleRootIdentifierStrategy';
 import { trimTrailingSlashes } from '../../../src/util/PathUtil';
+import { assertReadConditions } from '../../../src/util/ResourceUtil';
 import { guardedStreamFrom, readableToString } from '../../../src/util/StreamUtil';
 import { toLiteral } from '../../../src/util/TermUtil';
 import {
   AS,
   CONTENT_TYPE,
   DC,
+  HH,
   LDP,
   PIM,
   POSIX,
@@ -47,6 +51,16 @@ const GENERATED_PREDICATE = namedNode('generated');
 // Preferences with a fixed satisfiable byte range and the given output type preferences.
 function rangeWithType(type: RepresentationPreferences['type']): RepresentationPreferences {
   return { range: { unit: 'bytes', parts: [{ start: 2, end: 5 }]}, type };
+}
+
+// Awaits a promise that is expected to reject, returning the rejection reason.
+async function getError(promise: Promise<unknown>): Promise<NotModifiedHttpError> {
+  try {
+    await promise;
+  } catch (error: unknown) {
+    return error as NotModifiedHttpError;
+  }
+  throw new Error('Expected the promise to reject.');
 }
 
 class SimpleDataAccessor implements DataAccessor {
@@ -428,6 +442,130 @@ describe('A DataAccessorBasedStore', (): void => {
         await seekStore.getRepresentation(resourceID, { range: { unit: 'bytes', parts: [{ start: 0, end: 10 }]}}),
         '0123456789',
       );
+    });
+  });
+
+  describe('serving a conditional request that resolves to 304', (): void => {
+    const resourceID = { path: `${root}resource` };
+    const eTagHandler = new BasicETagHandler();
+    // A conditional request that always resolves to 304 (mismatch) resp. 200 (match).
+    const notMatching: Conditions = { matchesMetadata: (): boolean => false };
+    const matching: Conditions = { matchesMetadata: (): boolean => true };
+    let conditionalStore: DataAccessorBasedStore;
+    let getDataSpy: jest.SpyInstance;
+
+    // Stores a document with the given content-type and a fixed modified date, so it has a stable ETag,
+    // and returns its metadata (from which the expected ETag can be derived).
+    function storeResource(contentType = 'text/plain'): RepresentationMetadata {
+      const metadata = new RepresentationMetadata({ [RDF.type]: namedNode(LDP.Resource) });
+      metadata.identifier = namedNode(resourceID.path);
+      metadata.contentType = contentType;
+      metadata.set(POSIX.terms.size, toLiteral(4, XSD.terms.integer));
+      metadata.set(DC.terms.modified, toLiteral(now.toISOString(), XSD.terms.dateTime));
+      accessor.data[resourceID.path] = {
+        binary: true,
+        data: guardedStreamFrom([ 'data' ]),
+        metadata,
+        isEmpty: false,
+      } as Representation;
+      return metadata;
+    }
+
+    beforeEach((): void => {
+      conditionalStore = new DataAccessorBasedStore(
+        accessor,
+        identifierStrategy,
+        auxiliaryStrategy,
+        metadataStrategy,
+        false,
+        eTagHandler,
+      );
+      getDataSpy = jest.spyOn(accessor, 'getData');
+    });
+
+    it('returns a 304 without fetching the data when no conversion is needed.', async(): Promise<void> => {
+      const stored = storeResource();
+      const error = await getError(
+        conditionalStore.getRepresentation(resourceID, { type: { 'text/plain': 1 }}, notMatching),
+      );
+      expect(NotModifiedHttpError.isInstance(error)).toBe(true);
+      expect(error.metadata.get(HH.terms.etag)?.value).toBe(eTagHandler.getETag(stored));
+      // The whole point of the optimization: the data was never read.
+      expect(getDataSpy).not.toHaveBeenCalled();
+    });
+
+    it('returns an ETag and metadata identical to the fetched (post-conversion) 304.', async(): Promise<void> => {
+      storeResource();
+      const preferences = { type: { 'text/plain': 1 }};
+
+      // Fetched path: the store without an ETagHandler returns the full representation,
+      // and the post-conversion condition check produces the 304, exactly as the operation handler does.
+      const body = await store.getRepresentation(resourceID, preferences);
+      let fetched: NotModifiedHttpError;
+      try {
+        assertReadConditions(body, eTagHandler, notMatching);
+        throw new Error('Expected assertReadConditions to throw.');
+      } catch (error: unknown) {
+        fetched = error as NotModifiedHttpError;
+      }
+      expect(NotModifiedHttpError.isInstance(fetched)).toBe(true);
+      expect(getDataSpy).toHaveBeenCalledTimes(1);
+
+      // Skipped path: the store with an ETagHandler short-circuits without fetching the data.
+      const skipped = await getError(conditionalStore.getRepresentation(resourceID, preferences, notMatching));
+      expect(getDataSpy).toHaveBeenCalledTimes(1);
+
+      expect(skipped.metadata.get(HH.terms.etag)?.value).toBe(fetched.metadata.get(HH.terms.etag)?.value);
+      expect(skipped.metadata.identifier).toEqualRdfTerm(fetched.metadata.identifier);
+      expect(skipped.metadata.quads()).toBeRdfIsomorphic(fetched.metadata.quads());
+    });
+
+    it('returns the full representation (fetching data) when the conditions match.', async(): Promise<void> => {
+      storeResource();
+      const result = await conditionalStore.getRepresentation(resourceID, { type: { 'text/plain': 1 }}, matching);
+      await expect(readableToString(result.data)).resolves.toBe('data');
+      expect(getDataSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not skip (fetches data) when a conversion would happen.', async(): Promise<void> => {
+      storeResource('text/plain');
+      // A different type is requested, so a conversion would occur and the ETag depends on its output.
+      const result = conditionalStore.getRepresentation(resourceID, { type: { 'text/turtle': 1 }}, notMatching);
+      await expect(result).resolves.toBeDefined();
+      expect(getDataSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not skip (fetches data) when a byte range is requested.', async(): Promise<void> => {
+      storeResource();
+      const result = conditionalStore.getRepresentation(
+        resourceID,
+        { type: { 'text/plain': 1 }, range: { unit: 'bytes', parts: [{ start: 0, end: 2 }]}},
+        notMatching,
+      );
+      await expect(result).resolves.toBeDefined();
+      expect(getDataSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not skip (fetches data) when no ETagHandler is configured.', async(): Promise<void> => {
+      storeResource();
+      // The default `store` has no ETagHandler, so the optimization is disabled.
+      const result = store.getRepresentation(resourceID, { type: { 'text/plain': 1 }}, notMatching);
+      await expect(result).resolves.toBeDefined();
+      expect(getDataSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not skip (fetches data) when there are no conditions.', async(): Promise<void> => {
+      storeResource();
+      const result = conditionalStore.getRepresentation(resourceID, { type: { 'text/plain': 1 }});
+      await expect(result).resolves.toBeDefined();
+      expect(getDataSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips the fetch even when no preferences are given.', async(): Promise<void> => {
+      storeResource();
+      const error = await getError(conditionalStore.getRepresentation(resourceID, undefined, notMatching));
+      expect(NotModifiedHttpError.isInstance(error)).toBe(true);
+      expect(getDataSpy).not.toHaveBeenCalled();
     });
   });
 

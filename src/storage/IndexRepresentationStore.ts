@@ -45,9 +45,13 @@ export class IndexRepresentationStore extends PassthroughStore {
     if (isContainerIdentifier(identifier) && this.matchesPreferences(preferences)) {
       try {
         const indexIdentifier = { path: `${identifier.path}${this.indexName}` };
-        const index = await this.source.getRepresentation(indexIdentifier, preferences, conditions);
+        // The conditions are deliberately not forwarded to these sub-reads: this store composes a new
+        // representation (the container metadata with the index content-type), so the conditional
+        // "304 Not Modified" decision must be made against that composed metadata by the caller, not
+        // against the individual index/container reads (which may have a different last-modified date).
+        const index = await this.source.getRepresentation(indexIdentifier, preferences);
         // We only care about the container metadata so preferences don't matter
-        const container = await this.source.getRepresentation(identifier, {}, conditions);
+        const container = await this.source.getRepresentation(identifier, {});
         container.data.destroy();
 
         // Uses the container metadata but with the index content-type.
