@@ -1,0 +1,147 @@
+# Fork-scoped CI for jeswr/CommunitySolidServer.
+#
+# Mirrors the upstream test matrix (main.yml -> npm-test.yml / cth-test.yml) so
+# changes staged on the fork are validated the same way upstream validates
+# them, minus jobs that cannot work on a fork:
+#   - docker.yml        (needs upstream DockerHub secrets, pushes solidproject images)
+#   - mkdocs.yml        (release-only docs deploy to upstream gh-pages)
+#   - schedule.yml      (scheduled conformance runs; scheduled jobs trimmed)
+#   - Coveralls steps   (repo not registered on coveralls.io; coverage
+#                        thresholds are still enforced by jest.coverage.config.js)
+#   - windows-latest    (matrix-size reduction; upstream CI still covers Windows
+#                        when changes are upstreamed)
+#
+# Every job is guarded with `if: github.repository == 'jeswr/CommunitySolidServer'`
+# so this workflow stays inert if the file ever lands in the upstream repository.
+
+name: Fork CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: fork-ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    # Mirrors upstream npm-test.yml `lint`.
+    if: github.repository == 'jeswr/CommunitySolidServer'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.x
+      - run: npm ci --ignore-scripts
+      - run: npm run lint
+
+  test-unit:
+    # Mirrors upstream npm-test.yml `test-unit` with the full node-version
+    # spread, minus the windows-latest dimension and the Coveralls submission.
+    if: github.repository == 'jeswr/CommunitySolidServer'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version:
+          - '18.0'
+          - 18.x
+          - '20.0'
+          - 20.x
+          - '22.1'
+          - 22.x
+          - '24.0'
+          - 24.x
+    timeout-minutes: 15
+    steps:
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Ensure line endings are consistent
+        run: git config --global core.autocrlf input
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+      - name: Install dependencies and run build scripts
+        run: npm ci
+      - name: Type-check tests
+        run: npm run test:ts
+      - name: Run unit tests
+        run: npm run test:unit
+
+  test-integration:
+    # Mirrors upstream npm-test.yml `test-integration` (full suite, with
+    # external dependencies).
+    if: github.repository == 'jeswr/CommunitySolidServer'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version:
+          - 18.x
+          - 20.x
+          - 22.x
+          - 24.x
+    env:
+      TEST_DOCKER: true
+    services:
+      sparql-endpoint:
+        image: tenforce/virtuoso
+        env:
+          SPARQL_UPDATE: true
+        ports:
+          - 4000:8890
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+    timeout-minutes: 20
+    steps:
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+      - name: Install dependencies and run build scripts
+        run: npm ci
+      - name: Run integration tests
+        run: npm run test:integration
+
+  test-configs:
+    # Mirrors upstream npm-test.yml `test-configs`: server startup with all
+    # configs inside the config/ folder.
+    if: github.repository == 'jeswr/CommunitySolidServer'
+    runs-on: ubuntu-latest
+    services:
+      sparql-endpoint:
+        image: tenforce/virtuoso
+        env:
+          SPARQL_UPDATE: true
+        ports:
+          - 4000:8890
+    steps:
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20.x
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+      - name: Install dependencies and run build scripts
+        run: npm ci
+      - name: Run deploy tests
+        run: npm run test:deploy
+
+  cth-test:
+    # Same as upstream main.yml: run the Conformance Test Harness on PRs
+    # targeting main, advisory only (ignore_failures). Reuses the upstream
+    # reusable workflow directly.
+    if: github.repository == 'jeswr/CommunitySolidServer' && github.event_name == 'pull_request'
+    uses: ./.github/workflows/cth-test.yml
+    with:
+      ignore_failures: true
+      version: 1.1.14 # The latest version that CSS is confirmed to pass
