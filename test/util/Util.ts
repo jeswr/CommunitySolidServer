@@ -161,9 +161,15 @@ export function mockFileSystem(rootFilepath?: string, time?: Date): { data: any 
   }
 
   const mockFs = {
-    createReadStream(path: string): any {
+    createReadStream(path: string, options?: { start?: number; end?: number }): any {
       const { folder, name } = getFolder(path);
-      return Readable.from([ folder[name] ]);
+      const content = folder[name];
+      // Honour the inclusive `{ start, end }` byte range like the real `fs.createReadStream`.
+      if (options && typeof options.start === 'number' && typeof options.end === 'number' &&
+        typeof content === 'string') {
+        return Readable.from([ content.slice(options.start, options.end + 1) ]);
+      }
+      return Readable.from([ content ]);
     },
     createWriteStream(path: string): any {
       const { folder, name } = getFolder(path);
@@ -309,8 +315,8 @@ export function mockFileSystem(rootFilepath?: string, time?: Date): { data: any 
         return false;
       }
     },
-    createReadStream(path: string): any {
-      return mockFs.createReadStream(path);
+    createReadStream(path: string, options?: { start?: number; end?: number }): any {
+      return mockFs.createReadStream(path, options);
     },
     createWriteStream(path: string): any {
       return mockFs.createWriteStream(path);

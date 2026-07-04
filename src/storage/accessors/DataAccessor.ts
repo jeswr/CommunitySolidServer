@@ -5,6 +5,26 @@ import type { ResourceIdentifier } from '../../http/representation/ResourceIdent
 import type { Guarded } from '../../util/GuardedStream';
 
 /**
+ * A resolved, absolute byte range that can be requested from a {@link DataAccessor}.
+ * Both `start` and `end` are inclusive offsets, matching the semantics of
+ * `fs.createReadStream(path, { start, end })` and of the HTTP `Range` header.
+ *
+ * The values are always fully resolved (non-negative, `start <= end`, `end < size`):
+ * any relative/suffix/unsatisfiable range handling is done by the caller,
+ * so implementations only ever receive a concrete, satisfiable window.
+ */
+export interface RangeOptions {
+  /**
+   * The first byte offset to return (inclusive).
+   */
+  start: number;
+  /**
+   * The last byte offset to return (inclusive).
+   */
+  end: number;
+}
+
+/**
  * A DataAccessor is the building block closest to the actual data storage.
  * It should not worry about most Solid logic, most of that will be handled before it is called.
  * There are a few things it still needs to do, and it is very important every implementation does this:
@@ -28,9 +48,18 @@ export interface DataAccessor {
    * Returns a data stream stored for the given identifier.
    * It can be assumed that the incoming identifier will always correspond to a document.
    *
+   * The optional `range` parameter is an additive, backwards-compatible hint:
+   * when provided, an implementation *may* return only the requested inclusive byte window
+   * (e.g. by seeking in the underlying storage) instead of the full stream.
+   * Implementations that support this MUST return exactly the bytes `[range.start, range.end]`.
+   * Implementations that do not support ranged reads MUST ignore the parameter
+   * and return the full stream; the caller then keeps its existing slicing behaviour,
+   * so ignoring the range never changes the response.
+   *
    * @param identifier - Identifier for which the data is requested.
+   * @param range - Optional resolved byte range to return instead of the full stream.
    */
-  getData: (identifier: ResourceIdentifier) => Promise<Guarded<Readable>>;
+  getData: (identifier: ResourceIdentifier, range?: RangeOptions) => Promise<Guarded<Readable>>;
 
   /**
    * Returns the metadata corresponding to the identifier.

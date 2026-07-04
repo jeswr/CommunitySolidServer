@@ -7,9 +7,10 @@ import { BasicRepresentation } from '../http/representation/BasicRepresentation'
 import type { Patch } from '../http/representation/Patch';
 import type { Representation } from '../http/representation/Representation';
 import { RepresentationMetadata } from '../http/representation/RepresentationMetadata';
+import type { RepresentationPreferences } from '../http/representation/RepresentationPreferences';
 import type { ResourceIdentifier } from '../http/representation/ResourceIdentifier';
 import { getLoggerFor } from '../logging/LogUtil';
-import { INTERNAL_QUADS } from '../util/ContentTypes';
+import { APPLICATION_JSON, INTERNAL_QUADS } from '../util/ContentTypes';
 import { BadRequestHttpError } from '../util/errors/BadRequestHttpError';
 import { ConflictHttpError } from '../util/errors/ConflictHttpError';
 import { createErrorMessage } from '../util/errors/ErrorUtil';
@@ -28,7 +29,9 @@ import {
   toCanonicalUriPath,
   trimTrailingSlashes,
 } from '../util/PathUtil';
+import { termToInt } from '../util/QuadUtil';
 import { addResourceMetadata, updateModifiedDate } from '../util/ResourceUtil';
+import { toLiteral } from '../util/TermUtil';
 import {
   AS,
   CONTENT_TYPE_TERM,
@@ -43,8 +46,9 @@ import {
   SOLID_META,
   XSD,
 } from '../util/Vocabularies';
-import type { DataAccessor } from './accessors/DataAccessor';
+import type { DataAccessor, RangeOptions } from './accessors/DataAccessor';
 import type { Conditions } from './conditions/Conditions';
+import { cleanPreferences, getTypeWeight } from './conversion/ConversionUtil';
 import type { ChangeMap, ResourceStore } from './ResourceStore';
 import namedNode = DataFactory.namedNode;
 
@@ -78,17 +82,35 @@ export class DataAccessorBasedStore implements ResourceStore {
   private readonly identifierStrategy: IdentifierStrategy;
   private readonly auxiliaryStrategy: AuxiliaryStrategy;
   private readonly metadataStrategy: AuxiliaryStrategy;
+  private readonly optimizeRange: boolean;
 
+  /**
+   * @param accessor - The accessor used to read/write the data.
+   * @param identifierStrategy - The strategy used to handle identifiers.
+   * @param auxiliaryStrategy - The strategy used to handle auxiliary resources.
+   * @param metadataStrategy - The strategy used to handle metadata resources.
+   * @param optimizeRange - Whether to push satisfiable byte ranges down to `accessor.getData`
+   *   instead of always reading the full stream and slicing it higher up.
+   *   This is only safe when (a) the configured `accessor` honours the `range` argument of `getData`
+   *   (e.g. {@link FileDataAccessor}), and (b) the outgoing conversion applied above this store is a
+   *   pure content-negotiation converter (it returns the stored representation unchanged whenever the
+   *   stored content-type already satisfies the request preferences, as the default `ChainedConverter`
+   *   does). When enabled, a range is only ever pushed down for cases where this store can prove from
+   *   metadata alone that no conversion will happen; every other case falls back to the full read.
+   *   Defaults to `false`, keeping the original behaviour.
+   */
   public constructor(
     accessor: DataAccessor,
     identifierStrategy: IdentifierStrategy,
     auxiliaryStrategy: AuxiliaryStrategy,
     metadataStrategy: AuxiliaryStrategy,
+    optimizeRange = false,
   ) {
     this.accessor = accessor;
     this.identifierStrategy = identifierStrategy;
     this.auxiliaryStrategy = auxiliaryStrategy;
     this.metadataStrategy = metadataStrategy;
+    this.optimizeRange = optimizeRange;
   }
 
   public async hasResource(identifier: ResourceIdentifier): Promise<boolean> {
@@ -107,7 +129,10 @@ export class DataAccessorBasedStore implements ResourceStore {
     }
   }
 
-  public async getRepresentation(identifier: ResourceIdentifier): Promise<Representation> {
+  public async getRepresentation(
+    identifier: ResourceIdentifier,
+    preferences?: RepresentationPreferences,
+  ): Promise<Representation> {
     this.validateIdentifier(identifier);
     let isMetadata = false;
 
@@ -157,10 +182,86 @@ export class DataAccessorBasedStore implements ResourceStore {
     if (isContainer || isMetadata) {
       representation = new BasicRepresentation(data, metadata, INTERNAL_QUADS);
     } else {
-      representation = new BasicRepresentation(await this.accessor.getData(identifier), metadata);
+      // If we can prove from metadata alone that no conversion will happen for this request,
+      // and a satisfiable byte range was requested, read only that window from the accessor.
+      // In every other case we read the full stream and let the higher slicing store handle the range,
+      // keeping the response byte-identical.
+      const range = this.getSeekRange(preferences, metadata);
+      if (range) {
+        metadata.set(SOLID_HTTP.terms.unit, 'bytes');
+        metadata.set(SOLID_HTTP.terms.start, toLiteral(range.start, XSD.terms.integer));
+        metadata.set(SOLID_HTTP.terms.end, toLiteral(range.end, XSD.terms.integer));
+        representation = new BasicRepresentation(await this.accessor.getData(identifier, range), metadata);
+      } else {
+        representation = new BasicRepresentation(await this.accessor.getData(identifier), metadata);
+      }
     }
 
     return representation;
+  }
+
+  /**
+   * Determines whether the given request can be served by pushing a byte range down to the accessor
+   * instead of reading the full stream and slicing it in a higher store (e.g. `BinarySliceResourceStore`).
+   *
+   * Returns the resolved, satisfiable inclusive byte range to request, or `undefined` to fall back
+   * to the full read. It only returns a range when ALL of the following hold, guaranteeing the response
+   * stays byte-identical to the full-read + slice path:
+   *  - Range optimization is enabled for this store (`optimizeRange`).
+   *  - The preferences contain a single `bytes` range with an explicit, non-negative `start` and `end`.
+   *    (Open-ended and suffix ranges are left to the slicing store, so its `defaultSliceSize` and
+   *    suffix handling remain the single source of truth.)
+   *  - No content conversion will happen: the stored content-type already satisfies the request at the
+   *    maximal requested weight, which is exactly the condition under which a `ChainedConverter` returns
+   *    the representation unchanged. `application/json` is excluded because a converter
+   *    (`DynamicJsonToTemplateConverter`) can transform matching JSON ahead of that decision.
+   *  - The range is satisfiable given the known size (`start < end < size`). Unsatisfiable ranges are
+   *    left to the slicing store so it produces the exact same `416` behaviour as before.
+   */
+  private getSeekRange(
+    preferences: RepresentationPreferences | undefined,
+    metadata: RepresentationMetadata,
+  ): RangeOptions | undefined {
+    if (!this.optimizeRange) {
+      return;
+    }
+    const range = preferences?.range;
+    if (!range || range.unit !== 'bytes' || range.parts.length !== 1) {
+      return;
+    }
+    const { start, end } = range.parts[0];
+    // Only explicit `start-end` ranges (both defined, non-negative) are handled here.
+    if (typeof start !== 'number' || typeof end !== 'number' || start < 0) {
+      return;
+    }
+
+    // The stored content-type must already satisfy the request without conversion.
+    const { contentType } = metadata;
+    if (typeof contentType !== 'string' || contentType === APPLICATION_JSON) {
+      return;
+    }
+    let weight: number;
+    let maxWeight: number;
+    try {
+      const cleaned = cleanPreferences(preferences?.type);
+      maxWeight = Math.max(...Object.values(cleaned));
+      weight = getTypeWeight(contentType, cleaned);
+    } catch {
+      // `getTypeWeight` throws on an unexpected media type; fall back to the full read.
+      return;
+    }
+    // Identical to the `ChainedConverter` "no conversion needed" decision:
+    // the stored type is (one of) the best match(es) for the preferences.
+    if (weight <= 0 || weight < maxWeight) {
+      return;
+    }
+
+    // Only push down satisfiable ranges; unsatisfiable ones fall back so the slicing store throws 416.
+    const size = termToInt(metadata.get(POSIX.terms.size));
+    if (typeof size !== 'number' || start >= end || end >= size) {
+      return;
+    }
+    return { start, end };
   }
 
   public async addResource(container: ResourceIdentifier, representation: Representation, conditions?: Conditions):
