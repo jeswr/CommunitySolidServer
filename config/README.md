@@ -127,3 +127,23 @@ A configuration that sets up the server to only function as an Identity Provider
 It does not support creating pods or storing data on the server,
 the only available options are creating accounts and linking them to WebIDs.
 This way the server can be used to identify those WebIDs during an OIDC interaction.
+
+## production-throughput.json
+
+An opt-in, high-throughput variant of `file.json` for single-process deployments.
+It keeps everything that makes `file.json` a persistent, WAC-authorized Solid server,
+and differs in only two additive ways, each with a trade-off:
+
+- **In-memory resource locking** (`util/resource-locker/memory.json` instead of the file-based locker).
+  This removes the per-request lock-file syscalls and on-disk lock polling that the default file locker performs.
+  Because the locks live in this process' memory, the configuration is **single-process**:
+  do not run it with `--workers > 1` and do not point a second process at the same data directory.
+  Your data on disk stays durable; only the locks are no longer shared.
+  For multi-worker or multi-instance setups, keep `util/resource-locker/file.json`,
+  or switch to `util/resource-locker/redis.json` with a shared Redis.
+- **CORS preflight caching** (`Access-Control-Max-Age: 3600`).
+  Browsers may reuse a CORS preflight (`OPTIONS`) result for one hour instead of sending one per request,
+  which reduces preflight round-trips for browser-based Solid apps.
+  This only affects how long a browser caches the preflight; no response body or authorization decision changes.
+
+Use it with `-c config/production-throughput.json`.
