@@ -63,7 +63,24 @@ describe('A HeadOperationHandler', (): void => {
     expect(result.data).toBeUndefined();
     expect(data.destroy).toHaveBeenCalledTimes(1);
     expect(store.getRepresentation).toHaveBeenCalledTimes(1);
-    expect(store.getRepresentation).toHaveBeenLastCalledWith(operation.target, preferences, conditions);
+    // The handler signals that only the metadata is needed so the store can skip fetching the data.
+    expect(store.getRepresentation).toHaveBeenLastCalledWith(
+      operation.target,
+      { ...preferences, metadataOnly: true },
+      conditions,
+    );
+  });
+
+  it('signals that only the metadata is needed without mutating the original preferences.', async(): Promise<void> => {
+    operation.preferences = { type: { 'text/turtle': 1 }};
+    await handler.handle({ operation });
+    expect(store.getRepresentation).toHaveBeenLastCalledWith(
+      operation.target,
+      { type: { 'text/turtle': 1 }, metadataOnly: true },
+      conditions,
+    );
+    // The original operation preferences object is left untouched.
+    expect(operation.preferences).toEqual({ type: { 'text/turtle': 1 }});
   });
 
   it('returns a 304 if the conditions do not match.', async(): Promise<void> => {

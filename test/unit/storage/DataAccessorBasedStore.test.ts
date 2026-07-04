@@ -569,6 +569,128 @@ describe('A DataAccessorBasedStore', (): void => {
     });
   });
 
+  describe('serving a metadata-only request (e.g. HEAD)', (): void => {
+    const resourceID = { path: `${root}resource` };
+    const eTagHandler = new BasicETagHandler();
+    let metadataStore: DataAccessorBasedStore;
+    let getDataSpy: jest.SpyInstance;
+
+    // Stores a document with the given content-type, a size and a fixed modified date, so the metadata
+    // carries every header a HEAD response would (content-type, content-length, ETag, last-modified).
+    function storeResource(contentType = 'text/plain', body = 'data'): void {
+      const metadata = new RepresentationMetadata({ [RDF.type]: namedNode(LDP.Resource) });
+      metadata.identifier = namedNode(resourceID.path);
+      metadata.contentType = contentType;
+      metadata.set(POSIX.terms.size, toLiteral(body.length, XSD.terms.integer));
+      metadata.set(DC.terms.modified, toLiteral(now.toISOString(), XSD.terms.dateTime));
+      accessor.data[resourceID.path] = {
+        binary: true,
+        data: guardedStreamFrom([ body ]),
+        metadata,
+        isEmpty: false,
+      } as Representation;
+    }
+
+    beforeEach((): void => {
+      metadataStore = new DataAccessorBasedStore(
+        accessor,
+        identifierStrategy,
+        auxiliaryStrategy,
+        metadataStrategy,
+        false,
+        undefined,
+        true,
+      );
+      getDataSpy = jest.spyOn(accessor, 'getData');
+    });
+
+    it('skips the data fetch when no conversion is needed and returns empty data.', async(): Promise<void> => {
+      storeResource();
+      const preferences = { type: { 'text/plain': 1 }, metadataOnly: true };
+      const result = await metadataStore.getRepresentation(resourceID, preferences);
+      // The whole point of the optimization: the data was never read.
+      expect(getDataSpy).not.toHaveBeenCalled();
+      // The returned data stream is empty (a HEAD discards it anyway).
+      await expect(readableToString(result.data)).resolves.toBe('');
+      // Every header the HEAD response carries is still present in the metadata.
+      expect(result.metadata.contentType).toBe('text/plain');
+      expect(result.metadata.get(POSIX.terms.size)?.value).toBe('4');
+      expect(result.metadata.get(DC.terms.modified)?.value).toBe(now.toISOString());
+    });
+
+    it('returns metadata byte-identical to the full-read path.', async(): Promise<void> => {
+      storeResource();
+      const preferences = { type: { 'text/plain': 1 }};
+
+      // Full-read path: the default store fetches the data and returns the same metadata a HEAD would keep.
+      const fetched = await store.getRepresentation(resourceID, preferences);
+      fetched.data.destroy();
+      expect(getDataSpy).toHaveBeenCalledTimes(1);
+
+      // Skip path: the metadata-only store short-circuits without fetching the data.
+      const skipped = await metadataStore.getRepresentation(resourceID, { ...preferences, metadataOnly: true });
+      expect(getDataSpy).toHaveBeenCalledTimes(1);
+
+      // The ETag (derived from the metadata) and the full metadata are identical between the two paths.
+      expect(eTagHandler.getETag(skipped.metadata)).toBe(eTagHandler.getETag(fetched.metadata));
+      expect(skipped.metadata.identifier).toEqualRdfTerm(fetched.metadata.identifier);
+      expect(skipped.metadata.quads()).toBeRdfIsomorphic(fetched.metadata.quads());
+    });
+
+    it('skips the data fetch even when no type preferences are given.', async(): Promise<void> => {
+      storeResource();
+      const result = await metadataStore.getRepresentation(resourceID, { metadataOnly: true });
+      expect(getDataSpy).not.toHaveBeenCalled();
+      await expect(readableToString(result.data)).resolves.toBe('');
+    });
+
+    it('does not skip (fetches data) when the request is not metadata-only.', async(): Promise<void> => {
+      storeResource();
+      const result = await metadataStore.getRepresentation(resourceID, { type: { 'text/plain': 1 }});
+      await expect(readableToString(result.data)).resolves.toBe('data');
+      expect(getDataSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not skip (fetches data) when a conversion would happen.', async(): Promise<void> => {
+      storeResource('text/plain');
+      // A different type is requested, so a conversion would occur and could change the response metadata.
+      const result = await metadataStore.getRepresentation(
+        resourceID,
+        { type: { 'text/turtle': 1 }, metadataOnly: true },
+      );
+      await expect(readableToString(result.data)).resolves.toBe('data');
+      expect(getDataSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not skip (fetches data) when a byte range is requested.', async(): Promise<void> => {
+      storeResource();
+      const result = await metadataStore.getRepresentation(
+        resourceID,
+        { type: { 'text/plain': 1 }, metadataOnly: true, range: { unit: 'bytes', parts: [{ start: 0, end: 2 }]}},
+      );
+      await expect(readableToString(result.data)).resolves.toBe('data');
+      expect(getDataSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not skip (fetches data) when the optimization is disabled.', async(): Promise<void> => {
+      storeResource();
+      // The default `store` is constructed without the optimizeMetadataOnly flag.
+      const result = await store.getRepresentation(resourceID, { type: { 'text/plain': 1 }, metadataOnly: true });
+      await expect(readableToString(result.data)).resolves.toBe('data');
+      expect(getDataSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not skip (fetches data) for a container request.', async(): Promise<void> => {
+      // A container falls in the container branch, which always composes its data from the metadata/children.
+      const containerID = { path: `${root}container/` };
+      accessor.data[containerID.path] = { metadata: new RepresentationMetadata(containerID) } as Representation;
+      const result = await metadataStore.getRepresentation(containerID, { metadataOnly: true });
+      expect(result.metadata.contentType).toBe(INTERNAL_QUADS);
+      // The container data (its quads) is still produced, unaffected by the metadata-only hint.
+      await expect(arrayifyStream(result.data)).resolves.not.toHaveLength(0);
+    });
+  });
+
   describe('adding a Resource', (): void => {
     it('will 404 if the identifier does not contain the root.', async(): Promise<void> => {
       await expect(store.addResource({ path: 'verybadpath' }, representation))

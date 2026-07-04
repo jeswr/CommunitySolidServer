@@ -33,4 +33,11 @@ export interface RepresentationPreferences {
   language?: ValuePreferences;
   // `start` can be negative and implies the last X of a stream
   range?: { unit: string; parts: { start: number; end?: number }[] };
+  /**
+   * Indicates the consumer only needs the metadata of the representation and will discard the data
+   * (e.g. a `HEAD` request). This is an optional, backwards-compatible hint: a store that can determine
+   * the full response metadata without reading the data MAY skip fetching it, but any store that cannot
+   * MUST ignore this hint and return the data as usual, keeping the response unchanged.
+   */
+  metadataOnly?: boolean;
 }
