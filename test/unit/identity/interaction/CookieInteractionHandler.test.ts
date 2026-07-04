@@ -72,12 +72,14 @@ describe('A CookieInteractionHandler', (): void => {
     await expect(handler.handle(input)).resolves.toEqual(output);
     expect(source.handle).toHaveBeenCalledTimes(1);
     expect(source.handle).toHaveBeenLastCalledWith(input);
+    // The cookie-to-account mapping is only read once per request:
+    // the account ID is fetched here and reused for the refresh below.
     expect(cookieStore.get).toHaveBeenCalledTimes(1);
     expect(cookieStore.get).toHaveBeenLastCalledWith(cookie);
     expect(accountStore.getSetting).toHaveBeenCalledTimes(1);
     expect(accountStore.getSetting).toHaveBeenLastCalledWith(accountId, ACCOUNT_SETTINGS_REMEMBER_LOGIN);
     expect(cookieStore.refresh).toHaveBeenCalledTimes(1);
-    expect(cookieStore.refresh).toHaveBeenLastCalledWith(cookie);
+    expect(cookieStore.refresh).toHaveBeenLastCalledWith(cookie, accountId);
     expect(output.metadata?.get(SOLID_HTTP.terms.accountCookie)?.value).toBe(cookie);
     expect(output.metadata?.get(SOLID_HTTP.terms.accountCookieExpiration)?.value).toBe(date.toISOString());
   });
@@ -92,7 +94,7 @@ describe('A CookieInteractionHandler', (): void => {
     expect(accountStore.getSetting).toHaveBeenCalledTimes(1);
     expect(accountStore.getSetting).toHaveBeenLastCalledWith(accountId, ACCOUNT_SETTINGS_REMEMBER_LOGIN);
     expect(cookieStore.refresh).toHaveBeenCalledTimes(1);
-    expect(cookieStore.refresh).toHaveBeenLastCalledWith(cookie);
+    expect(cookieStore.refresh).toHaveBeenLastCalledWith(cookie, accountId);
     // Typescript things the typing of this is `never` since we deleted it above
     expect((output.metadata as any).get(SOLID_HTTP.terms.accountCookie)?.value).toBe(cookie);
     expect((output.metadata as any).get(SOLID_HTTP.terms.accountCookieExpiration)?.value).toBe(date.toISOString());
@@ -155,7 +157,7 @@ describe('A CookieInteractionHandler', (): void => {
     expect(accountStore.getSetting).toHaveBeenCalledTimes(1);
     expect(accountStore.getSetting).toHaveBeenLastCalledWith(accountId, ACCOUNT_SETTINGS_REMEMBER_LOGIN);
     expect(cookieStore.refresh).toHaveBeenCalledTimes(1);
-    expect(cookieStore.refresh).toHaveBeenLastCalledWith(cookie);
+    expect(cookieStore.refresh).toHaveBeenLastCalledWith(cookie, accountId);
     expect(output.metadata?.get(SOLID_HTTP.terms.accountCookie)).toBeUndefined();
     expect(output.metadata?.get(SOLID_HTTP.terms.accountCookieExpiration)).toBeUndefined();
   });

@@ -26,10 +26,12 @@ export class BaseCookieStore implements CookieStore {
     return this.storage.get(cookie);
   }
 
-  public async refresh(cookie: string): Promise<Date | undefined> {
-    const accountId = await this.storage.get(cookie);
-    if (accountId) {
-      await this.storage.set(cookie, accountId, this.ttl);
+  public async refresh(cookie: string, accountId?: string): Promise<Date | undefined> {
+    // When the caller already knows the account ID (e.g. it just read it), reuse it
+    // to avoid a redundant storage read; otherwise look up the mapping ourselves.
+    const id = accountId ?? await this.storage.get(cookie);
+    if (id) {
+      await this.storage.set(cookie, id, this.ttl);
       return new Date(Date.now() + this.ttl);
     }
   }
