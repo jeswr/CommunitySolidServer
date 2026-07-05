@@ -40,6 +40,19 @@ export class WrappedExpiringStorage<TKey, TValue> implements ExpiringStorage<TKe
     return Boolean(await this.getUnexpired(key));
   }
 
+  public async getExpiration(key: TKey): Promise<Date | undefined> {
+    const data = await this.source.get(key);
+    if (!data) {
+      return;
+    }
+    const { expires } = this.toData(data);
+    if (this.isExpired(expires)) {
+      // Unlike `get`, this call is strictly read-only and does not delete the expired entry.
+      return;
+    }
+    return expires;
+  }
+
   public async set(key: TKey, value: TValue, expiration?: number): Promise<this>;
   public async set(key: TKey, value: TValue, expires?: Date): Promise<this>;
   public async set(key: TKey, value: TValue, expireValue?: number | Date): Promise<this> {
