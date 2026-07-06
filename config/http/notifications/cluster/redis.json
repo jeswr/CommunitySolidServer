@@ -1,0 +1,51 @@
+{
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "import": [
+    "css:config/http/notifications/base/description.json",
+    "css:config/http/notifications/base/handler.json",
+    "css:config/http/notifications/base/http.json",
+    "css:config/http/notifications/base/storage.json",
+    "css:config/http/notifications/cluster/listener.json",
+    "css:config/http/notifications/cluster/streaming-http.json",
+    "css:config/http/notifications/websockets/handler.json",
+    "css:config/http/notifications/websockets/http.json",
+    "css:config/http/notifications/websockets/subscription.json",
+    "css:config/http/notifications/webhooks/handler.json",
+    "css:config/http/notifications/webhooks/routes.json",
+    "css:config/http/notifications/webhooks/subscription.json"
+  ],
+  "@graph": [
+    {
+      "comment": [
+        "Supports all notification types, wired for cluster deployments, with a Redis pub/sub activity bus.",
+        "Import this file instead of http/notifications/all.json.",
+        "All instances of the cluster need to connect to the same Redis server,",
+        "which can be the one used by the Redis resource locker."
+      ],
+      "@id": "urn:solid-server:default:ClusterActivityBus",
+      "@type": "RedisActivityBus"
+    },
+    {
+      "@id": "urn:solid-server:default:CleanupInitializer",
+      "@type": "SequenceHandler",
+      "handlers": [
+        {
+          "comment": "Makes sure the bus is subscribed to the Redis channel when the application is started.",
+          "@type": "InitializableHandler",
+          "initializable": { "@id": "urn:solid-server:default:ClusterActivityBus" }
+        }
+      ]
+    },
+    {
+      "@id": "urn:solid-server:default:CleanupFinalizer",
+      "@type": "SequenceHandler",
+      "handlers": [
+        {
+          "comment": "Makes sure the Redis connections are closed when the application needs to stop.",
+          "@type": "FinalizableHandler",
+          "finalizable": { "@id": "urn:solid-server:default:ClusterActivityBus" }
+        }
+      ]
+    }
+  ]
+}

@@ -7,6 +7,8 @@ const portNames = [
   // Integration
   'Accounts',
   'AcpServer',
+  'ClusterNotifications',
+  'ClusterNotifications-client',
   'Conditions',
   'ContentNegotiation',
   'DynamicPods',

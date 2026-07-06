@@ -1,0 +1,29 @@
+{
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "import": [
+    "css:config/http/notifications/base/description.json",
+    "css:config/http/notifications/base/handler.json",
+    "css:config/http/notifications/base/http.json",
+    "css:config/http/notifications/base/storage.json",
+    "css:config/http/notifications/cluster/listener.json",
+    "css:config/http/notifications/cluster/streaming-http.json",
+    "css:config/http/notifications/websockets/handler.json",
+    "css:config/http/notifications/websockets/http.json",
+    "css:config/http/notifications/websockets/subscription.json",
+    "css:config/http/notifications/webhooks/handler.json",
+    "css:config/http/notifications/webhooks/routes.json",
+    "css:config/http/notifications/webhooks/subscription.json"
+  ],
+  "@graph": [
+    {
+      "comment": [
+        "Supports all notification types, wired for cluster deployments, with an in-memory activity bus.",
+        "Import this file instead of http/notifications/all.json.",
+        "The in-memory bus only reaches the process it runs in, so this configuration behaves like the default one.",
+        "It is mainly useful for testing the cluster wiring, and as a template for other bus implementations."
+      ],
+      "@id": "urn:solid-server:default:ClusterActivityBus",
+      "@type": "InMemoryActivityBus"
+    }
+  ]
+}

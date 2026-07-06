@@ -5,6 +5,7 @@ import { createErrorMessage } from '../../util/errors/ErrorUtil';
 import { StaticHandler } from '../../util/handlers/StaticHandler';
 import type { AS, VocabularyTerm } from '../../util/Vocabularies';
 import type { ActivityEmitter } from './ActivityEmitter';
+import type { NotificationChannel } from './NotificationChannel';
 import type { NotificationChannelStorage } from './NotificationChannelStorage';
 import type { NotificationHandler } from './NotificationHandler';
 
@@ -13,6 +14,10 @@ import type { NotificationHandler } from './NotificationHandler';
  * for every matching notification channel found.
  *
  * Takes the `rate` feature into account so only channels that want a new notification will receive one.
+ *
+ * Subclasses dedicated to a single channel type can override `supports`
+ * to filter out the channels that should be handled by a different instance of this class,
+ * and `emit` to skip work entirely when no matching channel can exist.
  *
  * Extends {@link StaticHandler} so it can be more easily injected into a Components.js configuration.
  * No class takes this one as input, so to make sure Components.js instantiates it,
@@ -36,7 +41,7 @@ export class ListeningActivityHandler extends StaticHandler {
     });
   }
 
-  private async emit(
+  protected async emit(
     topic: ResourceIdentifier,
     activity: VocabularyTerm<typeof AS>,
     metadata: RepresentationMetadata,
@@ -47,6 +52,11 @@ export class ListeningActivityHandler extends StaticHandler {
       const channel = await this.storage.get(id);
       if (!channel) {
         // Notification channel has expired
+        continue;
+      }
+
+      // Don't emit if a different handler is responsible for this channel
+      if (!this.supports(channel)) {
         continue;
       }
 
@@ -74,5 +84,17 @@ export class ListeningActivityHandler extends StaticHandler {
           this.logger.error(`Error trying to handle notification for ${id}: ${createErrorMessage(error)}`);
         });
     }
+  }
+
+  /**
+   * Whether this handler is responsible for the given channel.
+   *
+   * The base implementation supports every channel.
+   * Subclasses dedicated to a single channel type should override this,
+   * so channels of other types are left, without error, to the handler dedicated to them.
+   */
+  // eslint-disable-next-line unused-imports/no-unused-vars
+  protected supports(channel: NotificationChannel): boolean {
+    return true;
   }
 }
