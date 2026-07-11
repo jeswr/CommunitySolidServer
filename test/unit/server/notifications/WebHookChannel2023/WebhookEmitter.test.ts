@@ -159,10 +159,8 @@ describe('A WebhookEmitter', (): void => {
     await expect(emitter.handle({ channel, representation })).resolves.toBeUndefined();
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    // The expensive key import and thumbprint calculation only happen for the first emission.
     expect(importSpy).toHaveBeenCalledTimes(1);
     expect(thumbprintSpy).toHaveBeenCalledTimes(1);
-    // The generator keys are also only read while populating the cache.
     expect(jwkGenerator.getPrivateKey).toHaveBeenCalledTimes(1);
     expect(jwkGenerator.getPublicKey).toHaveBeenCalledTimes(1);
 

@@ -15,17 +15,11 @@ import { isWebhook2023Channel } from './WebhookChannel2023Type';
 
 /**
  * The cryptographic material needed to sign the DPoP token and proof of a webhook notification.
- * All values are derived from the {@link JwkGenerator} keys, which never change,
- * so they can be computed once and reused for every emission.
  */
 interface WebhookSigningMaterial {
-  /** The signing algorithm, taken from the private JWK. */
   alg: AlgJwk['alg'];
-  /** The public JWK, embedded in the DPoP proof header. */
   publicKey: AlgJwk;
-  /** The imported private key used to sign the DPoP token and proof. */
   privateKeyObject: KeyLike | Uint8Array;
-  /** The `sha256` thumbprint of the public JWK. */
   thumbprint: string;
 }
 
@@ -48,10 +42,6 @@ export class WebhookEmitter extends NotificationEmitter {
   private readonly jwkGenerator: JwkGenerator;
   private readonly expiration: number;
 
-  /**
-   * Caches the imported signing key and its thumbprint after the first emission.
-   * The {@link JwkGenerator} keys never change, so this only needs to be computed once.
-   */
   private signingMaterial?: WebhookSigningMaterial;
 
   public constructor(baseUrl: string, webIdRoute: InteractionRoute, jwkGenerator: JwkGenerator, expiration = 20) {
@@ -63,13 +53,8 @@ export class WebhookEmitter extends NotificationEmitter {
   }
 
   /**
-   * Imports the signing key and calculates its thumbprint, caching the result after the first call.
-   *
-   * The {@link JwkGenerator} contract guarantees its keys never change,
-   * so the (relatively expensive) `importJWK` and `calculateJwkThumbprint` calls
-   * only need to happen once instead of on every notification emission.
-   * The cached key is functionally identical to a freshly imported one,
-   * so the generated tokens, proofs and signatures are unchanged.
+   * Imports the signing key and calculates its thumbprint.
+   * The {@link JwkGenerator} keys never change, so the result is cached after the first call.
    */
   private async getSigningMaterial(): Promise<WebhookSigningMaterial> {
     if (!this.signingMaterial) {
