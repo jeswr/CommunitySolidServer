@@ -9,11 +9,8 @@ export class StaticThrowHandler extends AsyncHandler<unknown, never> {
 
   public constructor(error: HttpError) {
     super();
-    // Only the error's class is retained, never the provided instance.
-    // `handle` always throws a fresh instance, so the instance itself is unused after construction.
-    // Retaining it would also retain its lazily-formatted V8 stack trace; as this handler is
-    // instantiated by Components.js, that stack captures the configuration-construction call frames
-    // and would keep the entire parsed configuration object graph alive for the server's lifetime.
+    // Keeping the instance would retain its captured stack trace,
+    // which pins the entire Components.js configuration graph that constructed this handler.
     this.errorClass = error.constructor as HttpErrorClass;
   }
 
