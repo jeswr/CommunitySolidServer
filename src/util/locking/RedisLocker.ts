@@ -45,16 +45,10 @@ export interface RedisSettings {
    */
   ttl?: number;
   /**
-   * Whether to delete every lock in this namespace when the locker starts (see {@link RedisLocker.initialize}).
-   *
-   * This is only safe when a single instance exclusively owns the Redis namespace: it lets that
-   * instance recover from locks left behind by a previous crashed run. When multiple instances share
-   * a namespace (the setup required for HA coordination) a restarting instance cannot tell its own
-   * stale locks from the live locks of its peers, so wiping the namespace on boot would corrupt peers
-   * that still hold those locks. Because a crashed holder's lock now auto-expires through its TTL lease
-   * (see {@link RedisSettings.ttl}), boot-time clearing is no longer needed for correctness, so this
-   * defaults to `false` (multi-instance-safe). Set it to `true` for a single-instance deployment that
-   * prefers stale locks cleared immediately on boot rather than waiting for the TTL to elapse.
+   * Whether to delete every lock in this namespace when the locker starts.
+   * Only safe when a single instance exclusively owns the namespace: instances sharing a namespace
+   * cannot tell their own stale locks from the live locks of their peers.
+   * Defaults to `false`; a crashed holder's locks expire through their TTL instead.
    */
   clearLocksOnStart?: boolean;
 }
@@ -118,7 +112,6 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
     this.attemptSettings = { ...attemptDefaults, ...attemptSettings };
     this.namespacePrefix = namespacePrefix!;
     this.ttl = ttl ?? DEFAULT_TTL;
-    // Default to NOT wiping the namespace on boot so peers sharing it (HA) are never disturbed.
     this.clearLocksOnStart = clearLocksOnStart ?? false;
     // Renew at half the TTL so a live holder refreshes its lock long before it could expire.
     this.renewalInterval = Math.max(1, Math.floor(this.ttl / 2));
@@ -317,15 +310,10 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
 
   public async initialize(): Promise<void> {
     if (!this.clearLocksOnStart) {
-      // Multiple instances may share this namespace to coordinate (HA). This instance cannot tell its
-      // own stale locks from the live locks of its peers, so it must NOT wipe the namespace on boot:
-      // deleting a peer's held lock would open a corruption window. A crashed holder's lock instead
-      // self-heals via its TTL lease. Single-instance deployments can opt back in via `clearLocksOnStart`.
       this.logger.debug('Skipping boot-time lock cleanup; relying on lock TTLs (clearLocksOnStart is disabled).');
       return;
     }
-    // On server start (single-instance only): remove all existing (dangling) locks left behind by a
-    // previous crashed run, so new requests are not blocked while waiting for those locks' TTLs.
+    // On server start: remove all existing (dangling) locks, so new requests are not blocked.
     return this.clearLocks();
   }
 
