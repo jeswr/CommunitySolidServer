@@ -3,12 +3,10 @@
   "@graph": [
     {
       "comment": [
-        "USAGE: import this ADDITIONALLY, after a config that already provides the identity handler (e.g. @css:config/file.json) \u2014 do NOT also rely on this file to declare the base provider factory. It only contributes the Override; the base IdentityProviderFactory must be declared by your main config (importing it twice causes a Components.js 'multiple values' error).",
-        "OPT-IN HARDENING. Importing this file does NOT change any default: it overrides the OIDC provider config of the already-declared IdentityProviderFactory so that dynamic client registration (RFC 7591, POST /.oidc/reg) requires a valid initial access token as a bearer token.",
-        "WHY: with the default (open) registration anyone can POST /.oidc/reg and persist a client unauthenticated, which is a storage-growth spam vector.",
-        "TRADE-OFF: many Solid apps register dynamically, so requiring a token (or disabling registration) can break clients that rely on open dynamic registration. Only import this if you understand your client population and have a way to hand out initial access tokens. This is why the server keeps open registration as the default and this restriction is opt-in.",
-        "TO FULLY DISABLE INSTEAD: in the copied `config` below, replace `\"registration\": { \"enabled\": true, \"initialAccessToken\": true }` with `\"registration\": { \"enabled\": false }` (more disruptive; the endpoint returns 404).",
-        "MAINTENANCE: an Override replaces the whole `config` object, so this block is a copy of provider-factory.json's `config` with ONLY `features.registration.initialAccessToken` added. Keep every other value in sync with provider-factory.json."
+        "Overrides the OIDC provider configuration so that dynamic client registration (POST /.oidc/reg) requires a valid initial access token.",
+        "Import this in addition to a configuration that already declares the IdentityProviderFactory, such as one of the default server configurations.",
+        "Many Solid apps rely on open dynamic registration, so see the identity-provider documentation for the trade-offs and alternatives.",
+        "The config below is a copy of the one in provider-factory.json with only the registration feature changed; keep the other values in sync with that file."
       ],
       "@type": "Override",
       "overrideInstance": {

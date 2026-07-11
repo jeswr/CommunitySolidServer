@@ -1,12 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { getPresetConfigPath } from '../../../integration/Config';
 
-/**
- * These tests guard the opt-in registration-hardening config against drift.
- * The default provider factory config MUST keep dynamic client registration open,
- * and the opt-in overlay MUST differ from it in exactly one way: requiring an initial access token.
- */
-
 interface ProviderConfig {
   features: { registration: Record<string, unknown> };
   [key: string]: unknown;
@@ -31,7 +25,6 @@ describe('The restricted registration provider factory config', (): void => {
   });
 
   it('keeps registration open by default.', (): void => {
-    // This is the Solid client contract that must never change: registration enabled and unrestricted.
     expect(defaultProviderConfig.features.registration).toEqual({ enabled: true });
   });
 
@@ -40,8 +33,7 @@ describe('The restricted registration provider factory config', (): void => {
   });
 
   it('changes nothing else about the provider configuration.', (): void => {
-    // Everything apart from the registration feature must stay identical to the shipped default,
-    // so enabling the hardening never silently diverges from the other default OIDC settings.
+    // Neutralize the one intended difference, then require deep equality with the default.
     const restrictedWithoutRegistration = structuredClone(restrictedProviderConfig);
     restrictedWithoutRegistration.features.registration = defaultProviderConfig.features.registration;
     expect(restrictedWithoutRegistration).toEqual(defaultProviderConfig);
