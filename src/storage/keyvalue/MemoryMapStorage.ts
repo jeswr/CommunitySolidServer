@@ -3,10 +3,6 @@ import type { KeyValueStorage } from './KeyValueStorage';
 
 /**
  * A {@link KeyValueStorage} which uses a JavaScript Map for internal storage.
- *
- * The Map is kept in the memory of a single process, so this storage is not threadsafe:
- * in a multithreaded setup every worker would have its own copy and their state would diverge.
- * It is therefore marked as {@link SingleThreaded}.
  */
 export class MemoryMapStorage<TValue> implements KeyValueStorage<string, TValue>, SingleThreaded {
   private readonly data: Map<string, TValue>;
