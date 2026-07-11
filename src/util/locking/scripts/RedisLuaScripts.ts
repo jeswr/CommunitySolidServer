@@ -17,8 +17,7 @@ export const REDIS_LUA_SCRIPTS = {
       return 0
     end
 
-    -- Increment the read counter and (re)set its TTL (in ms, ARGV[1]) atomically, so a crashed
-    -- reader can never keep the counter alive (and thus deadlock writers) forever.
+    -- Increment the read counter and (re)set its TTL (in ms, ARGV[1]) atomically
     local countKey = KEYS[1].."${SUFFIX_COUNT}"
     local count = redis.call("incr", countKey)
     redis.call("pexpire", countKey, ARGV[1])
@@ -33,8 +32,7 @@ export const REDIS_LUA_SCRIPTS = {
       return 0
     end
 
-    -- Set the write lock together with a TTL (in ms, ARGV[1]) and respond with 'OK' if succeeded
-    -- (otherwise null). The TTL ensures a crashed holder's lock auto-releases instead of deadlocking peers.
+    -- Set the lock with a TTL (in ms, ARGV[1]) and respond with 'OK' if succeeded (otherwise null)
     return redis.call("set", lockKey, "${LOCKED}", "PX", ARGV[1]);
     `,
   releaseReadLock: `
@@ -58,14 +56,12 @@ export const REDIS_LUA_SCRIPTS = {
       end
     `,
   renewReadLock: `
-      -- Refresh the read counter TTL (in ms, ARGV[1]) while at least one reader legitimately holds
-      -- the lock, so the counter never expires mid-operation and lets a writer in.
+      -- Refresh the read counter TTL (in ms, ARGV[1])
       local countKey = KEYS[1].."${SUFFIX_COUNT}"
       return redis.call("pexpire", countKey, ARGV[1])
       `,
   renewWriteLock: `
-      -- Refresh the write lock TTL (in ms, ARGV[1]) while it is legitimately held, so a long-running
-      -- operation never loses its lock.
+      -- Refresh the write lock TTL (in ms, ARGV[1])
       local lockKey = KEYS[1].."${SUFFIX_WLOCK}"
       return redis.call("pexpire", lockKey, ARGV[1])
       `,
@@ -76,8 +72,7 @@ export const REDIS_LUA_SCRIPTS = {
         return 0
       end
 
-      -- Set the lock with a TTL (in ms, ARGV[1]) and return 'OK' if succeeded. The TTL ensures a
-      -- crashed holder's lock auto-releases instead of deadlocking peers.
+      -- Set the lock with a TTL (in ms, ARGV[1]) and return 'OK' if succeeded (otherwise null)
       return redis.call("set", key, "${LOCKED}", "PX", ARGV[1]);
       `,
   releaseLock: `
@@ -91,7 +86,7 @@ export const REDIS_LUA_SCRIPTS = {
       end
     `,
   renewLock: `
-      -- Refresh the lock TTL (in ms, ARGV[1]) while it is legitimately held.
+      -- Refresh the lock TTL (in ms, ARGV[1])
       local key = KEYS[1].."${SUFFIX_LOCK}"
       return redis.call("pexpire", key, ARGV[1])
       `,
@@ -133,9 +128,7 @@ export interface RedisReadWriteLock extends Redis {
   /**
    * Try to acquire a readLock on `resourceIdentifierPath`.
    * Will succeed if there are no write locks.
-   *
-   * @param resourceIdentifierPath - The key to lock.
-   * @param ttl - Time-to-live (in ms) set on the read counter, so a crashed reader auto-releases.
+   * The corresponding read counter expires after `ttl` ms unless renewed.
    *
    * @returns 1 if succeeded. 0 if not possible.
    */
@@ -144,29 +137,21 @@ export interface RedisReadWriteLock extends Redis {
   /**
    * Try to acquire a writeLock on `resourceIdentifierPath`.
    * Only works if no other write lock is present and the read counter is 0.
-   *
-   * @param resourceIdentifierPath - The key to lock.
-   * @param ttl - Time-to-live (in ms) set on the write lock, so a crashed holder auto-releases.
+   * The lock expires after `ttl` ms unless renewed.
    *
    * @returns 'OK' if succeeded, 0 if not possible.
    */
   acquireWriteLock: (resourceIdentifierPath: string, ttl: number, callback?: Callback<string>) => Promise<RedisAnswer>;
 
   /**
-   * Refresh the TTL of the read counter while the lock is legitimately held (a lease renewal).
-   *
-   * @param resourceIdentifierPath - The key whose read counter TTL should be refreshed.
-   * @param ttl - Time-to-live (in ms) to (re)set on the read counter.
+   * Refresh the TTL (in ms) of the read counter of `resourceIdentifierPath`.
    *
    * @returns 1 if the TTL was refreshed, 0 if the counter no longer exists.
    */
   renewReadLock: (resourceIdentifierPath: string, ttl: number, callback?: Callback<number>) => Promise<RedisAnswer>;
 
   /**
-   * Refresh the TTL of the write lock while it is legitimately held (a lease renewal).
-   *
-   * @param resourceIdentifierPath - The key whose write lock TTL should be refreshed.
-   * @param ttl - Time-to-live (in ms) to (re)set on the write lock.
+   * Refresh the TTL (in ms) of the write lock on `resourceIdentifierPath`.
    *
    * @returns 1 if the TTL was refreshed, 0 if the lock no longer exists.
    */
@@ -191,19 +176,14 @@ export interface RedisResourceLock extends Redis {
   /**
    * Try to acquire a lock  on `resourceIdentifierPath`.
    * Only works if no other lock is present.
-   *
-   * @param resourceIdentifierPath - The key to lock.
-   * @param ttl - Time-to-live (in ms) set on the lock, so a crashed holder auto-releases.
+   * The lock expires after `ttl` ms unless renewed.
    *
    * @returns 'OK' if succeeded, 0 if not possible.
    */
   acquireLock: (resourceIdentifierPath: string, ttl: number, callback?: Callback<string>) => Promise<RedisAnswer>;
 
   /**
-   * Refresh the TTL of the lock while it is legitimately held (a lease renewal).
-   *
-   * @param resourceIdentifierPath - The key whose lock TTL should be refreshed.
-   * @param ttl - Time-to-live (in ms) to (re)set on the lock.
+   * Refresh the TTL (in ms) of the lock on `resourceIdentifierPath`.
    *
    * @returns 1 if the TTL was refreshed, 0 if the lock no longer exists.
    */

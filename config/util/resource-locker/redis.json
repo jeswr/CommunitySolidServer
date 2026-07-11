@@ -16,7 +16,7 @@
       "@type": "SequenceHandler",
       "handlers": [
         {
-          "comment": "Lets the RedisLocker run its boot-time hook. By default it keeps existing locks so instances sharing a namespace (HA) are not disturbed; set the locker's clearLocksOnStart to true for a single instance that should wipe stale locks on boot.",
+          "comment": "Runs the boot-time initialization of the RedisLocker, which only clears existing locks when clearLocksOnStart is enabled.",
           "@type": "InitializableHandler",
           "initializable": { "@id": "urn:solid-server:default:RedisLocker" }
         }
@@ -27,7 +27,7 @@
       "@type": "SequenceHandler",
       "handlers": [
         {
-          "comment": "Makes sure the redis connection is closed when the application needs to stop. Also deletes still-existing locks and counters.",
+          "comment": "Makes sure the redis connection is closed when the application needs to stop. Also deletes still-existing locks and counters when clearLocksOnStart is enabled.",
           "@type": "FinalizableHandler",
           "finalizable": { "@id": "urn:solid-server:default:RedisLocker" }
         }
