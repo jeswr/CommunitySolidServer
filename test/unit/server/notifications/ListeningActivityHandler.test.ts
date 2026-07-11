@@ -140,8 +140,6 @@ describe('A ListeningActivityHandler', (): void => {
     expect(logger.error).toHaveBeenCalledTimes(0);
   });
 
-  // Real timers/context are required here: the fan-out is detached from the writer's request context
-  // using `AsyncLocalStorage.exit`, which fake timers would not preserve across async boundaries.
   it('handles the notification fan-out without the writer request identifier.', async(): Promise<void> => {
     let handlerRequestId: string | undefined = 'unset';
     notificationHandler.handleSafe.mockImplementation(async(): Promise<void> => {
@@ -158,7 +156,6 @@ describe('A ListeningActivityHandler', (): void => {
 
     expect(writerRequestId).toEqual(expect.any(String));
     expect(notificationHandler.handleSafe).toHaveBeenCalledTimes(1);
-    // The fan-out callback must not inherit the writer's request identifier.
     expect(handlerRequestId).toBeUndefined();
     expect(handlerRequestId).not.toBe(writerRequestId);
   });

@@ -30,8 +30,6 @@ export class WebSocketServerConfigurator extends ServerConfigurator {
     server.on('upgrade', (upgradeRequest: IncomingMessage, socket: Socket, head: Buffer): void => {
       // eslint-disable-next-line @typescript-eslint/no-misused-promises
       webSocketServer.handleUpgrade(upgradeRequest, socket, head, async(webSocket: WebSocket): Promise<void> =>
-        // Handle every connection within its own logging context that has a unique request identifier,
-        // so all log messages emitted while setting up and handling this connection can be correlated.
         runWithRequestId(async(): Promise<void> => {
           try {
             await this.handler.handleSafe({ upgradeRequest: guardStream(upgradeRequest), webSocket });
