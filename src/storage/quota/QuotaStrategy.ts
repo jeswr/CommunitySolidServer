@@ -86,13 +86,8 @@ export abstract class QuotaStrategy {
     let total = 0;
     const { reporter } = this;
 
-    // The available space is computed a single time, before any chunk is streamed, instead of
-    // for every chunk. The space occupied by everything other than the resource being written
-    // does not change while a single write is streaming, so it can be captured once and reused.
-    // Re-walking the filesystem (getTotalSpaceUsed) for every chunk turned each write into an
-    // O(chunks * storage size) operation and was a denial-of-service lever when quota is enabled.
-    // The rejection point is unchanged: a write is refused as soon as its cumulative byte count
-    // exceeds the space that was available before the write started.
+    // The space used by everything except the resource being written does not change during the write,
+    // so the available space can be determined once for the entire stream.
     const availableSpace = await this.getAvailableSpace(identifier);
 
     return guardStream(new PassThrough({

@@ -97,8 +97,6 @@ describe('A QuotaStrategy', (): void => {
       // Fully consume the stream so every chunk passes through the guard.
       await expect(readableToString(piped)).resolves.toBe(chunk.repeat(5));
 
-      // Regression guard for the per-chunk directory walk: the expensive available-space
-      // computation must happen exactly once per write, not once per chunk.
       expect(availableSpaceSpy).toHaveBeenCalledTimes(1);
       expect(mockReporter.calculateChunkSize).toHaveBeenCalledTimes(5);
     });
