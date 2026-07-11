@@ -48,7 +48,7 @@ The risk becomes relevant when the in-memory locker is combined with a **persist
 * **A warning is logged.**
   In addition, the `MemoryResourceLocker` logs a `warn`-level message at startup when it detects it is
   being constructed in multithreaded/clustered mode, pointing you at a shared locker.
-  A normal single-instance, single-worker deployment sees no warning and no change in behaviour.
+  A single-instance, single-worker deployment sees no warning.
 
 !!! warning "Multiple instances cannot be detected automatically"
     The checks above catch the multi-*worker* case within one process. They cannot detect that you

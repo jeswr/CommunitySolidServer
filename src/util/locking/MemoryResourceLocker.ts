@@ -12,11 +12,8 @@ import type { ResourceLocker } from './ResourceLocker';
  * in a memory leak if locks are never unlocked, so make sure this is covered with expiring locks for example,
  * and/or proper `finally` handles.
  *
- * As the name indicates, all locks are only kept in the memory of a single process.
- * They are therefore not shared across workers or server instances,
- * so this locker is only safe to use in a single-process, single-instance deployment.
- * Use a shared locker (such as the Redis locker) when running with multiple workers,
- * in clustered mode, or with multiple server instances on shared storage.
+ * Locks are not shared between processes, so this locker can not be used
+ * when multiple server instances run on the same storage.
  */
 export class MemoryResourceLocker implements ResourceLocker, SingleThreaded {
   protected readonly logger = getLoggerFor(this);
@@ -25,8 +22,7 @@ export class MemoryResourceLocker implements ResourceLocker, SingleThreaded {
   private readonly unlockCallbacks: Record<string, () => void>;
 
   /**
-   * @param clusterManager - When provided, a warning is logged if the server is not running in
-   *                         singlethreaded mode, since in-memory locks are not shared across workers.
+   * @param clusterManager - Used to warn when the server is not running in singlethreaded mode.
    */
   public constructor(clusterManager?: ClusterManager) {
     this.locker = new AsyncLock();
