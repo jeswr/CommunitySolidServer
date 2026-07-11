@@ -18,6 +18,7 @@ import { ForbiddenHttpError } from '../util/errors/ForbiddenHttpError';
 import { MethodNotAllowedHttpError } from '../util/errors/MethodNotAllowedHttpError';
 import { NotFoundHttpError } from '../util/errors/NotFoundHttpError';
 import { NotImplementedHttpError } from '../util/errors/NotImplementedHttpError';
+import type { NotModifiedHttpError } from '../util/errors/NotModifiedHttpError';
 import { PreconditionFailedHttpError } from '../util/errors/PreconditionFailedHttpError';
 import type { IdentifierStrategy } from '../util/identifiers/IdentifierStrategy';
 import { concat } from '../util/IterableUtil';
@@ -30,7 +31,7 @@ import {
   trimTrailingSlashes,
 } from '../util/PathUtil';
 import { termToInt } from '../util/QuadUtil';
-import { addResourceMetadata, updateModifiedDate } from '../util/ResourceUtil';
+import { addResourceMetadata, getConditionalNotModifiedError, updateModifiedDate } from '../util/ResourceUtil';
 import { toLiteral } from '../util/TermUtil';
 import {
   AS,
@@ -48,6 +49,7 @@ import {
 } from '../util/Vocabularies';
 import type { DataAccessor, RangeOptions } from './accessors/DataAccessor';
 import type { Conditions } from './conditions/Conditions';
+import type { ETagHandler } from './conditions/ETagHandler';
 import { cleanPreferences, getTypeWeight } from './conversion/ConversionUtil';
 import type { ChangeMap, ResourceStore } from './ResourceStore';
 import namedNode = DataFactory.namedNode;
@@ -83,6 +85,7 @@ export class DataAccessorBasedStore implements ResourceStore {
   private readonly auxiliaryStrategy: AuxiliaryStrategy;
   private readonly metadataStrategy: AuxiliaryStrategy;
   private readonly optimizeRange: boolean;
+  private readonly eTagHandler?: ETagHandler;
 
   /**
    * @param accessor - The accessor used to read/write the data.
@@ -98,6 +101,10 @@ export class DataAccessorBasedStore implements ResourceStore {
    *   does). When enabled, a range is only ever pushed down for cases where this store can prove from
    *   metadata alone that no conversion will happen; every other case falls back to the full read.
    *   Defaults to `false`, keeping the original behaviour.
+   * @param eTagHandler - Enables answering conditional requests that resolve to "304 Not Modified"
+   *   from metadata alone, skipping the `accessor.getData` call.
+   *   Requirement (b) above applies. When omitted, such requests are not short-circuited,
+   *   keeping the original behaviour.
    */
   public constructor(
     accessor: DataAccessor,
@@ -105,12 +112,14 @@ export class DataAccessorBasedStore implements ResourceStore {
     auxiliaryStrategy: AuxiliaryStrategy,
     metadataStrategy: AuxiliaryStrategy,
     optimizeRange = false,
+    eTagHandler?: ETagHandler,
   ) {
     this.accessor = accessor;
     this.identifierStrategy = identifierStrategy;
     this.auxiliaryStrategy = auxiliaryStrategy;
     this.metadataStrategy = metadataStrategy;
     this.optimizeRange = optimizeRange;
+    this.eTagHandler = eTagHandler;
   }
 
   public async hasResource(identifier: ResourceIdentifier): Promise<boolean> {
@@ -132,6 +141,7 @@ export class DataAccessorBasedStore implements ResourceStore {
   public async getRepresentation(
     identifier: ResourceIdentifier,
     preferences?: RepresentationPreferences,
+    conditions?: Conditions,
   ): Promise<Representation> {
     this.validateIdentifier(identifier);
     let isMetadata = false;
@@ -182,6 +192,12 @@ export class DataAccessorBasedStore implements ResourceStore {
     if (isContainer || isMetadata) {
       representation = new BasicRepresentation(data, metadata, INTERNAL_QUADS);
     } else {
+      // Answer a conditional request from metadata alone when it provably resolves to a 304 without conversion.
+      const notModified = this.getConditionalNotModified(preferences, metadata, conditions);
+      if (notModified) {
+        throw notModified;
+      }
+
       // If we can prove from metadata alone that no conversion will happen for this request,
       // and a satisfiable byte range was requested, read only that window from the accessor.
       // In every other case we read the full stream and let the higher slicing store handle the range,
@@ -236,23 +252,7 @@ export class DataAccessorBasedStore implements ResourceStore {
     }
 
     // The stored content-type must already satisfy the request without conversion.
-    const { contentType } = metadata;
-    if (typeof contentType !== 'string' || contentType === APPLICATION_JSON) {
-      return;
-    }
-    let weight: number;
-    let maxWeight: number;
-    try {
-      const cleaned = cleanPreferences(preferences?.type);
-      maxWeight = Math.max(...Object.values(cleaned));
-      weight = getTypeWeight(contentType, cleaned);
-    } catch {
-      // `getTypeWeight` throws on an unexpected media type; fall back to the full read.
-      return;
-    }
-    // Identical to the `ChainedConverter` "no conversion needed" decision:
-    // the stored type is (one of) the best match(es) for the preferences.
-    if (weight <= 0 || weight < maxWeight) {
+    if (!this.servedWithoutConversion(preferences, metadata)) {
       return;
     }
 
@@ -262,6 +262,58 @@ export class DataAccessorBasedStore implements ResourceStore {
       return;
     }
     return { start, end };
+  }
+
+  /**
+   * Determines whether a conditional request resolves to "304 Not Modified" using only the metadata
+   * that was already read, so the `accessor.getData` call can be skipped.
+   * The 304 is only generated when no conversion will happen and no range was requested,
+   * since only then does that metadata fully determine the ETag and the response headers;
+   * every other case returns `undefined` so the normal read and condition check happen.
+   */
+  private getConditionalNotModified(
+    preferences: RepresentationPreferences | undefined,
+    metadata: RepresentationMetadata,
+    conditions?: Conditions,
+  ): NotModifiedHttpError | undefined {
+    if (!this.eTagHandler || !conditions) {
+      return;
+    }
+    // Ranged requests are left to the full read, which adds the Content-Range metadata to the response.
+    if (typeof preferences?.range !== 'undefined') {
+      return;
+    }
+    if (!this.servedWithoutConversion(preferences, metadata)) {
+      return;
+    }
+    return getConditionalNotModifiedError(metadata, this.eTagHandler, conditions);
+  }
+
+  /**
+   * Determines from metadata alone whether the given request will be served without content conversion,
+   * so the served content-type equals the stored one.
+   * `application/json` is excluded because a converter (`DynamicJsonToTemplateConverter`) can transform
+   * matching JSON ahead of that decision.
+   */
+  private servedWithoutConversion(
+    preferences: RepresentationPreferences | undefined,
+    metadata: RepresentationMetadata,
+  ): boolean {
+    const { contentType } = metadata;
+    if (typeof contentType !== 'string' || contentType === APPLICATION_JSON) {
+      return false;
+    }
+    try {
+      const cleaned = cleanPreferences(preferences?.type);
+      const maxWeight = Math.max(...Object.values(cleaned));
+      const weight = getTypeWeight(contentType, cleaned);
+      // Identical to the `ChainedConverter` "no conversion needed" decision:
+      // the stored type is (one of) the best match(es) for the preferences.
+      return weight > 0 && weight >= maxWeight;
+    } catch {
+      // `getTypeWeight` throws on an unexpected media type; treat it as "a conversion might happen".
+      return false;
+    }
   }
 
   public async addResource(container: ResourceIdentifier, representation: Representation, conditions?: Conditions):

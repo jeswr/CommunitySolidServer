@@ -219,6 +219,43 @@ describe.each(stores)('A server supporting conditions with %s', (name, { storeCo
     expect(response.status).toBe(200);
   });
 
+  it('returns a byte-identical 304 for a non-converted document.', async(): Promise<void> => {
+    // A regular document served without conversion, so the store can answer the 304 from metadata alone.
+    const documentUrl = `${baseUrl}conditional.txt`;
+    await putResource(documentUrl, { contentType: 'text/plain', body: 'CONTENT' });
+
+    // Full GET to capture the ETag and the full set of response headers.
+    let response = await getResource(documentUrl);
+    const eTag = response.headers.get('ETag');
+    expect(typeof eTag).toBe('string');
+    const originalHeaders = extractHeadersObject(response);
+
+    // Conditional GET whose ETag matches: must resolve to a byte-identical 304 with no body.
+    response = await fetch(documentUrl, { method: 'GET', headers: { 'if-none-match': eTag! }});
+    expect(response.status).toBe(304);
+    expect(response.headers.get('etag')).toBe(eTag);
+    await expect(response.text()).resolves.toBe('');
+    const newGetHeaders = extractHeadersObject(response);
+    // Date field shouldn't be the same
+    delete newGetHeaders.date;
+    expect(expect.objectContaining(newGetHeaders)).toEqual(originalHeaders);
+
+    // Same for a conditional HEAD.
+    response = await fetch(documentUrl, { method: 'HEAD', headers: { 'if-none-match': eTag! }});
+    expect(response.status).toBe(304);
+    expect(response.headers.get('etag')).toBe(eTag);
+    const newHeadHeaders = extractHeadersObject(response);
+    delete newHeadHeaders.date;
+    expect(expect.objectContaining(newHeadHeaders)).toEqual(originalHeaders);
+
+    // A non-matching conditional still returns the full 200 body.
+    response = await fetch(documentUrl, { method: 'GET', headers: { 'if-none-match': '"123456"' }});
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe('CONTENT');
+
+    await expect(deleteResource(documentUrl)).resolves.toBeUndefined();
+  });
+
   it('prevents operations if the "if-unmodified-since" header is before the modified date.', async(): Promise<void> => {
     const documentUrl = `${baseUrl}document3.txt`;
     // PUT

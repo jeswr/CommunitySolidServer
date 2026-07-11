@@ -12,7 +12,8 @@
       "auxiliaryStrategy": { "@id": "urn:solid-server:default:AuxiliaryStrategy" },
       "accessor": { "@id": "urn:solid-server:default:FileDataAccessor" },
       "metadataStrategy": { "@id": "urn:solid-server:default:MetadataStrategy" },
-      "optimizeRange": true
+      "optimizeRange": true,
+      "eTagHandler": { "@id": "urn:solid-server:default:ETagHandler" }
     }
   ]
 }

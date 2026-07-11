@@ -12,6 +12,7 @@ import {
   addTemplateMetadata,
   assertReadConditions,
   cloneRepresentation,
+  getConditionalNotModifiedError,
   updateModifiedDate,
 } from '../../../src/util/ResourceUtil';
 import { CONTENT_TYPE_TERM, DC, HH, SOLID_META, XSD } from '../../../src/util/Vocabularies';
@@ -66,6 +67,44 @@ describe('ResourceUtil', (): void => {
       const res = await cloneRepresentation(representation);
       res.metadata.contentType = 'type/type';
       expect(representation.metadata.contentType).not.toBe(res.metadata.contentType);
+    });
+  });
+
+  describe('#getConditionalNotModifiedError', (): void => {
+    const eTagHandler: ETagHandler = {
+      getETag: (): string => 'ETag',
+      matchesETag: jest.fn(),
+      sameResourceState: jest.fn(),
+    };
+    let metadata: RepresentationMetadata;
+
+    beforeEach((): void => {
+      metadata = new RepresentationMetadata();
+      metadata.add(DC.terms.modified, 'modified-value');
+    });
+
+    it('returns undefined if the conditions are undefined.', (): void => {
+      expect(getConditionalNotModifiedError(metadata, eTagHandler)).toBeUndefined();
+    });
+
+    it('returns undefined if the conditions match.', (): void => {
+      const conditions: Conditions = { matchesMetadata: (): boolean => true };
+      expect(getConditionalNotModifiedError(metadata, eTagHandler, conditions)).toBeUndefined();
+    });
+
+    it('returns a NotModifiedHttpError with the ETag and metadata if the conditions do not match.', (): void => {
+      const conditions: Conditions = { matchesMetadata: (): boolean => false };
+      const error = getConditionalNotModifiedError(metadata, eTagHandler, conditions);
+      expect(NotModifiedHttpError.isInstance(error)).toBe(true);
+      expect(error!.metadata.get(HH.terms.etag)?.value).toBe('ETag');
+      expect(error!.metadata.identifier.value).toBe(metadata.identifier.value);
+      expect(error!.metadata.get(DC.terms.modified)?.value).toBe('modified-value');
+    });
+
+    it('does not modify the given metadata.', (): void => {
+      const conditions: Conditions = { matchesMetadata: (): boolean => false };
+      getConditionalNotModifiedError(metadata, eTagHandler, conditions);
+      expect(metadata.get(HH.terms.etag)).toBeUndefined();
     });
   });
 
