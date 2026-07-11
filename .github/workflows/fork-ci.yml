@@ -1,18 +1,6 @@
-# Fork-scoped CI for jeswr/CommunitySolidServer.
-#
-# Mirrors the upstream test matrix (main.yml -> npm-test.yml / cth-test.yml) so
-# changes staged on the fork are validated the same way upstream validates
-# them, minus jobs that cannot work on a fork:
-#   - docker.yml        (needs upstream DockerHub secrets, pushes solidproject images)
-#   - mkdocs.yml        (release-only docs deploy to upstream gh-pages)
-#   - schedule.yml      (scheduled conformance runs; scheduled jobs trimmed)
-#   - Coveralls steps   (repo not registered on coveralls.io; coverage
-#                        thresholds are still enforced by jest.coverage.config.js)
-#   - windows-latest    (matrix-size reduction; upstream CI still covers Windows
-#                        when changes are upstreamed)
-#
-# Every job is guarded with `if: github.repository == 'jeswr/CommunitySolidServer'`
-# so this workflow stays inert if the file ever lands in the upstream repository.
+# Fork-only mirror of the upstream test matrix (main.yml -> npm-test.yml / cth-test.yml),
+# minus the Windows legs and the jobs that need upstream-only secrets or infrastructure.
+# The repository guard on every job keeps this workflow inert in the upstream repository.
 
 name: Fork CI
 
@@ -30,7 +18,6 @@ concurrency:
 
 jobs:
   lint:
-    # Mirrors upstream npm-test.yml `lint`.
     if: github.repository == 'jeswr/CommunitySolidServer'
     runs-on: ubuntu-latest
     steps:
@@ -42,8 +29,7 @@ jobs:
       - run: npm run lint
 
   test-unit:
-    # Mirrors upstream npm-test.yml `test-unit` with the full node-version
-    # spread, minus the windows-latest dimension and the Coveralls submission.
+    # Run unit tests on linux
     if: github.repository == 'jeswr/CommunitySolidServer'
     runs-on: ubuntu-latest
     strategy:
@@ -75,8 +61,7 @@ jobs:
         run: npm run test:unit
 
   test-integration:
-    # Mirrors upstream npm-test.yml `test-integration` (full suite, with
-    # external dependencies).
+    # Run integration tests on linux (full suite, with external dependencies)
     if: github.repository == 'jeswr/CommunitySolidServer'
     runs-on: ubuntu-latest
     strategy:
@@ -113,8 +98,7 @@ jobs:
         run: npm run test:integration
 
   test-configs:
-    # Mirrors upstream npm-test.yml `test-configs`: server startup with all
-    # configs inside the config/ folder.
+    # Test startup of CSS with all configs inside the config/ folder
     if: github.repository == 'jeswr/CommunitySolidServer'
     runs-on: ubuntu-latest
     services:
@@ -137,9 +121,7 @@ jobs:
         run: npm run test:deploy
 
   cth-test:
-    # Same as upstream main.yml: run the Conformance Test Harness on PRs
-    # targeting main, advisory only (ignore_failures). Reuses the upstream
-    # reusable workflow directly.
+    # Run the Conformance Test Harness on PRs targeting main
     if: github.repository == 'jeswr/CommunitySolidServer' && github.event_name == 'pull_request'
     uses: ./.github/workflows/cth-test.yml
     with:
