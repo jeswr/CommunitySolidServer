@@ -6,6 +6,7 @@
       "@id": "urn:solid-server:default:ResourceLocker",
       "@type": "WrappedExpiringReadWriteLocker",
       "locker": {
+        "comment": "All server instances sharing a lock domain must point at the same Redis service and namespace.",
         "@id": "urn:solid-server:default:RedisLocker",
         "@type": "RedisLocker",
         "redisClient": { "@id": "urn:solid-server:default:variable:redisUrl" },
