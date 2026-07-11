@@ -17,7 +17,7 @@ export const REDIS_LUA_SCRIPTS = {
       return 0
     end
 
-    -- Increment the read counter and refresh its TTL (in ms, ARGV[1]); return true if succeeded
+    -- Increment the read counter and refresh its TTL (in ms, ARGV[1]); return 1 on success (Lua true becomes 1)
     local countKey = KEYS[1].."${SUFFIX_COUNT}"
     local count = redis.call("incr", countKey)
     redis.call("pexpire", countKey, ARGV[1])
