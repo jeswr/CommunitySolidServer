@@ -36,7 +36,7 @@
       "path": "/metrics"
     },
     {
-      "comment": "Records webhook delivery outcomes on the css_notification_deliveries_total counter. Only adds the `metrics` parameter; all other WebhookEmitter parameters are preserved. Remove this block if webhook notifications are disabled.",
+      "comment": "Records webhook delivery outcomes on the css_notification_deliveries_total counter. Remove this block if webhook notifications are disabled.",
       "@type": "Override",
       "overrideInstance": { "@id": "urn:solid-server:default:WebhookEmitter" },
       "overrideParameters": {
@@ -45,7 +45,7 @@
       }
     },
     {
-      "comment": "Records per-channel delivery outcomes on the css_notification_deliveries_total counter. Only adds the `metrics` parameter; all other ListeningActivityHandler parameters are preserved. Remove this block if notifications are disabled.",
+      "comment": "Records per-channel delivery outcomes on the css_notification_deliveries_total counter. Remove this block if notifications are disabled.",
       "@type": "Override",
       "overrideInstance": { "@id": "urn:solid-server:default:ListeningActivityHandler" },
       "overrideParameters": {

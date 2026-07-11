@@ -24,8 +24,8 @@ import { isWebhook2023Channel } from './WebhookChannel2023Type';
  * The `expiration` input parameter is how long the generated token should be valid in minutes.
  * Default is 20.
  *
- * When a {@link PrometheusMetrics} instance is provided, every delivery attempt increments its
- * `css_notification_deliveries_total` counter with the channel `type` and the delivery `outcome`.
+ * When a {@link PrometheusMetrics} instance is provided,
+ * every delivery attempt increments its `css_notification_deliveries_total` counter.
  */
 export class WebhookEmitter extends NotificationEmitter {
   protected readonly logger = getLoggerFor(this);
@@ -36,13 +36,6 @@ export class WebhookEmitter extends NotificationEmitter {
   private readonly expiration: number;
   private readonly metrics?: PrometheusMetrics;
 
-  /**
-   * @param baseUrl - The base URL of the server.
-   * @param webIdRoute - The route to the WebID used to sign the notification requests.
-   * @param jwkGenerator - Generates the key pair used to sign the notification requests.
-   * @param expiration - How long the generated token should be valid, in minutes. Default is 20.
-   * @param metrics - Optional {@link PrometheusMetrics} used to record delivery outcomes. Default is none.
-   */
   public constructor(
     baseUrl: string,
     webIdRoute: InteractionRoute,
@@ -118,8 +111,7 @@ export class WebhookEmitter extends NotificationEmitter {
     });
     if (response.status >= 400) {
       this.metrics?.notificationDeliveriesTotal.inc({ type: webhookChannel.type, outcome: 'failure' });
-      // Demoted from `error` to `debug`: the aggregate failure rate is now captured by the metric above,
-      // and the target URL and response body are attacker-influenced, so they must not be logged at info level.
+      // The target URL and response body are attacker-influenced, so they are only logged at debug level.
       this.logger.debug(`There was an issue emitting a Webhook notification with target ${webhookChannel.sendTo}: ${
         await response.text()}`);
     } else {

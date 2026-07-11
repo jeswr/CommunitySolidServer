@@ -19,8 +19,8 @@ import type { NotificationHandler } from './NotificationHandler';
  * No class takes this one as input, so to make sure Components.js instantiates it,
  * it needs to be added somewhere where its presence has no impact, such as the list of initializers.
  *
- * When a {@link PrometheusMetrics} instance is provided, every delivery attempt increments its
- * `css_notification_deliveries_total` counter with the channel `type` and the delivery `outcome`.
+ * When a {@link PrometheusMetrics} instance is provided,
+ * every delivery attempt increments its `css_notification_deliveries_total` counter.
  */
 export class ListeningActivityHandler extends StaticHandler {
   protected readonly logger = getLoggerFor(this);
@@ -29,12 +29,6 @@ export class ListeningActivityHandler extends StaticHandler {
   private readonly handler: NotificationHandler;
   private readonly metrics?: PrometheusMetrics;
 
-  /**
-   * @param storage - Storage containing the notification channels.
-   * @param emitter - Emitter of the activities the channels are listening to.
-   * @param handler - Handler to call for every matching notification channel.
-   * @param metrics - Optional {@link PrometheusMetrics} used to record delivery outcomes. Default is none.
-   */
   public constructor(
     storage: NotificationChannelStorage,
     emitter: ActivityEmitter,
@@ -90,8 +84,7 @@ export class ListeningActivityHandler extends StaticHandler {
         })
         .catch((error: unknown): void => {
           this.metrics?.notificationDeliveriesTotal.inc({ type: channel.type, outcome: 'failure' });
-          // Demoted from `error` to `debug`: the aggregate failure rate is now captured by the metric above,
-          // and the per-channel identifier is unaggregable noise at info level.
+          // The counter above tracks the failure rate; the per-channel details are only useful when debugging.
           this.logger.debug(`Error trying to handle notification for ${id}: ${createErrorMessage(error)}`);
         });
     }
