@@ -1,0 +1,38 @@
+{
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@graph": [
+    {
+      "comment": "Publishes the activities of the local store on the cluster bus and re-emits the activities of every instance in the cluster.",
+      "@id": "urn:solid-server:default:ClusterActivityEmitter",
+      "@type": "ClusterActivityEmitter",
+      "source": { "@id": "urn:solid-server:default:ResourceStore" },
+      "bus": { "@id": "urn:solid-server:default:ClusterActivityBus" }
+    },
+    {
+      "comment": "WebSockets are pinned to an instance, so this handler listens to the changes of the entire cluster and delivers to the sockets held by this instance.",
+      "@id": "urn:solid-server:default:WebSocketListeningActivityHandler",
+      "@type": "WebSocketListeningActivityHandler",
+      "storage": { "@id": "urn:solid-server:default:SubscriptionStorage" },
+      "emitter": { "@id": "urn:solid-server:default:ClusterActivityEmitter" },
+      "handler": { "@id": "urn:solid-server:default:WebSocket2023NotificationHandler" },
+      "socketMap": { "@id": "urn:solid-server:default:WebSocketMap" }
+    },
+    {
+      "comment": "Webhooks are delivered by the instance where the change happened, so this handler listens to the local store only.",
+      "@id": "urn:solid-server:default:WebhookListeningActivityHandler",
+      "@type": "WebhookListeningActivityHandler",
+      "storage": { "@id": "urn:solid-server:default:SubscriptionStorage" },
+      "emitter": { "@id": "urn:solid-server:default:ResourceStore" },
+      "handler": { "@id": "urn:solid-server:default:WebhookNotificationHandler" }
+    },
+    {
+      "comment": "The listening handlers are added to the list of Initializers so Components.js finds and instantiates them.",
+      "@id": "urn:solid-server:default:PrimaryParallelInitializer",
+      "@type": "ParallelHandler",
+      "handlers": [
+        { "@id": "urn:solid-server:default:WebSocketListeningActivityHandler" },
+        { "@id": "urn:solid-server:default:WebhookListeningActivityHandler" }
+      ]
+    }
+  ]
+}

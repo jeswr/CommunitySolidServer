@@ -402,6 +402,7 @@ export * from './server/notifications/serialize/NotificationSerializer';
 // Server/Notifications/WebhookChannel2023
 export * from './server/notifications/WebhookChannel2023/WebhookChannel2023Type';
 export * from './server/notifications/WebhookChannel2023/WebhookEmitter';
+export * from './server/notifications/WebhookChannel2023/WebhookListeningActivityHandler';
 export * from './server/notifications/WebhookChannel2023/WebhookWebId';
 
 // Server/Notifications/WebSocketChannel2023
@@ -412,6 +413,7 @@ export * from './server/notifications/WebSocketChannel2023/WebSocket2023Storer';
 export * from './server/notifications/WebSocketChannel2023/WebSocket2023Util';
 export * from './server/notifications/WebSocketChannel2023/WebSocketMap';
 export * from './server/notifications/WebSocketChannel2023/WebSocketChannel2023Type';
+export * from './server/notifications/WebSocketChannel2023/WebSocketListeningActivityHandler';
 
 // Server/Notifications/StreamingHTTPChannel2023
 export * from './server/notifications/StreamingHttpChannel2023/StreamingHttp2023Emitter';

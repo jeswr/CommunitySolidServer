@@ -5,6 +5,7 @@ import { createErrorMessage } from '../../util/errors/ErrorUtil';
 import { StaticHandler } from '../../util/handlers/StaticHandler';
 import type { AS, VocabularyTerm } from '../../util/Vocabularies';
 import type { ActivityEmitter } from './ActivityEmitter';
+import type { NotificationChannel } from './NotificationChannel';
 import type { NotificationChannelStorage } from './NotificationChannelStorage';
 import type { NotificationHandler } from './NotificationHandler';
 
@@ -36,7 +37,7 @@ export class ListeningActivityHandler extends StaticHandler {
     });
   }
 
-  private async emit(
+  protected async emit(
     topic: ResourceIdentifier,
     activity: VocabularyTerm<typeof AS>,
     metadata: RepresentationMetadata,
@@ -47,6 +48,11 @@ export class ListeningActivityHandler extends StaticHandler {
       const channel = await this.storage.get(id);
       if (!channel) {
         // Notification channel has expired
+        continue;
+      }
+
+      // Don't emit if a different handler is responsible for this channel
+      if (!this.supports(channel)) {
         continue;
       }
 
@@ -74,5 +80,15 @@ export class ListeningActivityHandler extends StaticHandler {
           this.logger.error(`Error trying to handle notification for ${id}: ${createErrorMessage(error)}`);
         });
     }
+  }
+
+  /**
+   * Whether this handler is responsible for the given channel.
+   * Subclasses dedicated to a single channel type can override this
+   * so channels of other types are silently left to the handler dedicated to them.
+   */
+  // eslint-disable-next-line unused-imports/no-unused-vars
+  protected supports(channel: NotificationChannel): boolean {
+    return true;
   }
 }
