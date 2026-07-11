@@ -641,14 +641,13 @@ describe('A RedisLocker', (): void => {
     });
 
     describe('initialize()', (): void => {
-      it('does not clear locks on boot by default, so peer instances keep their locks.', async(): Promise<void> => {
+      it('does not clear locks on boot by default.', async(): Promise<void> => {
         store.reset();
         await locker.acquire({ path: 'path1' });
         await locker.acquire({ path: 'path2' });
         await locker.initialize();
-        // The default is multi-instance-safe: a restarting instance must not wipe its peers' locks.
         expect(Object.keys(store.internal)).toHaveLength(2);
-        // Release the acquired resource locks so their renewal timers do not leak into later tests.
+        // Release the locks so their renewal timers do not leak into later tests.
         await locker.release({ path: 'path1' });
         await locker.release({ path: 'path2' });
       });
