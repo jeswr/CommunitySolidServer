@@ -43,12 +43,6 @@ export class FileDataAccessor implements DataAccessor {
   /**
    * Will return data stream directly to the file corresponding to the resource.
    * Will throw NotFoundHttpError if the input is a container.
-   *
-   * When a `range` is provided, only that inclusive byte window is read from the file
-   * by seeking with `createReadStream(path, { start, end })`,
-   * avoiding reading (and discarding) the bytes before `start`.
-   * The caller is responsible for only passing satisfiable ranges
-   * and for setting the corresponding response metadata.
    */
   public async getData(identifier: ResourceIdentifier, range?: RangeOptions): Promise<Guarded<Readable>> {
     const link = await this.resourceMapper.mapUrlToFilePath(identifier, false);

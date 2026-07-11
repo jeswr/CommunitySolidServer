@@ -73,7 +73,7 @@ class SimpleDataAccessor implements DataAccessor {
     this.checkExists(identifier);
     const data = this.data[identifier.path].data;
     if (range) {
-      // Mirror a range-honouring accessor (like FileDataAccessor) by returning only the requested window.
+      // Mirrors a range-honouring accessor such as the FileDataAccessor by returning only the requested window
       const buffer = await readableToString(data);
       return guardedStreamFrom(buffer.slice(range.start, range.end + 1));
     }
@@ -268,7 +268,7 @@ describe('A DataAccessorBasedStore', (): void => {
       } as Representation;
     }
 
-    // Asserts the range was NOT pushed down: full stream returned, no range metadata, no range passed to getData.
+    // Asserts the range was not pushed down: full stream returned, no range metadata, no range passed to getData.
     async function expectFullRead(result: Representation, body: string): Promise<void> {
       expect(result.metadata.has(SOLID_HTTP.terms.unit)).toBe(false);
       await expect(readableToString(result.data)).resolves.toBe(body);

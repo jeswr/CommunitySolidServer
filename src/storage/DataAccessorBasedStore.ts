@@ -74,6 +74,12 @@ import namedNode = DataFactory.namedNode;
  *
  * Work has been done to minimize the number of required calls to the DataAccessor,
  * but the main disadvantage is that sometimes multiple calls are required where a specific store might only need one.
+ *
+ * The `optimizeRange` parameter can be used to push explicit, satisfiable byte ranges
+ * down to the accessor, so it can seek to the requested window instead of streaming the full resource.
+ * This only happens when no content conversion is needed,
+ * and should only be enabled for accessors that support the `range` argument of `getData`,
+ * such as a {@link FileDataAccessor}.
  */
 export class DataAccessorBasedStore implements ResourceStore {
   protected readonly logger = getLoggerFor(this);
@@ -84,21 +90,6 @@ export class DataAccessorBasedStore implements ResourceStore {
   private readonly metadataStrategy: AuxiliaryStrategy;
   private readonly optimizeRange: boolean;
 
-  /**
-   * @param accessor - The accessor used to read/write the data.
-   * @param identifierStrategy - The strategy used to handle identifiers.
-   * @param auxiliaryStrategy - The strategy used to handle auxiliary resources.
-   * @param metadataStrategy - The strategy used to handle metadata resources.
-   * @param optimizeRange - Whether to push satisfiable byte ranges down to `accessor.getData`
-   *   instead of always reading the full stream and slicing it higher up.
-   *   This is only safe when (a) the configured `accessor` honours the `range` argument of `getData`
-   *   (e.g. {@link FileDataAccessor}), and (b) the outgoing conversion applied above this store is a
-   *   pure content-negotiation converter (it returns the stored representation unchanged whenever the
-   *   stored content-type already satisfies the request preferences, as the default `ChainedConverter`
-   *   does). When enabled, a range is only ever pushed down for cases where this store can prove from
-   *   metadata alone that no conversion will happen; every other case falls back to the full read.
-   *   Defaults to `false`, keeping the original behaviour.
-   */
   public constructor(
     accessor: DataAccessor,
     identifierStrategy: IdentifierStrategy,
@@ -182,12 +173,9 @@ export class DataAccessorBasedStore implements ResourceStore {
     if (isContainer || isMetadata) {
       representation = new BasicRepresentation(data, metadata, INTERNAL_QUADS);
     } else {
-      // If we can prove from metadata alone that no conversion will happen for this request,
-      // and a satisfiable byte range was requested, read only that window from the accessor.
-      // In every other case we read the full stream and let the higher slicing store handle the range,
-      // keeping the response byte-identical.
       const range = this.getSeekRange(preferences, metadata);
       if (range) {
+        // Writing the unit/start/end metadata indicates the range was already applied to the stream
         metadata.set(SOLID_HTTP.terms.unit, 'bytes');
         metadata.set(SOLID_HTTP.terms.start, toLiteral(range.start, XSD.terms.integer));
         metadata.set(SOLID_HTTP.terms.end, toLiteral(range.end, XSD.terms.integer));
@@ -201,22 +189,11 @@ export class DataAccessorBasedStore implements ResourceStore {
   }
 
   /**
-   * Determines whether the given request can be served by pushing a byte range down to the accessor
-   * instead of reading the full stream and slicing it in a higher store (e.g. `BinarySliceResourceStore`).
-   *
-   * Returns the resolved, satisfiable inclusive byte range to request, or `undefined` to fall back
-   * to the full read. It only returns a range when ALL of the following hold, guaranteeing the response
-   * stays byte-identical to the full-read + slice path:
-   *  - Range optimization is enabled for this store (`optimizeRange`).
-   *  - The preferences contain a single `bytes` range with an explicit, non-negative `start` and `end`.
-   *    (Open-ended and suffix ranges are left to the slicing store, so its `defaultSliceSize` and
-   *    suffix handling remain the single source of truth.)
-   *  - No content conversion will happen: the stored content-type already satisfies the request at the
-   *    maximal requested weight, which is exactly the condition under which a `ChainedConverter` returns
-   *    the representation unchanged. `application/json` is excluded because a converter
-   *    (`DynamicJsonToTemplateConverter`) can transform matching JSON ahead of that decision.
-   *  - The range is satisfiable given the known size (`start < end < size`). Unsatisfiable ranges are
-   *    left to the slicing store so it produces the exact same `416` behaviour as before.
+   * Determines whether the requested range can be read directly from the accessor,
+   * instead of slicing the full stream in a store such as the {@link BinarySliceResourceStore}.
+   * Only returns a range for a single explicit satisfiable `bytes` range
+   * where the stored content-type fully matches the preferences,
+   * which is exactly the case in which a {@link ChainedConverter} returns the representation unchanged.
    */
   private getSeekRange(
     preferences: RepresentationPreferences | undefined,
@@ -230,12 +207,12 @@ export class DataAccessorBasedStore implements ResourceStore {
       return;
     }
     const { start, end } = range.parts[0];
-    // Only explicit `start-end` ranges (both defined, non-negative) are handled here.
+    // Open-ended and suffix ranges are left to the slicing store
     if (typeof start !== 'number' || typeof end !== 'number' || start < 0) {
       return;
     }
 
-    // The stored content-type must already satisfy the request without conversion.
+    // JSON is excluded since a converter can transform it even when the content-type matches the preferences
     const { contentType } = metadata;
     if (typeof contentType !== 'string' || contentType === APPLICATION_JSON) {
       return;
@@ -247,16 +224,14 @@ export class DataAccessorBasedStore implements ResourceStore {
       maxWeight = Math.max(...Object.values(cleaned));
       weight = getTypeWeight(contentType, cleaned);
     } catch {
-      // `getTypeWeight` throws on an unexpected media type; fall back to the full read.
+      // Fall back to the full read on unexpected media types, which make `getTypeWeight` throw
       return;
     }
-    // Identical to the `ChainedConverter` "no conversion needed" decision:
-    // the stored type is (one of) the best match(es) for the preferences.
     if (weight <= 0 || weight < maxWeight) {
       return;
     }
 
-    // Only push down satisfiable ranges; unsatisfiable ones fall back so the slicing store throws 416.
+    // Unsatisfiable ranges are left to the slicing store, which generates the 416 response
     const size = termToInt(metadata.get(POSIX.terms.size));
     if (typeof size !== 'number' || start >= end || end >= size) {
       return;

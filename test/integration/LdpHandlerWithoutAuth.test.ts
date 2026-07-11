@@ -784,8 +784,7 @@ describe.each(stores)('An LDP handler allowing all requests %s', (name, { storeC
     const body = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     await putResource(resourceUrl, { contentType: 'text/plain', body });
 
-    // Start-of-file, mid-file, and end-of-file windows. On the file backend these use the seek path,
-    // on the in-memory backend the slice path; both must produce byte-identical responses.
+    // Start-of-file, mid-file, and end-of-file windows
     const windows: [number, number][] = [[ 0, 5 ], [ 10, 15 ], [ 20, 25 ], [ 24, 25 ], [ 0, 25 ]];
     for (const [ start, end ] of windows) {
       const response = await fetch(resourceUrl, { headers: { range: `bytes=${start}-${end}` }});
@@ -800,13 +799,12 @@ describe.each(stores)('An LDP handler allowing all requests %s', (name, { storeC
     const resourceUrl = joinUrl(baseUrl, 'convert-range');
     await putResource(resourceUrl, { contentType: 'text/turtle', body: '<http://ex/s> <http://ex/p> <http://ex/o>.' });
 
-    // Full converted (turtle -> n-triples) representation.
     const fullResponse = await fetch(resourceUrl, { headers: { accept: 'application/n-triples' }});
     expect(fullResponse.status).toBe(200);
     const fullConverted = await fullResponse.text();
     expect(fullConverted.length).toBeGreaterThan(5);
 
-    // A ranged request with a conversion must slice the CONVERTED output (seek path must not apply here).
+    // The range has to slice the converted output, so the seek optimization can not apply here
     const response = await fetch(resourceUrl, { headers: { accept: 'application/n-triples', range: 'bytes=0-4' }});
     expect(response.status).toBe(206);
     await expect(response.text()).resolves.toBe(fullConverted.slice(0, 5));
