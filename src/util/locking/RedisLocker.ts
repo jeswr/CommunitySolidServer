@@ -18,14 +18,7 @@ const attemptDefaults: Required<AttemptSettings> = { retryCount: -1, retryDelay:
 const PREFIX_RW = '__RW__';
 const PREFIX_LOCK = '__L__';
 
-/**
- * Default time-to-live (in ms) for a Redis lock key.
- *
- * A crashed lock holder's key auto-expires after this time so that other instances cannot deadlock
- * on the abandoned resource. It is deliberately several times larger than the in-process lock
- * expiration (see {@link WrappedExpiringReadWriteLocker}, 6000ms by default), and it is actively
- * renewed while a lock is legitimately held, so a normal operation never loses its lock.
- */
+// Default TTL (in ms) of the lock keys
 const DEFAULT_TTL = 30000;
 
 export interface RedisSettings {
@@ -38,10 +31,8 @@ export interface RedisSettings {
   /* The number of the database to use */
   db?: number;
   /**
-   * Time-to-live (in ms) for the Redis lock keys. A crashed holder's key auto-expires after this
-   * time so peers do not deadlock. While a lock is legitimately held it is renewed at half this
-   * interval, so this value only bounds how long peers wait after a hard crash. Must be larger than
-   * the in-process lock expiration. Defaults to {@link DEFAULT_TTL} (30000ms).
+   * Time-to-live (in ms) of the lock keys, so the locks of a crashed instance expire instead of
+   * blocking peers forever. Held locks are renewed at half this interval. Defaults to 30000.
    */
   ttl?: number;
 }
@@ -165,15 +156,12 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
   /* Lease renewal */
 
   /**
-   * Creates an interval timer that periodically refreshes the TTL of a held Redis lock (a lease).
-   * As long as the process is alive the lock keeps being renewed, so a legitimate (even long-running)
-   * operation never loses its lock. Once the process crashes the timer dies with it and the Redis key
-   * expires after the TTL, releasing the abandoned lock so peers do not deadlock.
+   * Creates an interval timer that keeps refreshing the TTL of a held lock,
+   * so only the locks of a crashed process expire.
+   * The caller needs to clear the returned timer once the lock is released.
    *
-   * @param renew - Refreshes the TTL of the relevant Redis key. Rejections are swallowed and logged,
-   *                as a single missed refresh is recovered by the next interval tick.
-   *
-   * @returns The interval timer, which must be cleared with {@link clearInterval} once the lock is released.
+   * @param renew - Refreshes the TTL of the relevant Redis key.
+   *                Rejections are logged, as the next tick can retry a failed refresh.
    */
   private createRenewalTimer(renew: () => Promise<RedisAnswer>): NodeJS.Timeout {
     const timer = setInterval((): void => {
@@ -181,16 +169,13 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
         this.logger.warn(`Could not renew Redis lock TTL: ${createErrorMessage(error)}`);
       });
     }, this.renewalInterval);
-    // A background renewal timer should never keep the Node.js process alive on its own.
+    // The timer should not keep the process alive.
     timer.unref();
     return timer;
   }
 
   /**
-   * Starts renewing the TTL of a resource lock and tracks the timer so it can be stopped on release.
-   *
-   * @param key - The Redis key of the acquired resource lock.
-   * @param renew - Refreshes the TTL of the resource lock key.
+   * Starts renewing the TTL of the given resource lock, replacing any previous renewal timer for that key.
    */
   private startRenewal(key: string, renew: () => Promise<RedisAnswer>): void {
     this.stopRenewal(key);
@@ -198,9 +183,7 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
   }
 
   /**
-   * Stops renewing the TTL of a resource lock, if a renewal timer is active for the given key.
-   *
-   * @param key - The Redis key of the resource lock to stop renewing.
+   * Stops renewing the TTL of the given resource lock, if it has an active renewal timer.
    */
   private stopRenewal(key: string): void {
     const timer = this.renewalTimers.get(key);
@@ -280,8 +263,7 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
       this.swallowFalse(this.redisLock.acquireLock.bind(this.redisLock, key, this.ttl)),
       this.attemptSettings,
     );
-    // A resource lock is held across separate acquire()/release() calls, so keep renewing its TTL
-    // until it is explicitly released (or the process crashes).
+    // A resource lock stays held across calls, so its renewal timer is tracked until release() or finalize()
     this.startRenewal(key, async(): Promise<RedisAnswer> => this.redisLock.renewLock(key, this.ttl));
   }
 
