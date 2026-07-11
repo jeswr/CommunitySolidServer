@@ -33,7 +33,6 @@ describe('A ParsingHttpHandler', (): void => {
   let handler: ParsingHttpHandler;
 
   beforeEach(async(): Promise<void> => {
-    // Clearing the logger mock
     jest.clearAllMocks();
     requestParser = { handleSafe: jest.fn().mockResolvedValue(operation) } as any;
     errorHandler = { handleSafe: jest.fn().mockResolvedValue(errorResponse) } as any;
