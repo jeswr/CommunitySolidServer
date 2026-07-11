@@ -15,7 +15,7 @@ describe('A MetricsSaturationCollector', (): void => {
     metrics.registry.clear();
   });
 
-  // Scraping the registry triggers each gauge's `collect` callback; return the matching metric.
+  // Scraping the registry triggers each gauge's `collect` callback.
   async function getGauge(name: string): Promise<any> {
     const json = await metrics.registry.getMetricsAsJSON();
     return json.find((metric): boolean => metric.name === name);

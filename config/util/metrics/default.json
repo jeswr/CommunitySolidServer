@@ -6,7 +6,7 @@
         "OPT-IN Prometheus metrics. This file is NOT imported by any shipped config: add it next to your main config, e.g. `community-solid-server -c config/file.json -c config/util/metrics/default.json`.",
         "SECURITY: the /metrics endpoint is UNAUTHENTICATED and exposes internal counters (request rates, latencies, process cpu/memory, saturation gauges). Restrict it at your reverse proxy or firewall; never expose it to the public internet.",
         "This recipe assumes the default handler waterfall (config/http/handler/default.json). If you use a different handler configuration, adjust the Override list below to match its handlers.",
-        "The saturation gauges below assume the default single-threaded stack: the in-memory resource locker (config/util/resource-locker/memory.json) and the WebSocket + Streaming HTTP notifications (config/http/notifications/all.json), exactly as in config/default.json. Each source is OPTIONAL: if your config omits one (e.g. a non in-memory locker, or config/http/notifications/disabled.json), remove the matching `locker`/`webSocketMap`/`streamingHttpMap` reference from the collector below so Components.js does not fail to resolve a missing @id."
+        "The saturation gauges assume the default in-memory locker and WebSocket + Streaming HTTP notifications. Every collector source is optional: remove a `locker`/`webSocketMap`/`streamingHttpMap` reference below if your config does not create the matching @id, as Components.js cannot resolve absent references."
       ]
     },
     {
@@ -22,9 +22,8 @@
     },
     {
       "comment": [
-        "Observe-only saturation gauges: current held resource locks (solid_resource_locks) and active notification connections (solid_notification_connections{type}).",
-        "Read lazily on each /metrics scrape via a prom-client collect callback (Map.size / lock count), so nothing runs on the request/notification hot path and no lock is ever taken.",
-        "Each source is optional; see the top-of-file comment before removing one for a non-default stack."
+        "Registers saturation gauges: currently held resource locks (solid_resource_locks) and open notification connections (solid_notification_connections{type}), read on each /metrics scrape.",
+        "Every source is optional; see the comment at the top of this file before removing one."
       ],
       "@id": "urn:solid-server:metrics:MetricsSaturationCollector",
       "@type": "MetricsSaturationCollector",
@@ -34,7 +33,7 @@
       "streamingHttpMap": { "@id": "urn:solid-server:default:StreamingHttpMap" }
     },
     {
-      "comment": "Instantiates the saturation collector and registers its gauges at start-up by adding it to the primary initializer chain (these initializers always run in single-threaded mode, which the in-memory locker requires).",
+      "comment": "Adds the saturation collector to the primary initializer chain so its gauges are registered at start-up.",
       "@id": "urn:solid-server:default:PrimaryParallelInitializer",
       "@type": "ParallelHandler",
       "handlers": [
