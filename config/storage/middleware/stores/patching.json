@@ -87,7 +87,7 @@
       "handlers": [
         {
           "@type": "N3Patcher",
-          "comment": "maxConditionBindings caps the intermediate bindings the solid:where conditions may produce, bounding the nested-loop join to prevent a combinatorial DoS. Far above any realistic patch.",
+          "comment": "maxConditionBindings caps the intermediate bindings allowed when solving the solid:where conditions of a patch.",
           "maxConditionBindings": 1000000
         },
         { "@type": "SparqlUpdatePatcher" }

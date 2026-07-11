@@ -24,11 +24,8 @@ export class N3Patcher extends RepresentationPatcher<RdfDatasetRepresentation> {
   private readonly maxConditionBindings: number;
 
   /**
-   * @param maxConditionBindings - Maximum number of intermediate solution bindings the `solid:where` conditions may
-   * produce before the patch is rejected. This bounds the nested-loop join used to evaluate the conditions, preventing
-   * a crafted WHERE with many unconstrained triple patterns from causing a combinatorial CPU/memory blow-up.
-   * Defaults to 1,000,000, which is far above any realistic patch: a valid N3 Patch WHERE must resolve to exactly one
-   * variable mapping, so its intermediate bindings are bounded by the resource size in practice.
+   * @param maxConditionBindings - Maximum number of intermediate bindings allowed when solving
+   * the `solid:where` conditions. Patches exceeding this limit are rejected. Defaults to 1,000,000.
    */
   public constructor(maxConditionBindings?: number) {
     super();
