@@ -130,20 +130,13 @@ This way the server can be used to identify those WebIDs during an OIDC interact
 
 ## production-throughput.json
 
-An opt-in, high-throughput variant of `file.json` for single-process deployments.
-It keeps everything that makes `file.json` a persistent, WAC-authorized Solid server,
-and differs in only two additive ways, each with a trade-off:
+A variant of `file.json` for single-process deployments that need higher throughput.
+Locks are stored in memory instead of on disk,
+which removes the lock file system calls and the lock polling that the file-based locker performs on every request.
+Because those locks are only visible within a single process,
+this configuration can not be used with multiple workers,
+and no other process should write to the same data directory.
+For such deployments, use the file-based or Redis-based resource locker instead.
 
-- **In-memory resource locking** (`util/resource-locker/memory.json` instead of the file-based locker).
-  This removes the per-request lock-file syscalls and on-disk lock polling that the default file locker performs.
-  Because the locks live in this process' memory, the configuration is **single-process**:
-  do not run it with `--workers > 1` and do not point a second process at the same data directory.
-  Your data on disk stays durable; only the locks are no longer shared.
-  For multi-worker or multi-instance setups, keep `util/resource-locker/file.json`,
-  or switch to `util/resource-locker/redis.json` with a shared Redis.
-- **CORS preflight caching** (`Access-Control-Max-Age: 3600`).
-  Browsers may reuse a CORS preflight (`OPTIONS`) result for one hour instead of sending one per request,
-  which reduces preflight round-trips for browser-based Solid apps.
-  This only affects how long a browser caches the preflight; no response body or authorization decision changes.
-
-Use it with `-c config/production-throughput.json`.
+It also sets the `Access-Control-Max-Age` header,
+so browsers can cache CORS preflight results for an hour instead of sending a new preflight for every request.

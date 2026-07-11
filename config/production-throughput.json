@@ -36,14 +36,12 @@
   "@graph": [
     {
       "comment": [
-        "OPT-IN high-throughput variant of file.json: same file-backed Solid server (data persists on disk, WAC authorization, accounts and pods), tuned for single-process throughput.",
-        "It differs from file.json in exactly two, additive ways:",
-        "1. In-memory resource locking (config/util/resource-locker/memory.json) instead of the file-based locker. This removes per-request lock-file syscalls and the on-disk lock polling. TRADE-OFF: locks live in this process's memory only, so this configuration is SINGLE-PROCESS. Do NOT run it with --workers > 1 and do NOT let a second process write to the same data directory. Data on disk stays durable; only the locks are non-shared. For multi-worker or multi-instance deployments keep resource-locker/file.json, or use resource-locker/redis.json with a shared Redis.",
-        "2. CORS preflight caching: Access-Control-Max-Age is set on OPTIONS responses so browsers can reuse a preflight for one hour, cutting preflight round-trips for browser-based Solid apps. This only affects how long a browser caches the preflight; it changes no actual response body or authorization decision."
+        "A Solid server that stores its resources on disk and uses WAC for authorization, tuned for single-process throughput.",
+        "Locks are stored in memory, so this configuration does not support multiple workers or a second server process on the same data directory."
       ]
     },
     {
-      "comment": "Let browsers cache the CORS preflight (OPTIONS) result for 1 hour (3600 s) instead of re-sending a preflight per request.",
+      "comment": "Lets browsers cache CORS preflight responses instead of sending a new preflight for every request.",
       "@type": "Override",
       "overrideInstance": { "@id": "urn:solid-server:default:Middleware_Cors" },
       "overrideParameters": {
