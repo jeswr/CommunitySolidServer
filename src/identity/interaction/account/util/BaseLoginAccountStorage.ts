@@ -154,9 +154,7 @@ export class BaseLoginAccountStorage<T extends IndexTypeCollection<T>> implement
    * it doesn't have a login method when the timer runs out.
    */
   protected createAccountTimeout(id: string): void {
-    // Arm the timer outside of the current request's logging context.
-    // Otherwise the deferred callback would inherit the identifier of the request that created the account,
-    // causing its much later log messages to be misattributed to that long-finished request.
+    // Arm the timer outside the request logging context so the deferred cleanup is not attributed to this request.
     const timer = runWithoutRequestId((): NodeJS.Timeout =>
       // eslint-disable-next-line @typescript-eslint/no-misused-promises
       setTimeout(async(): Promise<void> => {

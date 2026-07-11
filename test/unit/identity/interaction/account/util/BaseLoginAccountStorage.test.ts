@@ -243,8 +243,7 @@ describe('A BaseLoginAccountStorage', (): void => {
   });
 
   describe('when the account cleanup timer fires', (): void => {
-    // Real timers are required: fake timers do not preserve the AsyncLocalStorage logging context,
-    // so they cannot demonstrate that the deferred callback avoids the originating request identifier.
+    // Fake timers do not preserve the AsyncLocalStorage logging context, so this test needs real timers.
     beforeEach((): void => {
       jest.useRealTimers();
     });
