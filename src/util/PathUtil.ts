@@ -322,11 +322,6 @@ export async function readPackageJson(): Promise<Record<string, Json>> {
  * Concatenates all the given strings into a normalized URL.
  * Will place slashes between input strings if necessary.
  *
- * This is a local reimplementation of the `url-join` library (v4.0.1),
- * so the server does not have to depend on it.
- * The output is byte-for-byte identical to `url-join` for the string inputs used across the codebase
- * (absolute base URLs joined with relative path, query and/or hash segments).
- *
  * @param parts - The strings to concatenate into a URL.
  *
  * @returns The normalized URL.
@@ -339,8 +334,8 @@ export function joinUrl(...parts: string[]): string {
   // Copy the input since the entries below are potentially modified.
   const segments = [ ...parts ];
 
-  // Reproduce `url-join`'s runtime validation: some call sites pass values that are typed as
-  // `string` but can be `undefined` at runtime (e.g. the URL of a request that has none).
+  // Some call sites pass values that are typed as `string` but can be `undefined` at runtime,
+  // such as the URL of a request that has none.
   if (typeof (segments[0] as unknown) !== 'string') {
     throw new TypeError(`Url must be a string. Received ${segments[0]}`);
   }

@@ -108,12 +108,9 @@ export function pipeSafely<T extends Writable>(
       destination.destroy(mapError ? mapError(error) : error);
     });
   } else {
-    // This reproduces the behaviour that was previously provided by the `pump` library:
-    // pipe the streams and, if either one finishes or errors, destroy the other one as well.
-    // The crucial detail is that the streams are destroyed *without* an error, so that we stay
-    // in control of which error (potentially mapped via `mapError`) is emitted on the destination.
-    // Using the native `stream.pipeline` instead would destroy the destination *with* the error,
-    // causing the original error to be emitted before we could map it, so we use `finished` instead.
+    // Pipe the streams and, when either one finishes or errors, destroy the other one as well.
+    // The streams are deliberately destroyed without an error: `stream.pipeline` would destroy
+    // the destination with the original error, emitting it before it can be mapped with `mapError` below.
     let error: Error | undefined;
 
     // The readable is the source: only its readable side matters.
