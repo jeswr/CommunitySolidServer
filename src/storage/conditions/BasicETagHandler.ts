@@ -25,7 +25,7 @@ export class BasicETagHandler implements ETagHandler {
     const { contentType } = metadata;
 
     // RFC 9110, §8.8.3.2: an `If-None-Match` header requires a weak comparison,
-    // meaning an optional `W/` prefix, as added by intermediaries such as compressing proxies, needs to be ignored.
+    // meaning an optional `W/` prefix needs to be ignored.
     const strippedETag = eTag.startsWith('W/') ? eTag.slice(2) : eTag;
 
     // Slicing of the double quotes
