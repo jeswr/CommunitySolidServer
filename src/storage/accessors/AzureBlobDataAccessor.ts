@@ -21,8 +21,7 @@ import type { DataAccessor } from './DataAccessor';
 
 /**
  * The suffix used for metadata companion blobs.
- * This matches the auxiliary suffix used by the metadata strategy,
- * which prevents users from creating resources with this suffix directly at the store level,
+ * The metadata strategy blocks writes to identifiers with this suffix,
  * so companion blobs can never collide with user resources.
  */
 const METADATA_SUFFIX = '.meta';
@@ -39,22 +38,13 @@ interface AzureBlobProperties {
 /**
  * DataAccessor that stores documents and containers as blobs in an Azure Blob Storage container.
  *
- * Blob keys are the full resource URLs,
- * similarly to how the {@link SparqlDataAccessor} uses resource URLs as graph names.
- * This is the simplest robust mapping as it requires no base URL variable,
- * while `listBlobsByHierarchy` with a `/` delimiter still works since URLs are `/`-hierarchical.
- *
- * Containers are stored as empty marker blobs whose key is the container URL itself (ending in a slash),
+ * Blob keys are the full resource URLs, so `listBlobsByHierarchy` with a `/` delimiter can be used for listings.
+ * Containers are stored as empty marker blobs whose key is the container URL itself,
  * so empty containers remain visible.
- * Additional metadata of a resource is persisted in a companion blob with the `.meta` suffix appended to its key.
- * Since that suffix matches the auxiliary suffix of the metadata strategy,
- * which blocks direct writes to such identifiers at the store level,
- * no collisions between companion blobs and user resources are possible.
+ * Additional metadata of a resource is stored in a companion blob with the `.meta` suffix appended to its key.
  *
- * Note that this class implements {@link DataAccessor} but not {@link AtomicDataAccessor}:
- * blobs are overwritten in place so a failed call can leave a partially updated state behind.
- * Consequently, this accessor cannot be wrapped by the quota-related {@link ValidatingDataAccessor}
- * and {@link PassthroughDataAccessor} wrappers, as those require an atomic accessor.
+ * Note that this is not an {@link AtomicDataAccessor}, as blobs are overwritten in place,
+ * so it cannot be wrapped by accessors requiring atomicity, such as the {@link ValidatingDataAccessor}.
  */
 export class AzureBlobDataAccessor implements DataAccessor {
   protected readonly logger = getLoggerFor(this);
@@ -97,8 +87,6 @@ export class AzureBlobDataAccessor implements DataAccessor {
   /**
    * Will return the corresponding metadata by reading the metadata companion blob (if it exists)
    * and adding blob-specific metadata elements generated from the blob properties.
-   * Containers are only found if their marker blob exists,
-   * so a document identifier of a stored container will result in a 404 and vice versa.
    */
   public async getMetadata(identifier: ResourceIdentifier): Promise<RepresentationMetadata> {
     const properties = await this.getBlobProperties(this.getBlobKey(identifier));
@@ -107,19 +95,13 @@ export class AzureBlobDataAccessor implements DataAccessor {
     const metadata = await this.getRawMetadata(identifier);
     addResourceMetadata(metadata, isContainer);
     this.addBlobMetadata(metadata, properties, isContainer);
-    // Containers have no content type. For documents the value stored in the blob properties is used.
+    // Containers will not have a content-type
     if (!isContainer) {
       metadata.set(CONTENT_TYPE_TERM, properties.contentType);
     }
     return metadata;
   }
 
-  /**
-   * Generates metadata for all children of the container
-   * by listing the blobs directly below the container key.
-   * The listing transparently pages through all results.
-   * Marker blobs and metadata companion blobs are not children and will be skipped.
-   */
   public async* getChildren(identifier: ResourceIdentifier): AsyncIterableIterator<RepresentationMetadata> {
     // Documents have no children
     if (!isContainerIdentifier(identifier)) {
@@ -169,19 +151,14 @@ export class AzureBlobDataAccessor implements DataAccessor {
 
   /**
    * Creates or overwrites the marker blob of the container and writes metadata to its companion blob if necessary.
-   * Since there is no parent logic needed, this also works for root containers.
    */
   public async writeContainer(identifier: ResourceIdentifier, metadata: RepresentationMetadata): Promise<void> {
     const key = this.getBlobKey(identifier);
-    // An empty marker blob keeps (empty) containers visible
     await this.containerClient.getBlockBlobClient(key).upload('', 0);
 
     await this.writeMetadataBlob(identifier, metadata);
   }
 
-  /**
-   * Replaces the contents of the metadata companion blob.
-   */
   public async writeMetadata(identifier: ResourceIdentifier, metadata: RepresentationMetadata): Promise<void> {
     await this.writeMetadataBlob(identifier, metadata);
   }
@@ -351,7 +328,6 @@ export class AzureBlobDataAccessor implements DataAccessor {
 
   /**
    * Determines the blob key corresponding to the given identifier.
-   * Keys are the full resource URLs, with container keys ending in a slash due to their trailing slash.
    *
    * @param identifier - Identifier to get the key for.
    *
