@@ -28,10 +28,7 @@ export class HeadOperationHandler extends OperationHandler {
   }
 
   public async handle({ operation }: OperationHandlerInput): Promise<ResponseDescription> {
-    // A HEAD response only carries the metadata; the data body is always discarded below.
-    // Signal this to the store so a backend that can fully determine the response metadata without
-    // reading the data (no conversion, no range) can skip fetching it. Stores that cannot make this
-    // guarantee ignore the hint and return the data as usual, keeping the response unchanged.
+    // A HEAD response never contains the data, so the store only needs to return the metadata.
     const preferences = { ...operation.preferences, metadataOnly: true };
     const body = await this.store.getRepresentation(operation.target, preferences, operation.conditions);
 

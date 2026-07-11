@@ -110,15 +110,11 @@ export class DataAccessorBasedStore implements ResourceStore {
    *   the metadata already read; every other case falls back to the full read + post-conversion
    *   condition check, keeping the response byte-identical. The same requirement (b) as `optimizeRange`
    *   applies. When omitted, no such requests are short-circuited, keeping the original behaviour.
-   * @param optimizeMetadataOnly - Enables skipping the `accessor.getData` call (and the file open it
-   *   entails) for requests that only need the metadata and will discard the data (`preferences.metadataOnly`,
-   *   set for `HEAD` requests). This is only done for a regular resource, when no byte range was requested,
-   *   and when this store can prove from metadata alone that no conversion will happen, so every header the
-   *   response carries (content-type, `posix:size`-derived content-length, ETag, last-modified, ...) is fully
-   *   determined by the metadata already read and is unaffected by the data. In that case an empty data stream
-   *   is returned instead of the resource data; the metadata is identical, so the discarded-body response stays
-   *   byte-identical. The same requirement (b) as `optimizeRange` applies. Defaults to `false`, keeping the
-   *   original behaviour.
+   * @param optimizeMetadataOnly - Skips the `accessor.getData` call (and the file open it entails) for
+   *   requests that only need the metadata (`preferences.metadataOnly`, set for `HEAD` requests),
+   *   returning an empty data stream instead. Only done for a regular resource, with no byte range,
+   *   when this store can prove from metadata alone that no conversion will happen, so the response
+   *   stays identical. The same requirement (b) as `optimizeRange` applies. Defaults to `false`.
    */
   public constructor(
     accessor: DataAccessor,
@@ -226,9 +222,7 @@ export class DataAccessorBasedStore implements ResourceStore {
         metadata.set(SOLID_HTTP.terms.end, toLiteral(range.end, XSD.terms.integer));
         representation = new BasicRepresentation(await this.accessor.getData(identifier, range), metadata);
       } else if (this.skipDataForMetadataOnly(preferences, metadata)) {
-        // The consumer only needs the metadata (e.g. a HEAD) and no conversion will change it, so the
-        // response is fully determined by the metadata we already read. Return an empty data stream
-        // instead of opening the resource data; the metadata is unchanged, so the response stays identical.
+        // The metadata fully determines the response, so the data does not need to be opened.
         representation = new BasicRepresentation(guardedStreamFrom([], { objectMode: false }), metadata);
       } else {
         representation = new BasicRepresentation(await this.accessor.getData(identifier), metadata);
@@ -325,18 +319,10 @@ export class DataAccessorBasedStore implements ResourceStore {
   }
 
   /**
-   * Determines whether the `accessor.getData` call can be skipped for a request that only needs the
-   * metadata and discards the data (e.g. a `HEAD`), returning an empty data stream instead.
-   *
-   * Returns `true` only when ALL of the following hold, guaranteeing the (body-discarding) response stays
-   * byte-identical to the one the full-read path would produce for the same request:
-   *  - The optimization is enabled for this store (`optimizeMetadataOnly`).
-   *  - The request is metadata-only (`preferences.metadataOnly`), so the caller will discard the data.
-   *  - No byte range was requested. A range would need the data to be sliced and would add `Content-Range`
-   *    metadata in the full-read path, so ranged requests keep fetching the data.
-   *  - No content conversion will happen ({@link servedWithoutConversion}), so the served content-type equals
-   *    the stored one and every response header (content-type, the `posix:size`-derived content-length, ETag,
-   *    last-modified, ...) is fully determined by the metadata already read and is unaffected by the data.
+   * Determines whether the data fetch can be skipped for a request that only needs the metadata
+   * (e.g. a `HEAD`), with an empty data stream returned instead. This is only safe when no byte range
+   * was requested and no conversion will happen ({@link servedWithoutConversion}), since every header
+   * of the response is then fully determined by the metadata that was already read.
    */
   private skipDataForMetadataOnly(
     preferences: RepresentationPreferences | undefined,
@@ -345,7 +331,6 @@ export class DataAccessorBasedStore implements ResourceStore {
     if (!this.optimizeMetadataOnly || preferences?.metadataOnly !== true) {
       return false;
     }
-    // A byte range would need the data to slice it, so ranged requests keep fetching the data.
     if (typeof preferences?.range !== 'undefined') {
       return false;
     }
