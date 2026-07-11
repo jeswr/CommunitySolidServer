@@ -4,8 +4,7 @@ export interface RateLimiterArgs {
    */
   maxCount: number;
   /**
-   * The duration of a window in milliseconds.
-   * Once this much time has passed since the first counted action, the counter for that key resets.
+   * The duration of a window in milliseconds, starting at the first counted action for a key.
    */
   windowMs: number;
 }
@@ -19,15 +18,11 @@ interface RateLimitEntry {
 }
 
 /**
- * A simple in-memory fixed-window rate limiter.
- *
- * Every key (for example an IP address and/or account identifier) is allowed to be {@link increment}ed
- * up to `maxCount` times within a window of `windowMs` milliseconds.
- * After the window expires the counter for that key is reset automatically.
- *
- * Note that the state is kept in-memory and is thus per-process:
- * this is sufficient for a single-instance deployment,
- * but a multi-instance deployment would need a shared storage backend to be effective.
+ * A simple fixed-window rate limiter:
+ * every key can be {@link increment}ed up to `maxCount` times within a window of `windowMs` milliseconds,
+ * after which the counter for that key resets.
+ * Note that all state is kept in memory and is thus per-process,
+ * so a multi-instance deployment would need a shared storage backend to be effective.
  */
 export class RateLimiter {
   private readonly maxCount: number;
@@ -41,7 +36,7 @@ export class RateLimiter {
   }
 
   /**
-   * Whether a new action is currently allowed for the given key, i.e. its limit has not been reached yet.
+   * Whether a new action is currently allowed for the given key.
    *
    * @param key - The key to check.
    *
@@ -53,7 +48,7 @@ export class RateLimiter {
   }
 
   /**
-   * Records a single action against the given key within the current window.
+   * Records an action against the given key.
    *
    * @param key - The key to increment.
    */
@@ -67,7 +62,7 @@ export class RateLimiter {
   }
 
   /**
-   * Clears any recorded actions for the given key, for example after a successful login.
+   * Clears any recorded actions for the given key.
    *
    * @param key - The key to reset.
    */
@@ -75,20 +70,13 @@ export class RateLimiter {
     this.entries.delete(key);
   }
 
-  /**
-   * Returns the entry for the given key if it exists and its window has not yet expired.
-   * Expired entries are removed so their window effectively resets.
-   *
-   * @param key - The key to look up.
-   *
-   * @returns The active entry, or `undefined` if there is none.
-   */
   private getActiveEntry(key: string): RateLimitEntry | undefined {
     const entry = this.entries.get(key);
     if (!entry) {
       return undefined;
     }
     if (entry.expiration <= Date.now()) {
+      // Removing the expired entry resets the window
       this.entries.delete(key);
       return undefined;
     }

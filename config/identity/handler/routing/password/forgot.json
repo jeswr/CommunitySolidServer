@@ -14,7 +14,7 @@
       "source": {
         "@type": "ViewInteractionHandler",
         "source": {
-          "comment": "Rate-limits forgot-password requests per IP/account to prevent password-reset email bombing. Set `enabled` to false to disable.",
+          "comment": "Rate-limits forgot-password requests per IP/account to prevent email bombing.",
           "@id": "urn:solid-server:default:ForgotPasswordRateLimitHandler",
           "@type": "RateLimitHandler",
           "enabled": true,

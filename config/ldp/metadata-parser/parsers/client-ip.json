@@ -2,7 +2,7 @@
   "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
   "@graph": [
     {
-      "comment": "Determines the client IP address (Forwarded / X-Forwarded-For / socket) and stores it as metadata. Only used for keying rate limiters; it does not limit anything by itself.",
+      "comment": "Determines the client IP address and stores it as metadata.",
       "@id": "urn:solid-server:default:ClientIpParser",
       "@type": "ClientIpParser"
     }

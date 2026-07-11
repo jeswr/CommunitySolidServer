@@ -5,8 +5,7 @@ import { generateHttpErrorClass } from './HttpError';
 const BaseHttpError = generateHttpErrorClass(429, 'TooManyRequestsHttpError');
 
 /**
- * An error thrown when a client sent too many requests in a given amount of time,
- * for example when a rate limit on an abuse-sensitive endpoint has been exceeded.
+ * An error thrown when a client sent too many requests in a given amount of time.
  */
 export class TooManyRequestsHttpError extends BaseHttpError {
   /**

@@ -14,7 +14,7 @@
       "source": {
         "@type": "ViewInteractionHandler",
         "source": {
-          "comment": "Rate-limits account creation per IP to prevent mass account/spam creation. Set `enabled` to false to disable.",
+          "comment": "Rate-limits account creation per IP to prevent spam.",
           "@id": "urn:solid-server:default:CreateAccountRateLimitHandler",
           "@type": "RateLimitHandler",
           "enabled": true,
