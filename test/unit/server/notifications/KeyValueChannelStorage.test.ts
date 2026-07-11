@@ -42,7 +42,7 @@ describe('A KeyValueChannelStorage', (): void => {
       withReadLock: jest.fn(),
     };
 
-    // Disable the background sweep timer for the CRUD tests; it is covered separately below.
+    // Disable the background sweep as it is tested separately
     storage = new KeyValueChannelStorage(internalStorage, locker, 0);
   });
 
