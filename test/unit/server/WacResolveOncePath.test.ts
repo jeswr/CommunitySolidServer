@@ -37,13 +37,13 @@ const acl = 'http://www.w3.org/ns/auth/acl#';
 const rdf = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
 
 /**
- * Drives the REAL AuthorizingHttpHandler -> WacAllowHttpHandler -> OperationHandler chain
- * over the REAL cached reader stack (CachedHandler -> AuxiliaryReader -> UnionPermissionReader -> WebAclReader)
- * and counts how many times the effective `.acl` is resolved (read) for a single request,
- * just as production does. CredentialsExtractor/ModesExtractor are cached on (request)/(operation)
- * exactly like production, so the WAC-Allow user pass HITs the reader cache.
+ * Drives the full AuthorizingHttpHandler -> WacAllowHttpHandler -> OperationHandler chain
+ * over the cached reader stack (CachedHandler -> AuxiliaryReader -> UnionPermissionReader -> WebAclReader)
+ * and counts how many times the effective `.acl` is read during a single request.
+ * The credentials/modes extractors are cached per request/operation as in the default configuration,
+ * so the WAC-Allow user pass hits the reader cache.
  */
-describe('Full auth + WAC-Allow request path: effective .acl resolution count', (): void => {
+describe('An auth + WAC-Allow request path', (): void => {
   const target: ResourceIdentifier = { path: 'http://example.com/foo' };
   const aclStrategy: AuxiliaryIdentifierStrategy = {
     getAuxiliaryIdentifier: (id: ResourceIdentifier): ResourceIdentifier => ({ path: `${id.path}.acl` }),
@@ -62,7 +62,7 @@ describe('Full auth + WAC-Allow request path: effective .acl resolution count', 
   const request: HttpRequest = {} as any;
   const response: HttpResponse = {} as any;
 
-  // Build a cached credentials extractor keyed on the request object (production behaviour).
+  // Builds a cached credentials extractor keyed on the request object, matching the default configuration
   function cachedCredentials(creds: Credentials): jest.Mocked<CredentialsExtractor> {
     const cache = new WeakMap<object, Credentials>();
     return {
@@ -156,31 +156,30 @@ describe('Full auth + WAC-Allow request path: effective .acl resolution count', 
     return { handler, authorizer };
   }
 
-  it('AUTHENTICATED GET resolves the effective .acl exactly ONCE across auth + WAC-Allow.', async(): Promise<void> => {
+  it('resolves the effective ACL once for an authenticated GET across auth + WAC-Allow.', async(): Promise<void> => {
     const { handler } = buildChain({ agent: { webId: 'http://example.com/#me' }}, buildModes());
     const result = await handler.handle({ operation: buildOperation(), request, response });
 
-    // The redundant second resolution (the WAC-Allow public pass) is gone: 2 -> 1.
     expect(aclReads).toEqual([ 'http://example.com/foo.acl' ]);
 
-    // WAC-Allow header is byte-identical: the ACL grants foaf:Agent Read/Write/Control, and
-    // acl:Write maps to both append+write, so user and public both list Read/Append/Write/Control.
+    // The ACL grants foaf:Agent Read/Write/Control, and acl:Write implies append,
+    // so user and public both list Read/Append/Write/Control
     const expected = [ ACL.terms.Read, ACL.terms.Append, ACL.terms.Write, ACL.terms.Control ];
     expect(result.metadata!.getAll(AUTH.terms.userMode)).toEqualRdfTermArray(expected);
     expect(result.metadata!.getAll(AUTH.terms.publicMode)).toEqualRdfTermArray(expected);
   });
 
-  it('UNAUTHENTICATED GET resolves the effective .acl exactly once.', async(): Promise<void> => {
+  it('resolves the effective ACL once for an unauthenticated GET.', async(): Promise<void> => {
     const { handler } = buildChain({}, buildModes());
     const result = await handler.handle({ operation: buildOperation(), request, response });
     expect(aclReads).toEqual([ 'http://example.com/foo.acl' ]);
-    // Public == user for an unauthenticated request.
+    // Public permissions equal user permissions for an unauthenticated request
     const expected = [ ACL.terms.Read, ACL.terms.Append, ACL.terms.Write, ACL.terms.Control ];
     expect(result.metadata!.getAll(AUTH.terms.userMode)).toEqualRdfTermArray(expected);
     expect(result.metadata!.getAll(AUTH.terms.publicMode)).toEqualRdfTermArray(expected);
   });
 
-  it('PUT resolves the effective .acl exactly once (no WAC-Allow).', async(): Promise<void> => {
+  it('resolves the effective ACL once for a PUT without WAC-Allow.', async(): Promise<void> => {
     const modes = new IdentifierSetMultiMap<any>([[ target, AccessMode.write ]]);
     const { handler } = buildChain({ agent: { webId: 'http://example.com/#me' }}, modes);
     const op = buildOperation();

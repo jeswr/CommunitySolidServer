@@ -77,12 +77,8 @@ export class AuthorizingHttpHandler extends OperationHttpHandler {
         .map(([ id, set ]): string => `{ ${id.path}: ${[ ...set ].join(',')} }`).join(',')
     }`);
 
-    // When the request is authenticated, also resolve the public (`{}`) permissions in this single call
-    // (via `credentialsToCompare`), so the nested WacAllowHttpHandler can build the `WAC-Allow` `public`
-    // value from the cached result without resolving the effective ACL a second time.
-    // The comparison permissions are attached on a non-enumerable symbol key, so the `availablePermissions`
-    // passed to the authorizer below are byte-for-byte identical to a call without `credentialsToCompare`
-    // and the authorization decision is unaffected.
+    // For authenticated requests, the public permissions are resolved in the same call (as a comparison),
+    // so the nested WacAllowHttpHandler can generate the WAC-Allow header without a second ACL resolution.
     const credentialsToCompare = credentials.agent?.webId ? PUBLIC_COMPARISON as Credentials[] : undefined;
     const availablePermissions = await this.permissionReader.handleSafe({
       credentials,

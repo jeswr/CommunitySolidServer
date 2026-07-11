@@ -45,8 +45,6 @@ export class ParentContainerReader extends PermissionReader {
       const resourceSet = result.get(identifier);
       const containerSet = result.get(container);
       const merged = this.addContainerPermissions(resourceSet, containerSet);
-      // Apply the same create/delete derivation to each comparison credential set, using that comparison's
-      // own resource + container permissions, so the comparison result matches a full separate pass.
       this.addComparisonContainerPermissions(merged, resourceSet, containerSet);
       result.set(identifier, merged);
     }
@@ -54,8 +52,7 @@ export class ParentContainerReader extends PermissionReader {
   }
 
   /**
-   * Derives the comparison create/delete permissions (those carried for `credentialsToCompare`)
-   * from the comparison resource and container permission sets, mirroring the primary derivation.
+   * Mirrors the primary create/delete derivation for each attached comparison permission set, index by index.
    */
   private addComparisonContainerPermissions(
     merged: PermissionSet,

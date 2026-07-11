@@ -42,18 +42,14 @@ export class UnionPermissionReader extends UnionHandler<PermissionReader> {
         result[key] = value;
       }
     }
-    // Symbol-keyed comparison permissions (from `credentialsToCompare`) are not enumerated by `Object.entries`,
-    // so they must be merged explicitly to survive the union. Each entry is merged using the same rules,
-    // index-aligned, so the comparison result is identical to a full separate pass for those credentials.
+    // Comparison permissions are symbol-keyed and not covered by the entries loop above
     this.mergeComparisons(permissions, result);
     return result;
   }
 
   /**
    * Merges the {@link COMPARISON_PERMISSIONS} arrays of two permission sets, index by index,
-   * using the same `false` \> `true` \> `undefined` rule as the primary permissions.
-   * Ensures the comparison permissions carried for `credentialsToCompare` compose across readers
-   * exactly as a separate full pass for those credentials would.
+   * using the same rules as the primary permissions.
    */
   private mergeComparisons(permissions: PermissionSet, result: PermissionSet): void {
     const incoming = (permissions as PermissionSetWithComparisons)[COMPARISON_PERMISSIONS];

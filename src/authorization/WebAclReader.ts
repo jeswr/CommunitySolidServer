@@ -70,8 +70,6 @@ export class WebAclReader extends PermissionReader {
   Promise<PermissionMap> {
     // Determine the required access modes
     this.logger.debug(`Retrieving permissions of ${credentials.agent?.webId ?? 'an unknown agent'}`);
-    // The effective ACL document(s) are resolved (walked + read + parsed) exactly ONCE here,
-    // regardless of how many credential sets need to be evaluated against them.
     const aclMap = await this.getAclMatches(requestedModes.distinctKeys());
     const storeMap = await this.findAuthorizationStatements(aclMap);
     return this.findPermissions(storeMap, credentials, credentialsToCompare);
@@ -85,11 +83,8 @@ export class WebAclReader extends PermissionReader {
    *
    * @param aclMap - A map containing stores of ACL data linked to their relevant identifiers.
    * @param credentials - Credentials to check permissions for.
-   * @param credentialsToCompare - Optional additional credential sets to ALSO evaluate against the same
-   *                               resolved ACL data. Their resulting permission sets are attached to the
-   *                               primary permission set of each identifier under the
-   *                               {@link COMPARISON_PERMISSIONS} symbol (index-aligned with this array),
-   *                               where they are invisible to the authorizer and WAC-Allow header logic.
+   * @param credentialsToCompare - Additional credential sets to evaluate against the same ACL data,
+   *                               with results attached under the {@link COMPARISON_PERMISSIONS} symbol.
    */
   private async findPermissions(
     aclMap: Map<Store, ResourceIdentifier[]>,
@@ -98,16 +93,13 @@ export class WebAclReader extends PermissionReader {
   ): Promise<PermissionMap> {
     const result: PermissionMap = new IdentifierMap();
     for (const [ store, aclIdentifiers ] of aclMap) {
-      // Evaluate the primary credentials against this (already resolved + parsed) store.
       const permissionSet = await this.determinePermissions(store, credentials);
 
-      // Evaluate any comparison credential sets against the SAME store, reusing the single resolution.
       if (credentialsToCompare && credentialsToCompare.length > 0) {
         const comparisons: AclPermissionSet[] = [];
         for (const compareCredentials of credentialsToCompare) {
           comparisons.push(await this.determinePermissions(store, compareCredentials));
         }
-        // Attach on the non-enumerable Symbol key so the primary set's enumerable shape is unchanged.
         (permissionSet as PermissionSetWithComparisons)[COMPARISON_PERMISSIONS] = comparisons;
       }
 

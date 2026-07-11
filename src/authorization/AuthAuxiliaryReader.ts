@@ -49,8 +49,7 @@ export class AuthAuxiliaryReader extends PermissionReader {
       this.logger.debug(`Mapping ${subject.path} control permission to all permissions for ${identifier.path}`);
       const subjectSet = result.get(subject);
       const authSet = this.interpretControl(identifier, subjectSet);
-      // Apply the same control->read/write interpretation to each comparison credential set,
-      // using that comparison's own subject permissions, so the comparison result matches a full pass.
+      // The control interpretation is applied to each comparison permission set as well
       const subjectComparisons = (subjectSet as PermissionSetWithComparisons | undefined)?.[COMPARISON_PERMISSIONS];
       if (subjectComparisons) {
         (authSet as PermissionSetWithComparisons)[COMPARISON_PERMISSIONS] = subjectComparisons

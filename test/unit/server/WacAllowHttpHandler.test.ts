@@ -150,9 +150,7 @@ describe('A WacAllowHttpHandler', (): void => {
 
   it('reuses public permissions attached to the user result without a second reader call.', async(): Promise<void> => {
     credentialsExtractor.handleSafe.mockResolvedValue({ agent: { webId: 'http://example.com/#me' }});
-    // The reader (driven by `credentialsToCompare` from the AuthorizingHttpHandler) attaches the public
-    // permissions to the user permission set under the COMPARISON_PERMISSIONS symbol. WacAllow must read
-    // them from there and NOT make a second reader call.
+    // The user permission set carries the public permissions requested as a comparison
     const userSet: PermissionSetWithComparisons = { read: true, write: true, append: false };
     userSet[COMPARISON_PERMISSIONS] = [{ read: true, write: false, append: true }];
     permissionReader.handleSafe.mockResolvedValueOnce(new IdentifierMap([[ target, userSet ]]));
@@ -162,14 +160,13 @@ describe('A WacAllowHttpHandler', (): void => {
     expect(output.metadata!.getAll(AUTH.terms.userMode)).toEqualRdfTermArray([ ACL.terms.Read, ACL.terms.Write ]);
     expect(output.metadata!.getAll(AUTH.terms.publicMode)).toEqualRdfTermArray([ ACL.terms.Read, ACL.terms.Append ]);
 
-    // Crucially: only ONE reader call (no separate public pass) because the comparison was reused.
+    // Only one reader call: the public permissions come from the attached comparison
     expect(permissionReader.handleSafe).toHaveBeenCalledTimes(1);
   });
 
   it('uses an empty public set if the attached comparison has no entry for the target.', async(): Promise<void> => {
     credentialsExtractor.handleSafe.mockResolvedValue({ agent: { webId: 'http://example.com/#me' }});
     const userSet: PermissionSetWithComparisons = { read: true, write: true };
-    // Empty comparison array entry -> public gets nothing.
     userSet[COMPARISON_PERMISSIONS] = [{}];
     permissionReader.handleSafe.mockResolvedValueOnce(new IdentifierMap([[ target, userSet ]]));
 

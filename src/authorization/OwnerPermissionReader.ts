@@ -44,8 +44,7 @@ export class OwnerPermissionReader extends PermissionReader {
     }
 
     const { credentials, credentialsToCompare } = input;
-    // If neither the primary credentials nor any comparison credentials have a WebID,
-    // no ownership grant is possible for anyone, so there is nothing to do.
+    // Without a WebID in any credential set, no ownership grant is possible
     const anyWebId = credentials.agent?.webId ??
       credentialsToCompare?.find((cred): boolean => Boolean(cred.agent?.webId))?.agent?.webId;
     if (!anyWebId) {
@@ -53,7 +52,6 @@ export class OwnerPermissionReader extends PermissionReader {
       return result;
     }
 
-    // The pod owners are resolved ONCE per pod and reused for every credential set being evaluated.
     const pods = await this.findPods(auths);
     const owners = await this.findOwners(Object.values(pods));
 
@@ -65,10 +63,7 @@ export class OwnerPermissionReader extends PermissionReader {
       const primarySet = this.grantIfOwner(auth, webIds, credentials);
       const comparisonSets = credentialsToCompare
         ?.map((cred): AclPermissionSet => this.grantIfOwner(auth, webIds, cred) ?? {});
-      // An entry is created when the primary credentials are an owner (matching the original behaviour
-      // exactly), OR when a comparison credential set is an owner (so its owner grant is not silently
-      // dropped). When only a comparison is an owner, the primary set is an empty `{}`, which the
-      // UnionPermissionReader treats as no contribution for the primary - identical to the original.
+      // An entry with an empty primary set is still needed when only a comparison credential set is an owner
       const comparisonOwner = comparisonSets?.some((set): boolean => Boolean(set.control));
       if (primarySet ?? comparisonOwner) {
         const entry: AclPermissionSet = primarySet ?? {};

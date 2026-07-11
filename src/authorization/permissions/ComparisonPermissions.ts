@@ -2,30 +2,17 @@ import type { Credentials } from '../../authentication/Credentials';
 import type { PermissionSet } from './Permissions';
 
 /**
- * The single "public" (unauthenticated, empty) credential set used as the comparison credentials
- * for the `WAC-Allow` header's `public="..."` value.
- *
- * It is wrapped in a one-element array because {@link PermissionReaderInput.credentialsToCompare}
- * is a list. The {@link AuthorizingHttpHandler} attaches this on its (authenticated) reader call so that
- * the cached permission result already carries the public permissions, allowing the
- * {@link WacAllowHttpHandler} to read them without resolving the effective ACL a second time.
+ * Reusable `credentialsToCompare` array containing only the public (empty) credential set,
+ * used to resolve the public permissions needed for the `WAC-Allow` header
+ * alongside an authenticated request's own permissions.
  */
 export const PUBLIC_COMPARISON: readonly Credentials[] = Object.freeze([ Object.freeze({}) ]);
 
 /**
- * Symbol key under which a {@link PermissionSet} can carry the permissions that were
- * computed for one or more *comparison* credential sets against the SAME resolved ACL,
- * as requested through {@link PermissionReaderInput.credentialsToCompare}.
- *
- * A `Symbol` (rather than a string) property is used deliberately:
- *  - It is never returned by `Object.keys` / `Object.entries` / `for..in`, so it is invisible
- *    to {@link PermissionBasedAuthorizer} (which reads explicit {@link AccessMode} keys) and to
- *    {@link WacAllowHttpHandler.addWacAllowMetadata} (which iterates `Object.keys` and filters on
- *    the valid ACL modes). The primary permission semantics are therefore completely unchanged.
- *  - It cannot collide with any current or future {@link AccessMode} string key.
- *
- * The value is an array, index-aligned with the `credentialsToCompare` array that produced it,
- * of the {@link PermissionSet} computed for each comparison credential set on that identifier.
+ * Symbol under which a {@link PermissionSet} carries the permission sets computed for the
+ * {@link PermissionReaderInput.credentialsToCompare} entries, index-aligned with that array.
+ * A symbol key is not enumerable through `Object.keys`/`Object.entries` and cannot collide with
+ * an {@link AccessMode} key, so attaching comparisons never changes the primary permission semantics.
  */
 export const COMPARISON_PERMISSIONS = Symbol('comparisonPermissions');
 

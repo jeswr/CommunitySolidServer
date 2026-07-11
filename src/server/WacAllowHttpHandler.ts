@@ -19,10 +19,7 @@ import { OperationHttpHandler } from './OperationHttpHandler';
 const VALID_METHODS = new Set([ 'HEAD', 'GET' ]);
 const VALID_ACL_MODES = new Set([ AccessMode.read, AccessMode.write, AccessMode.append, AclMode.control ]);
 
-/**
- * Index in the `credentialsToCompare`/comparison-permissions array of the public (`{}`) credential set.
- * Single-sourced with the `PUBLIC_COMPARISON` array attached by the {@link AuthorizingHttpHandler}.
- */
+// Index of the public credential set in the comparison permissions attached by the AuthorizingHttpHandler
 const PUBLIC_COMPARISON_INDEX = 0;
 
 export interface WacAllowHttpHandlerArgs {
@@ -103,17 +100,11 @@ export class WacAllowHttpHandler extends OperationHttpHandler {
   }
 
   /**
-   * Determines the public (unauthenticated) permissions needed for the `WAC-Allow` `public="..."` value.
-   *
-   * For an unauthenticated request, the public permissions are identical to the agent's permissions,
-   * so no extra work is needed.
-   *
-   * For an authenticated request, the public permissions are those of the empty credential set `{}`.
-   * These are normally already available on the user permission set as a comparison result attached by
-   * the {@link AuthorizingHttpHandler} (which requests them via `credentialsToCompare`), so the effective
-   * ACL does not have to be resolved a second time. If they are not present (for instance because the
-   * configured permission reader does not support `credentialsToCompare`), this falls back to the original
-   * behaviour of making a separate reader call with empty credentials.
+   * Determines the public permissions for the `WAC-Allow` header.
+   * For unauthenticated requests these equal the agent's own permissions.
+   * For authenticated requests they are read from the comparison permissions attached
+   * to the user permission set by the {@link AuthorizingHttpHandler},
+   * falling back to a separate reader call with empty credentials when no comparison is attached.
    *
    * @param target - The resource the `WAC-Allow` header is being generated for.
    * @param userPermissions - The permission set found for the requesting agent on the target.
@@ -132,14 +123,12 @@ export class WacAllowHttpHandler extends OperationHttpHandler {
       return userPermissions;
     }
 
-    // Reuse the public permissions computed against the already-resolved ACL during the user pass, if present.
     const comparisons = getComparisonPermissions(userPermissions);
     if (comparisons) {
       this.logger.debug('Reusing public permissions resolved alongside the user permissions');
       return comparisons[PUBLIC_COMPARISON_INDEX] ?? {};
     }
 
-    // Fallback: the reader did not provide comparison permissions, so determine them separately.
     // Note that this call can potentially create a new lock on a resource that is already locked,
     // so a locker that allows multiple read locks on the same resource is required.
     this.logger.debug('Determining public permissions separately');

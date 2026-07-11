@@ -90,7 +90,6 @@ describe('An OwnerPermissionReader', (): void => {
   });
 
   it('attaches an empty comparison set for a non-owner comparison credential.', async(): Promise<void> => {
-    // Owner is the primary; the public ({}) comparison is not an owner so its set is empty.
     const result = await reader.handle({ credentials, requestedModes, credentialsToCompare: [{}]});
     const set = result.get(identifier);
     expect(set).toMatchObject({ control: true });
@@ -102,9 +101,8 @@ describe('An OwnerPermissionReader', (): void => {
     const ownerCompare = [{ agent: { webId: owner }}];
     const result = await reader.handle({ credentials, requestedModes, credentialsToCompare: ownerCompare });
     const set = result.get(identifier);
-    // Primary (non-owner) gets an empty primary set, but the comparison (the owner) gets full control.
     expect(set).toBeDefined();
-    // No enumerable (string-keyed) primary permissions were granted to the non-owner.
+    // The non-owner primary set has no enumerable permissions
     expect(Object.keys(set!)).toHaveLength(0);
     expect(getComparisonPermissions(set)![0]).toMatchObject({ control: true });
   });
