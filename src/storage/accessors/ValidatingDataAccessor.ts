@@ -40,23 +40,12 @@ export class ValidatingDataAccessor extends PassthroughDataAccessor {
     return this.accessor.writeContainer(identifier, metadata);
   }
 
-  /**
-   * Metadata (`.meta` sidecars) is persisted as a serialized stream of quads.
-   * Without this override the write would bypass the validator entirely, letting a large metadata
-   * document exceed the configured quota. The serialized metadata is therefore run through the same
-   * validator used for documents so its size counts against the quota. Because the wrapped accessor
-   * re-serializes the metadata itself, the validated stream is fully consumed here purely to drive the
-   * quota guard, which rejects (413) when the write would exceed the available space.
-   *
-   * When quota is not configured this accessor is not instantiated, so this method is never invoked
-   * and metadata writes keep their original behavior.
-   */
   public async writeMetadata(identifier: ResourceIdentifier, metadata: RepresentationMetadata): Promise<void> {
     const pipedRep = await this.validator.handleSafe({
       representation: new BasicRepresentation(serializeQuads(metadata.quads()), metadata),
       identifier,
     });
-    // Draining the validated stream triggers the quota guard, which errors when quota would be exceeded.
+    // Validation only happens while the stream is being consumed, so it has to be drained fully.
     await readableToString(pipedRep.data);
     return this.accessor.writeMetadata(identifier, metadata);
   }
