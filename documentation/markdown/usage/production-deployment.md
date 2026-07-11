@@ -4,10 +4,6 @@ This guide covers running the Community Solid Server (CSS) in production: persis
 supervision, containers, health checks, logging, scaling, hardening, and backups. It assumes you already know how to
 start the server (see [Starting the server](starting-server.md)).
 
-> **Note:** Some options below are part of the in-review production-hardening PR series; verify availability in your
-> version. Where a feature is configured through a config file rather than a CLI flag, this guide points at the
-> relevant config instead of inventing flag names.
-
 ## Choosing a configuration
 
 The default configuration (`@css:config/default.json`) stores everything in memory and is wiped on restart, which is
@@ -60,7 +56,7 @@ preferable because it centralizes certificate management, HTTP/2, and rate limit
 
 ## Running as a supervised process
 
-The server now handles `SIGINT` and `SIGTERM` for graceful shutdown: on receiving the signal it stops accepting new
+The server handles `SIGINT` and `SIGTERM` for graceful shutdown: on receiving the signal it stops accepting new
 connections, drains in-flight requests, runs its finalizers (flushing state and closing backends), and allows up to a
 30-second grace period before forcing exit. Because of this you should run CSS under a process supervisor that sends
 `SIGTERM` on stop and restarts the process on failure — systemd or a container runtime both work well.
@@ -86,13 +82,13 @@ Environment=NODE_ENV=production
 WantedBy=multi-user.target
 ```
 
-`systemctl stop` sends `SIGTERM`, which now stops the server cleanly through the graceful-shutdown path above, so no
+`systemctl stop` sends `SIGTERM`, which stops the server cleanly through the graceful-shutdown path above, so no
 special `KillSignal` or `KillMode` tuning is required. Adjust `WorkingDirectory` and the `ExecStart` path to wherever
 you installed the server, and make sure `User=` owns `--rootFilePath`.
 
 ## Docker
 
-The hardened image runs as a non-root user (uid 1000) under `tini` as PID 1 (for correct signal forwarding and zombie
+The image runs as a non-root user (uid 1000) under `tini` as PID 1 (for correct signal forwarding and zombie
 reaping) and ships with a `HEALTHCHECK`. Mount a volume for the data directory and set the base URL:
 
 ```shell
@@ -174,15 +170,14 @@ community-solid-server -c @css:config/file.json -f /var/lib/css/data \
 - `-1`: scale to `num_cores - 1` workers.
 - `0`: scale to `num_cores` workers.
 
-**Critical caveat:** the in-memory storage configuration cannot run with more than one worker — it now fails fast at
-boot rather than silently corrupting state, because each worker would hold its own copy of the data. To run multiple
-workers (or multiple machines) you need a shared backend. That means the file backend combined with a shared resource
-locker instead of the default in-memory locker: CSS ships a Redis-based locker at
-`config/util/resource-locker/redis.json`, which lets multiple workers/instances coordinate writes against the same
-storage.
+The in-memory storage configuration cannot run with more than one worker: it fails fast at boot, because each worker
+would hold its own copy of the data. To run multiple workers (or multiple machines) you need a shared backend. That
+means the file backend combined with a shared resource locker instead of the default in-memory locker: CSS ships a
+Redis-based locker at `config/util/resource-locker/redis.json`, which lets multiple workers/instances coordinate
+writes against the same storage.
 
-Note that cross-instance notifications remain a known limitation: subscriptions handled by one instance are not yet
-propagated across the others. Until multi-instance support matures, the safest options are:
+Note that cross-instance notifications are a known limitation: subscriptions handled by one instance are not
+propagated across the others. The safest options are:
 
 - a single single-worker instance, or
 - several single-worker instances behind a reverse-proxy load balancer, all sharing the same file storage and Redis
@@ -194,28 +189,26 @@ Several defenses are configured at the config level, in the server-factory and b
 CLI flags. Review these before exposing the server publicly:
 
 - **Request body size limits:** cap the size of request bodies to prevent a single large upload from exhausting memory
-  or disk. This is a parameter on the body-parsing configuration, not a CLI shorthand.
+  or disk. This is a parameter on the body-parsing configuration.
 - **HTTP server timeouts:** the server factory exposes `requestTimeout`, `headersTimeout`, `keepAliveTimeout`, and
   `maxConnections`. Setting `headersTimeout`/`requestTimeout` protects against slowloris-style attacks that hold
   connections open by trickling bytes; `maxConnections` bounds total concurrent sockets. Tune these in the
   server-factory config (see `config/http/server-factory/`).
-- **Security response headers:** the server now sends `X-Content-Type-Options`, `Referrer-Policy`, and
+- **Security response headers:** the server sends `X-Content-Type-Options`, `Referrer-Policy`, and
   `X-Frame-Options` by default, so no extra work is needed to get these.
 
 Because these are config parameters rather than CLI flags, adjust them by editing (or importing and overriding) the
-relevant entries in your configuration, and consult the config files above for the exact parameter names in your
-version.
+relevant entries in your configuration; the config files above list the exact parameter names.
 
 ## Fast startup (optional)
 
-Cold boot can be slow because CSS assembles its dependency graph with Components.js at startup. The fork offers two
-opt-in speed-ups that can cut cold-boot time substantially:
+Cold boot can be slow because CSS assembles its dependency graph with Components.js at startup. Two opt-in speed-ups
+can cut cold-boot time substantially:
 
 - `--moduleStateCachePath`: caches the resolved module state so it does not have to be recomputed on every boot.
-- a precompiled-config path that skips re-resolving the dependency-injection graph.
+- A precompiled configuration, which skips re-resolving the dependency-injection graph.
 
-Treat both as optional optimizations, most useful where startup latency matters (frequent restarts, autoscaling, CI).
-Consult their PRs and config for the exact usage in your version, since the precise syntax may still be changing.
+Both are optional optimizations, most useful where startup latency matters (frequent restarts, autoscaling, CI).
 
 ## Backups
 
@@ -224,7 +217,7 @@ With the file backend, all state lives under `--rootFilePath`. That tree contain
 channel records. Back up the entire `rootFilePath` tree — backing up only the visible pod data would lose accounts and
 keys.
 
-Writes are now atomic (data is written to a temp file and renamed into place), so a cold copy taken while the server is
+Writes are atomic (data is written to a temp file and renamed into place), so a cold copy taken while the server is
 stopped is internally consistent. For a backup taken while the server is running, prefer a filesystem-level snapshot
 (LVM, ZFS, EBS snapshot, etc.) over a plain recursive copy to avoid capturing a partially written state.
 
