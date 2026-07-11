@@ -188,7 +188,7 @@ export class StaticAssetHandler extends HttpHandler {
       return;
     }
 
-    // `stat` succeeds on folders, so an explicit check is needed to keep signaling a 404 for those
+    // `stat` succeeds on folders, so an explicit check is needed to signal a 404 for those
     if (stats.isDirectory()) {
       this.logger.debug(`Static asset ${filePath} not found`);
       throw new NotFoundHttpError(`Cannot find ${request.url}`);
@@ -205,7 +205,7 @@ export class StaticAssetHandler extends HttpHandler {
 
     const contentType = mime.lookup(filePath) || APPLICATION_OCTET_STREAM;
 
-    // With HEAD, only write the headers, without opening the file
+    // With HEAD, only write the headers
     if (request.method === 'HEAD') {
       response.writeHead(200, {
         // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -229,13 +229,11 @@ export class StaticAssetHandler extends HttpHandler {
           ...this.getCacheHeaders(),
         });
 
-        // Pipe the entire response
         pipeSafely(asset, response);
         resolve();
       });
 
-      // Pass the error when something goes wrong,
-      // e.g., when the file was removed between the `stat` call and opening it
+      // Pass the error when something goes wrong, e.g., when the file was removed after the `stat` call
       asset.once('error', (error): void => {
         const { code } = error as SystemError;
         // When the file if not found or a folder, signal a 404
