@@ -86,8 +86,8 @@
       "@type": "WaterfallHandler",
       "handlers": [
         {
+          "comment": "Caps the intermediate bindings allowed when solving the solid:where conditions of a patch.",
           "@type": "N3Patcher",
-          "comment": "maxConditionBindings caps the intermediate bindings allowed when solving the solid:where conditions of a patch.",
           "maxConditionBindings": 1000000
         },
         { "@type": "SparqlUpdatePatcher" }
