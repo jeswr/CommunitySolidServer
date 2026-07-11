@@ -1,20 +1,12 @@
 'use strict';
 /**
- * Prepares a booted CSS instance for benchmarking:
+ * Prepares a booted CSS instance for benchmarking: creates an account with a pod,
+ * obtains a DPoP-bound access token through client credentials, and creates the requested
+ * containers with a public read/write ACL, so the measured request path contains no token signing.
+ * The `jose` argument of `setupPod` must be resolved from the measured server's dependency tree;
+ * `authed` in the result performs a fetch authenticated as the pod owner.
  *
- * 1. creates an account with a password login and a pod
- * 2. creates client credentials and obtains a DPoP-bound access token
- * 3. creates the requested containers in the pod with a public read/write ACL
- *
- * As a module: `const { setupPod } = require('./bench-setup');`
- *   setupPod({ baseUrl, podName, jose, containers })
- *     → { podRoot, webId, email, accessToken, containers, authed }
- *   `jose` must be the `jose` library instance resolved from the *server's* dependency tree.
- *   `authed(url, init?)` performs a fetch authenticated as the pod owner (DPoP-bound token).
- * As a CLI: node bench-setup.js <baseUrl> [podName]  (requires `jose` resolvable from cwd; prints JSON)
- *
- * The public ACL means the load generator can hit the created containers without
- * authentication, keeping token signing out of the measured request path.
+ * CLI usage: node bench-setup.js <baseUrl> [podName]
  */
 const { randomUUID } = require('node:crypto');
 

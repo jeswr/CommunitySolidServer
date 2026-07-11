@@ -1,13 +1,9 @@
 'use strict';
 /**
- * Renders one or more runner result files as a markdown comparison.
+ * Renders one or more runner result files as a markdown comparison,
+ * with relative differences against the first (baseline) file.
  *
  * Usage: node scripts/perf/report.js baseline.json [candidate.json ...]
- *
- * The first file is the baseline: for every numeric metric the other columns
- * show the relative difference against it. "Better" is metric-dependent
- * (higher rps, lower latency/fs ops/CPU/RSS), so no coloring is applied;
- * the deltas are informational.
  */
 const fs = require('node:fs');
 

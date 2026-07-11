@@ -1,19 +1,9 @@
 'use strict';
 /**
- * File-system operation counter, injected as a preload:
- *   node --require ./scripts/perf/fs-count.js bin/server.js ...
- *
- * Wraps `fs`, `fs.*Sync` and `fs.promises` before any application module loads,
- * so wrappers such as graceful-fs/fs-extra capture the counting functions too.
- * Counts are aggregated per operation, per call site and per (anonymized) path
- * pattern, together with a per-second timeline and the process RSS.
- *
- * Output: a JSON snapshot written every 5 s, on exit, and synchronously on
- * SIGUSR2 (with a forced GC when --expose-gc is set, for honest RSS numbers).
- * Env: FS_COUNT_OUT=<snapshot path> (default ./fs-count.json).
- *
- * This file must stay dependency-free CommonJS: it runs inside the measured
- * server process before anything else is loaded.
+ * Counts every `fs`/`fs.promises` call of the process it is preloaded into (`node --require`),
+ * aggregated per operation, per call site, and per anonymized path pattern.
+ * Writes a JSON snapshot to `FS_COUNT_OUT` every 5 seconds, on exit, and synchronously on SIGUSR2.
+ * Must stay dependency-free CommonJS: it runs inside the measured server process before anything else loads.
  */
 const fs = require('node:fs');
 const path = require('node:path');

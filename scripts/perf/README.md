@@ -44,6 +44,7 @@ The `--serverDir` must be a **built** checkout (`bin/server.js` and `node_module
 | `--conc` | `20` | Concurrent workers per load scenario |
 | `--wedge` | off | Also run the abandoned-lock-waiter reproduction (see below) |
 | `--bootRuns` | off | Only measure `N` cold boots (time, fs ops, RSS, CPU), no load scenarios |
+| `--serverArgs` | none | Extra whitespace-separated arguments appended to the server command line |
 
 ## Scenarios
 

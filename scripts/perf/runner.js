@@ -1,26 +1,10 @@
 'use strict';
 /**
- * CSS benchmark runner. Boots a server build with the fs-count preload,
- * drives a fixed set of scenarios against it, and records throughput,
- * latency percentiles, file-system-operation and CPU-time deltas, and RSS.
+ * Boots a built CSS checkout with the fs-count preload and drives a fixed scenario suite against it,
+ * recording throughput, latency percentiles, fs-operation and CPU-time deltas, and RSS per scenario.
  *
- * Usage:
- *   node scripts/perf/runner.js --serverDir <builtCheckout>
- *     [--config config/file.json] [--port 3460] [--label name] [--out results.json]
- *     [--seconds 10] [--conc 20] [--wedge] [--bootRuns N]
- *     [--serverArgs "--extraFlag value ..."]
- *
- * --serverDir must point at a *built* CSS checkout (bin/server.js present);
- *   `jose` is resolved from that checkout's dependency tree for the pod setup.
- * --wedge additionally reproduces the abandoned-lock-waiter scenario
- *   (a trickling reader holding a read lock + 40 aborted writers) and
- *   measures the idle fs-op rate it leaves behind.
- * --bootRuns N only measures cold-boot time/IO/RSS N times (no scenarios).
- * --serverArgs appends extra whitespace-separated arguments to the server
- *   command line (e.g. "--moduleStateCachePath /tmp/ms.json").
- *
- * All numbers are indicative: the load generator shares the machine with the
- * server, and `fetch` (undici) pools connections per origin.
+ * Usage: node scripts/perf/runner.js --serverDir <builtCheckout> [options]
+ * Options, scenarios, and caveats are documented in `scripts/perf/README.md`.
  */
 const { spawn } = require('node:child_process');
 const { createRequire } = require('node:module');
@@ -124,8 +108,7 @@ async function startServer(podDir) {
 }
 
 function stopServer(signal = 'SIGINT') {
-  // Capture the current process: the module-level variable may already
-  // point at the next boot's process by the time the escalation fires.
+  // The module-level variable may already point at the next boot's process when the escalation fires
   const proc = server;
   return new Promise((resolve) => {
     if (!proc || proc.exitCode !== null) {
@@ -201,9 +184,7 @@ function idle(seconds) {
 }
 
 async function runWedge(results, scratch) {
-  // A 100 MB resource, a slow reader holding the read lock, and 40 writers
-  // whose clients abort: on an affected build the abandoned waiters keep
-  // polling the disk although the server is outwardly idle.
+  // A slow reader holds the read lock on a large resource while 40 aborted writers leave waiters behind
   const big = Buffer.alloc(100 * 1024 * 1024, 7);
   await fetch(`${scratch}big.bin`, { method: 'PUT', headers: { 'content-type': 'application/octet-stream' }, body: big });
   const res = await fetch(`${scratch}big.bin`);

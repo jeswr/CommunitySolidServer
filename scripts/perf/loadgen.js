@@ -1,12 +1,10 @@
 'use strict';
 /**
- * Minimal dependency-free HTTP load generator built on global fetch.
+ * Minimal dependency-free HTTP load generator built on the global fetch.
+ * A literal `%i` in the URL is replaced by the worker index,
+ * so concurrent workers can target distinct resources.
  *
- * As a module: `const { load } = require('./loadgen');`
- * As a CLI:    node loadgen.js <url> [concurrency] [seconds] [method] [bodyFile] [contentType]
- *
- * A literal `%i` in the URL is replaced by the worker index, so concurrent
- * workers can target distinct resources (e.g. `.../res-%i.ttl`).
+ * CLI usage: node loadgen.js <url> [concurrency] [seconds] [method] [bodyFile] [contentType]
  */
 const { readFileSync } = require('node:fs');
 
