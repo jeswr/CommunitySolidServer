@@ -13,7 +13,7 @@
       }
     },
     {
-      "comment": "Makes sure the notification channel sweep timer is stopped when the application needs to stop.",
+      "comment": "Makes sure the notification channel sweep timer is stopped when the application stops.",
       "@id": "urn:solid-server:default:Finalizer",
       "@type": "ParallelHandler",
       "handlers": [

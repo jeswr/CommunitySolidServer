@@ -16,19 +16,9 @@ type StorageValue = string | string[] | NotificationChannel;
  *
  * Uses a {@link ReadWriteLocker} to prevent internal race conditions.
  *
- * Expired channels are already removed lazily the next time they are requested through `get`,
- * but a channel whose topic goes quiet is never requested again and would leak forever.
- * To reclaim those, a periodic background sweep enumerates the storage and removes every channel
- * whose `endAt` is already in the past. Because it reuses the exact same lazy-expiry check as `get`,
- * it can only ever delete channels that are already expired (and thus already invisible to clients);
- * a live channel is never removed. Set `sweepInterval` to `0` to disable the sweep, which restores
- * the lazy-only behaviour.
- *
- * A random fraction of jitter is added to the sweep interval so that, if multiple instances exist,
- * their (potentially expensive) sweeps do not all fire at the same instant.
- *
- * The timer is cleared when the storage is finalized, so it does not keep the event loop alive
- * or prevent a graceful shutdown.
+ * Expired channels are deleted when they are requested through `get`.
+ * A timer additionally deletes all expired channels periodically,
+ * since channels that are never requested again would otherwise remain in the storage.
  */
 export class KeyValueChannelStorage implements NotificationChannelStorage, Finalizable {
   protected logger = getLoggerFor(this);
@@ -40,10 +30,9 @@ export class KeyValueChannelStorage implements NotificationChannelStorage, Final
   /**
    * @param storage - Where to store the channels.
    * @param locker - Used to prevent internal race conditions.
-   * @param sweepInterval - How often expired channels are swept from the storage, in minutes.
-   *                        Defaults to 60. A value of `0` disables the background sweep.
-   * @param jitter - Maximum fraction of `sweepInterval` that is randomly added to the interval so that
-   *                 multiple instances do not all sweep at the same time. `0` disables jitter.
+   * @param sweepInterval - How often the expired channels need to be deleted, in minutes. `0` disables the sweep.
+   * @param jitter - Maximum random fraction of `sweepInterval` that is added to the interval,
+   *                 so multiple instances do not all sweep at the same time.
    */
   public constructor(
     storage: KeyValueStorage<string, StorageValue>,
@@ -153,23 +142,19 @@ export class KeyValueChannelStorage implements NotificationChannelStorage, Final
   }
 
   /**
-   * Enumerates the storage and removes every channel whose `endAt` is already in the past.
-   *
-   * Expired channels are collected first and only deleted afterwards, so the storage is never mutated
-   * while its `entries()` iterator is still open. Deletion is delegated to {@link KeyValueChannelStorage#get},
-   * which re-checks the expiry under a write lock and repairs the topic index; a channel that is no longer
-   * expired (or was already removed concurrently) is therefore never deleted here.
+   * Deletes all channels that have expired.
    */
   private async sweepExpiredChannels(): Promise<void> {
     this.logger.debug('Sweeping expired notification channels.');
     const expired: string[] = [];
+    // Not deleting while iterating to prevent iterator issues
     for await (const [ , value ] of this.storage.entries()) {
       if (this.isChannel(value) && typeof value.endAt === 'number' && value.endAt < Date.now()) {
         expired.push(value.id);
       }
     }
     for (const id of expired) {
-      // `get` deletes the channel (and repairs the topic index) only if it is still expired.
+      // `get` deletes the channel and updates the topic index if it is still expired
       await this.get(id);
     }
     this.logger.debug(`Finished sweeping expired notification channels, removed ${expired.length}.`);
@@ -183,9 +168,6 @@ export class KeyValueChannelStorage implements NotificationChannelStorage, Final
     return { path: `${typeof identifier === 'string' ? identifier : identifier.path}.notification-storage` };
   }
 
-  /**
-   * Stops the background sweep timer so it no longer keeps the event loop alive.
-   */
   public async finalize(): Promise<void> {
     if (this.timer) {
       clearInterval(this.timer);
