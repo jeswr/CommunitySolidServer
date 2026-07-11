@@ -23,19 +23,12 @@ export function generateHttpErrorUri(statusCode: number): NamedNode {
  */
 export class HttpError<T extends number = number> extends Error implements HttpErrorOptions {
   /**
-   * Determines whether stack traces are captured when constructing errors that are used for control flow.
-   * This covers all errors with a status code below 500, and the 501 status code,
-   * as those are thrown constantly while checking which handler in a chain supports a request.
-   * Capturing their stack traces is expensive and the result is almost never used,
-   * so it is disabled by default.
-   * Server errors (status code 500 and above, except for 501) always capture a stack trace,
-   * regardless of this value, as those indicate bugs and get logged.
-   *
-   * When capturing is disabled, the `stack` field of such an error is still a defined string,
-   * containing the usual `Name: message` header line, but without any stack frames.
-   *
-   * A {@link HandlerServerConfigurator} sets this value to `true` when its `showStackTrace` option is enabled,
-   * so stack traces are guaranteed to be complete on deployments where they get shown.
+   * Determines whether stack traces are captured when constructing errors that are used for control flow,
+   * which covers all errors with a status code below 500, and the 501 status code.
+   * Such errors get thrown constantly while checking which handler in a chain supports a request,
+   * so capturing their stack traces is expensive while the result is almost never used.
+   * Server errors always capture a stack trace, as those indicate bugs and get logged.
+   * When capturing is disabled, the `stack` field still contains the `Name: message` line, but no stack frames.
    */
   public static captureStackTraces = false;
 
@@ -53,10 +46,7 @@ export class HttpError<T extends number = number> extends Error implements HttpE
    * @param options - Optional options.
    */
   public constructor(statusCode: T, name: string, message?: string, options: HttpErrorOptions = {}) {
-    // Any statement is allowed before `super()` as long as `this` is not accessed,
-    // so the stack trace capture performed by the `Error` constructor can be suppressed
-    // by temporarily setting `Error.stackTraceLimit` to 0.
-    // See the documentation of `captureStackTraces` for why this is done.
+    // Setting `Error.stackTraceLimit` to 0 makes the `Error` constructor skip the expensive stack trace capture
     const previousLimit = Error.stackTraceLimit;
     if (!HttpError.captureStackTraces && (statusCode < 500 || statusCode === 501)) {
       Error.stackTraceLimit = 0;
