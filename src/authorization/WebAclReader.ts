@@ -36,10 +36,6 @@ const modesMap: Record<string, readonly (keyof AclPermissionSet)[]> = {
  * or applying control permissions for ACL resources.
  *
  * Specific access checks are done by the provided {@link AccessChecker}.
- *
- * Since finding the effective ACL resource and reading its contents is independent of the credentials,
- * those results are cached per identifier object,
- * so multiple permission reads within a single request resolve the ACL documents only once.
  */
 export class WebAclReader extends PermissionReader {
   protected readonly logger = getLoggerFor(this);
@@ -51,16 +47,11 @@ export class WebAclReader extends PermissionReader {
   private readonly accessChecker: AccessChecker;
 
   /**
-   * Caches the effective-ACL walk ({@link WebAclReader.getAclRecursive}) per target identifier object,
-   * and the parsed ACL contents ({@link WebAclReader.readAclData}) per ACL identifier object.
-   *
-   * Both caches use the `WeakMap`-backed form of {@link PromiseCache} and rely on object identity for
-   * correctness: identifier objects are created once per request when the target is extracted, and those
-   * exact objects reach this reader on every permission read within that request (such as the authorization
-   * check and the public WAC-Allow check), so the walk and the read happen only once per request. A new
-   * request always allocates new identifier objects, so a `WeakMap` keyed on these objects can never serve
-   * data across requests and needs no invalidation; identifier objects rebuilt along the way simply result
-   * in a cache miss, and entries are garbage collected once the request's identifiers become unreachable.
+   * Caches the credential-independent part of ACL resolution: the effective-ACL walk per target
+   * identifier object, and the parsed ACL contents per ACL identifier object, so the multiple
+   * permission reads of one request (the authorization and WAC-Allow checks) share a single walk and read.
+   * A new request always has new identifier objects, so these `WeakMap`s can never serve stale data;
+   * an identifier object rebuilt along the way only causes a cache miss.
    */
   private readonly aclCache: PromiseCache<ResourceIdentifier, ResourceIdentifier>;
   private readonly storeCache: PromiseCache<ResourceIdentifier, Store>;
@@ -177,9 +168,6 @@ export class WebAclReader extends PermissionReader {
    * Finds the ACL document relevant for the given identifier,
    * following the steps defined in https://solidproject.org/TR/2021/wac-20210711#effective-acl-resource.
    *
-   * Callers reach this through {@link WebAclReader.aclCache} so the walk is performed at most once per
-   * request for a given target identifier object; see that field for the caching rationale.
-   *
    * @param identifier - {@link ResourceIdentifier} of which we need the ACL document.
    *
    * @returns The {@link ResourceIdentifier} of the relevant ACL document.
@@ -248,12 +236,6 @@ export class WebAclReader extends PermissionReader {
 
   /**
    * Reads and parses the contents of the given ACL resource.
-   *
-   * Callers reach this through {@link WebAclReader.storeCache}, using the same request-scoped object
-   * identity as {@link WebAclReader.getAclRecursive}: the resolved ACL identifier flows unchanged from the
-   * cached walk, so within one request every permission read parses each ACL document only once. An ACL
-   * resource updated mid-request is served its pre-update snapshot for the remainder of that request,
-   * which is acceptable as it just makes all permission reads of one request see a single ACL snapshot.
    *
    * @param aclIdentifier - Identifier of the ACL resource to read.
    *
