@@ -26,34 +26,26 @@ export interface BaseServerFactoryOptions {
   passphrase?: string;
 
   /**
-   * Maximum duration, in milliseconds, the server waits to receive the entire request from the client.
-   * Protects against slowloris-style attacks where a request body is sent extremely slowly.
-   * When unset, the Node.js default of 300000 (5 minutes) is used.
-   * A value of 60000 (1 minute) is a reasonable starting point for production deployments.
+   * Maximum time, in milliseconds, the server waits for the entire request to arrive.
+   * When undefined, the Node.js default applies.
    */
   requestTimeout?: number;
 
   /**
-   * Maximum duration, in milliseconds, the server waits to receive the complete HTTP headers from the client.
-   * Protects against slowloris-style attacks where headers are sent extremely slowly.
-   * When unset, the Node.js default of the minimum between 60000 (1 minute)
-   * and the request timeout is used.
-   * A value of 10000 (10 seconds) is a reasonable starting point for production deployments.
+   * Maximum time, in milliseconds, the server waits for the complete HTTP headers to arrive.
+   * When undefined, the Node.js default applies.
    */
   headersTimeout?: number;
 
   /**
-   * Duration, in milliseconds, the server waits for additional incoming data on an idle connection
-   * before closing the socket.
-   * When unset, the Node.js default of 5000 (5 seconds) is used.
-   * Increase this when the server runs behind a load balancer with a longer idle timeout.
+   * Time of inactivity, in milliseconds, after which the server closes an idle keep-alive connection.
+   * When undefined, the Node.js default applies.
    */
   keepAliveTimeout?: number;
 
   /**
-   * Maximum number of concurrent connections the server accepts; connections above this limit are rejected.
-   * When unset, Node.js does not limit the number of connections.
-   * Set this based on the resources available to the server to prevent connection exhaustion.
+   * Maximum number of concurrent connections the server accepts.
+   * When undefined, Node.js does not limit the number of connections.
    */
   maxConnections?: number;
 }

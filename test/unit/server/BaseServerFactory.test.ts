@@ -98,7 +98,7 @@ describe('A BaseServerFactory', (): void => {
       expect(configurator.handleSafe).toHaveBeenLastCalledWith(tunedServer);
     });
 
-    it('keeps the node.js defaults when no tuning options are defined.', async(): Promise<void> => {
+    it('keeps the Node.js defaults when no tuning options are defined.', async(): Promise<void> => {
       const factory = new BaseServerFactory(configurator);
       const defaultServer = await factory.createServer();
       const referenceServer = createHttpServer();

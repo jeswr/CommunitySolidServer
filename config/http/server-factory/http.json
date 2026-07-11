@@ -5,12 +5,7 @@
   ],
   "@graph": [
     {
-      "comment": [
-        "Creates an empty HTTP server listening to the provided port.",
-        "The optional parameters options_requestTimeout, options_headersTimeout, options_keepAliveTimeout (milliseconds)",
-        "and options_maxConnections can be set to harden the server against slow or excessive connections.",
-        "When not set, the Node.js defaults are used."
-      ],
+      "comment": "Creates an empty HTTP server listening to the provided port.",
       "@id": "urn:solid-server:default:ServerFactory",
       "@type": "BaseServerFactory",
       "configurator": { "@id": "urn:solid-server:default:ServerConfigurator" }
