@@ -102,12 +102,9 @@ export class DataAccessorBasedStore implements ResourceStore {
    *   metadata alone that no conversion will happen; every other case falls back to the full read.
    *   Defaults to `false`, keeping the original behaviour.
    * @param eTagHandler - Enables answering conditional requests that resolve to "304 Not Modified"
-   *   from metadata alone, skipping the `accessor.getData` call (and the file open it entails).
-   *   This is only attempted when this store can prove from metadata alone that no conversion will
-   *   happen, so the served content-type equals the stored one and the ETag is fully determined by
-   *   the metadata already read; every other case falls back to the full read + post-conversion
-   *   condition check, keeping the response byte-identical. The same requirement (b) as `optimizeRange`
-   *   applies. When omitted, no such requests are short-circuited, keeping the original behaviour.
+   *   from metadata alone, skipping the `accessor.getData` call.
+   *   Requirement (b) above applies. When omitted, such requests are not short-circuited,
+   *   keeping the original behaviour.
    */
   public constructor(
     accessor: DataAccessor,
@@ -195,8 +192,7 @@ export class DataAccessorBasedStore implements ResourceStore {
     if (isContainer || isMetadata) {
       representation = new BasicRepresentation(data, metadata, INTERNAL_QUADS);
     } else {
-      // If this is a conditional request that we can prove will resolve to "304 Not Modified" without
-      // any content conversion, answer it from the metadata we already have and skip opening the data.
+      // Answer a conditional request from metadata alone when it provably resolves to a 304 without conversion.
       const notModified = this.getConditionalNotModified(preferences, metadata, conditions);
       if (notModified) {
         throw notModified;
@@ -269,23 +265,11 @@ export class DataAccessorBasedStore implements ResourceStore {
   }
 
   /**
-   * Determines whether a conditional request can be answered with a "304 Not Modified" response using
-   * only the metadata that has already been read, allowing the `accessor.getData` call to be skipped.
-   *
-   * Returns the {@link NotModifiedHttpError} to throw, or `undefined` to continue with the normal read.
-   * A 304 is only returned early when ALL of the following hold, guaranteeing the response stays
-   * byte-identical to the response the post-conversion condition check ({@link assertReadConditions})
-   * would produce for the same request:
-   *  - An {@link ETagHandler} was provided to this store (the optimization is opt-in).
-   *  - The request carries conditions (e.g. an `If-None-Match` / `If-Modified-Since` header).
-   *  - No byte range was requested. A range would add `Content-Range` metadata to the response in the
-   *    full-read path, so ranged conditional requests are left to that path.
-   *  - No content conversion will happen ({@link servedWithoutConversion}), so the served content-type
-   *    equals the stored one and the ETag is fully determined by the metadata we already have.
-   *  - The conditions do not match the metadata, i.e. the request actually resolves to a 304.
-   *
-   * The exact same ETag/condition logic (`getConditionalNotModifiedError`) that the operation handler
-   * applies after conversion is reused here, so the ETag and the 304-vs-200 decision are identical.
+   * Determines whether a conditional request resolves to "304 Not Modified" using only the metadata
+   * that was already read, so the `accessor.getData` call can be skipped.
+   * The 304 is only generated when no conversion will happen and no range was requested,
+   * since only then does that metadata fully determine the ETag and the response headers;
+   * every other case returns `undefined` so the normal read and condition check happen.
    */
   private getConditionalNotModified(
     preferences: RepresentationPreferences | undefined,
@@ -295,8 +279,7 @@ export class DataAccessorBasedStore implements ResourceStore {
     if (!this.eTagHandler || !conditions) {
       return;
     }
-    // A byte range would add Content-Range metadata to the response in the full-read path,
-    // so ranged conditional requests are left to that path to stay byte-identical.
+    // Ranged requests are left to the full read, which adds the Content-Range metadata to the response.
     if (typeof preferences?.range !== 'undefined') {
       return;
     }
@@ -307,11 +290,8 @@ export class DataAccessorBasedStore implements ResourceStore {
   }
 
   /**
-   * Determines from metadata alone whether the outgoing content negotiation will be a no-op for the
-   * given request: the stored content-type already satisfies the request preferences at the maximal
-   * requested weight. This is exactly the condition under which the default `ChainedConverter` returns
-   * the stored representation unchanged, so the served content-type equals the stored one.
-   *
+   * Determines from metadata alone whether the given request will be served without content conversion,
+   * so the served content-type equals the stored one.
    * `application/json` is excluded because a converter (`DynamicJsonToTemplateConverter`) can transform
    * matching JSON ahead of that decision.
    */

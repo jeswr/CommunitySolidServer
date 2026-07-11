@@ -220,8 +220,7 @@ describe.each(stores)('A server supporting conditions with %s', (name, { storeCo
   });
 
   it('returns a byte-identical 304 for a non-converted document.', async(): Promise<void> => {
-    // A regular document served without conversion: this exercises the metadata-first 304 skip path
-    // (the store answers from metadata alone without opening the data), unlike the container cases above.
+    // A regular document served without conversion, so the store can answer the 304 from metadata alone.
     const documentUrl = `${baseUrl}conditional.txt`;
     await putResource(documentUrl, { contentType: 'text/plain', body: 'CONTENT' });
 

@@ -73,17 +73,9 @@ export async function cloneRepresentation(representation: Representation): Promi
  * Determines whether the given conditions and metadata result in a "304 Not Modified" response,
  * without reading or modifying any data.
  *
- * If the conditions are defined and do not match the metadata, a {@link NotModifiedHttpError} is
- * returned carrying the resource ETag and a copy of the metadata, so that the 304 response sends
- * exactly the same headers as a full response would. In every other case `undefined` is returned,
- * meaning a normal response should be sent.
- *
  * This uses the strict conditions check which takes the content type into account;
  * therefore, this should only be called once the output content type is certain:
  * either after content negotiation, or when it is known that no conversion will happen.
- *
- * Unlike {@link assertReadConditions}, this function does not touch any data stream and does not modify
- * the given metadata, so it is safe to call before the data of a representation has been fetched.
  *
  * @param metadata - The metadata to compare the conditions against.
  * @param eTagHandler - Used to generate the ETag to return with the 304 response.

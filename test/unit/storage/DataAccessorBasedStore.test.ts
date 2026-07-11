@@ -448,14 +448,13 @@ describe('A DataAccessorBasedStore', (): void => {
   describe('serving a conditional request that resolves to 304', (): void => {
     const resourceID = { path: `${root}resource` };
     const eTagHandler = new BasicETagHandler();
-    // A conditional request that always resolves to 304 (mismatch) resp. 200 (match).
+    // Conditions that never match resolve to a 304; conditions that match resolve to a 200.
     const notMatching: Conditions = { matchesMetadata: (): boolean => false };
     const matching: Conditions = { matchesMetadata: (): boolean => true };
     let conditionalStore: DataAccessorBasedStore;
     let getDataSpy: jest.SpyInstance;
 
-    // Stores a document with the given content-type and a fixed modified date, so it has a stable ETag,
-    // and returns its metadata (from which the expected ETag can be derived).
+    // Stores a document with the given content-type and a fixed modified date, so it has a stable ETag.
     function storeResource(contentType = 'text/plain'): RepresentationMetadata {
       const metadata = new RepresentationMetadata({ [RDF.type]: namedNode(LDP.Resource) });
       metadata.identifier = namedNode(resourceID.path);
@@ -490,7 +489,6 @@ describe('A DataAccessorBasedStore', (): void => {
       );
       expect(NotModifiedHttpError.isInstance(error)).toBe(true);
       expect(error.metadata.get(HH.terms.etag)?.value).toBe(eTagHandler.getETag(stored));
-      // The whole point of the optimization: the data was never read.
       expect(getDataSpy).not.toHaveBeenCalled();
     });
 
@@ -498,8 +496,7 @@ describe('A DataAccessorBasedStore', (): void => {
       storeResource();
       const preferences = { type: { 'text/plain': 1 }};
 
-      // Fetched path: the store without an ETagHandler returns the full representation,
-      // and the post-conversion condition check produces the 304, exactly as the operation handler does.
+      // Fetched path: a full read followed by the condition check, as the operation handler applies it.
       const body = await store.getRepresentation(resourceID, preferences);
       let fetched: NotModifiedHttpError;
       try {
