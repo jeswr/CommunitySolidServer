@@ -153,7 +153,6 @@ describe('StreamUtil', (): void => {
     it('logs Node.js premature close errors as debug.', async(): Promise<void> => {
       const input = Readable.from([ 'data' ]);
       input.read = (): any => {
-        // This is how Node.js streams report premature close errors, in contrast with the lowercase `pump` version
         const error = new Error('Premature close') as NodeJS.ErrnoException;
         error.code = 'ERR_STREAM_PREMATURE_CLOSE';
         input.emit('error', error);

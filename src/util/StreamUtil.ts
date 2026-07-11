@@ -15,13 +15,9 @@ import type { PromiseOrValue } from './PromiseUtil';
 const logger = getLoggerFor('StreamUtil');
 
 /**
- * Waits until the given stream is finished,
- * either by ending, finishing, erroring, or being closed prematurely.
+ * Waits until the given stream is finished, rejecting if the stream errors or is closed prematurely.
  *
  * @param stream - Stream to wait on.
- *
- * @returns A promise that resolves once the stream is finished
- *          and rejects if the stream errors or closes prematurely.
  */
 export async function endOfStream(stream: NodeJS.ReadableStream | NodeJS.WritableStream): Promise<void> {
   return finished(stream);
@@ -87,15 +83,8 @@ const safeErrors = new Set([
   'premature close',
 ]);
 
-/**
- * Checks if the given error is one that usually indicates expected behaviour when working with streams,
- * meaning it should not be logged as a warning.
- *
- * @param error - Error to check.
- */
 function isSafeError(error: Error): boolean {
-  // Node.js streams use the `ERR_STREAM_PREMATURE_CLOSE` code (with message 'Premature close')
-  // for the same situation in which `pump` throws its codeless lowercase 'premature close' error.
+  // Node.js streams signal a premature close with this error code instead of one of the above messages.
   return safeErrors.has(error.message) || (error as NodeJS.ErrnoException).code === 'ERR_STREAM_PREMATURE_CLOSE';
 }
 
