@@ -8,26 +8,10 @@ import type { ClusterActivityBus, SerializedActivity } from './ClusterActivityBu
 
 /**
  * A {@link ClusterActivityBus} backed by Redis pub/sub, for multi-instance deployments.
- *
- * Activities cross the wire as the JSON encoding of a {@link SerializedActivity}.
- * That envelope is transported byte-for-byte and is never re-encoded,
- * which keeps the two invariants of the wire format intact:
- * the metadata identifier term stays explicitly available
- * (it can be a blank node, so it can not be derived from the topic),
- * and the metadata quads stay in their exact N-Quads form,
- * whose blank node labels the deserializer relies on.
- *
- * All instances publish on, and subscribe to, a single Redis channel.
- * The channel name defaults to `css:activity` and is prefixed with the `namespacePrefix` setting,
- * scoping it the same way {@link RedisLocker} scopes its keys on a shared Redis server.
- *
- * Because Redis delivers published messages to every subscribed connection,
- * including other connections of the publishing process,
- * activities loop back to the publishing instance as the bus contract requires.
- * A Redis connection in subscriber mode can not issue regular commands,
- * so this class uses two connections: one to publish and one to subscribe.
- * Both are created on construction, mirroring {@link RedisLocker};
- * the subscription starts on `initialize` and both connections close on `finalize`.
+ * All instances share a single Redis channel, prefixed with the `namespacePrefix` setting.
+ * Redis delivers published messages to every subscribed connection, including those of the publishing process,
+ * so activities loop back to the publishing instance as the bus contract requires.
+ * A connection in subscriber mode can not issue regular commands, so separate connections publish and subscribe.
  */
 export class RedisActivityBus implements ClusterActivityBus, Initializable, Finalizable {
   protected readonly logger = getLoggerFor(this);
@@ -95,8 +79,7 @@ export class RedisActivityBus implements ClusterActivityBus, Initializable, Fina
   /* Initializer & Finalizer methods */
 
   public async initialize(): Promise<void> {
-    // The `message` event only fires for channels this connection is subscribed to,
-    // which is only ever `this.channel`, so no further filtering is needed.
+    // This connection only ever subscribes to `this.channel`, so incoming messages need no filtering
     this.subscriber.on('message', (channel: string, message: string): void => this.handleMessage(message));
     await this.subscriber.subscribe(this.channel);
   }

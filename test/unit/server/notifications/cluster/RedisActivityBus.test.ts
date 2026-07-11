@@ -123,7 +123,7 @@ describe('A RedisActivityBus', (): void => {
     await expect(bus.publish(activity)).resolves.toBeUndefined();
     expect(publisher.publish).toHaveBeenCalledTimes(1);
     expect(publisher.publish).toHaveBeenLastCalledWith('css:activity', JSON.stringify(activity));
-    // The envelope decodes losslessly, keeping the explicit identifier term and the N-Quads intact
+    // The payload decodes losslessly back to the original activity
     expect(JSON.parse(publisher.publish.mock.calls[0][1])).toEqual(activity);
   });
 
