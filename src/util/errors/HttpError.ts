@@ -26,13 +26,6 @@ export class HttpError<T extends number = number> extends Error implements HttpE
   public readonly cause?: unknown;
   public readonly errorCode: string;
 
-  /**
-   * Backing store for {@link HttpError.metadata}.
-   * `HttpError` instances are frequently created purely as control flow
-   * (e.g., `canHandle` declines during content negotiation and handler probing)
-   * and never have their metadata read, so building it is deferred to first access.
-   * It is only populated during construction when the caller provides `options.metadata`.
-   */
   private lazyMetadata?: RepresentationMetadata;
 
   /**
@@ -49,10 +42,7 @@ export class HttpError<T extends number = number> extends Error implements HttpE
     this.name = name;
     this.cause = options.cause;
     this.errorCode = options.errorCode ?? `H${statusCode}`;
-    // When the caller provides metadata we keep building it eagerly:
-    // the existing behaviour mutates that exact object during construction,
-    // so the provided object must already contain the generated triples afterwards.
-    // Otherwise the metadata is built lazily on first access (see the `metadata` getter).
+    // Metadata provided by the caller is populated immediately so it always contains the generated triples
     if (options.metadata) {
       this.lazyMetadata = options.metadata;
       this.generateMetadata();
@@ -60,8 +50,7 @@ export class HttpError<T extends number = number> extends Error implements HttpE
   }
 
   public static isInstance(error: unknown): error is HttpError {
-    // `errorCode` is a string on every `HttpError` instance and is checked instead of `metadata`
-    // so that a type check never forces the (otherwise lazy) metadata to be built.
+    // Checking `metadata` here would force the lazy metadata build
     return isError(error) &&
       typeof (error as HttpError).statusCode === 'number' &&
       typeof (error as HttpError).errorCode === 'string';
@@ -69,8 +58,8 @@ export class HttpError<T extends number = number> extends Error implements HttpE
 
   /**
    * The metadata describing this error.
-   * Built on first access if it was not provided through the constructor options,
-   * producing exactly the same triples as an eagerly built instance.
+   * Only built on first access, since errors are frequently used as control flow
+   * where the metadata is never read.
    */
   public get metadata(): RepresentationMetadata {
     if (!this.lazyMetadata) {

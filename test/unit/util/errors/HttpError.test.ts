@@ -142,9 +142,7 @@ describe('A HttpError', (): void => {
   it('builds the provided metadata eagerly during construction.', (): void => {
     const metadata = new RepresentationMetadata();
     const error = new NotFoundHttpError('message', { metadata });
-    // The exact provided object is reused.
     expect(error.metadata).toBe(metadata);
-    // It already contains the generated triples after construction, without accessing `.metadata`.
     expect(metadata.get(SOLID_ERROR.terms.errorResponse)?.value).toBe(`${SOLID_ERROR.namespace}H404`);
     expect(metadata.get(HTTP.terms.statusCodeNumber)?.value).toBe('404');
   });
@@ -152,7 +150,6 @@ describe('A HttpError', (): void => {
   it('builds identical metadata lazily when none is provided.', (): void => {
     const eager = new NotFoundHttpError('message', { metadata: new RepresentationMetadata() });
     const lazy = new NotFoundHttpError('message');
-    // The lazily built metadata contains exactly the same triples as an eagerly built one.
     expect(lazy.metadata.quads()).toBeRdfIsomorphic(eager.metadata.quads());
     expect(lazy.metadata.get(SOLID_ERROR.terms.errorResponse)?.value).toBe(`${SOLID_ERROR.namespace}H404`);
     expect(lazy.metadata.get(HTTP.terms.statusCodeNumber)?.value).toBe('404');
@@ -160,20 +157,16 @@ describe('A HttpError', (): void => {
 
   it('does not build the metadata store until it is accessed.', (): void => {
     const error = new NotFoundHttpError();
-    // No metadata (and thus no backing N3 store) is created during construction.
     expect((error as unknown as WithCache).lazyMetadata).toBeUndefined();
-    // The first access builds the store and caches the result.
     const { metadata } = error;
     expect(metadata).toBeInstanceOf(RepresentationMetadata);
     expect((error as unknown as WithCache).lazyMetadata).toBe(metadata);
-    // Repeated access returns the same cached instance.
     expect(error.metadata).toBe(metadata);
   });
 
   it('is recognised by `isInstance` without building the metadata store.', (): void => {
     const error = new NotFoundHttpError();
     expect(HttpError.isInstance(error)).toBe(true);
-    // The type check did not trigger a metadata build.
     expect((error as unknown as WithCache).lazyMetadata).toBeUndefined();
   });
 
