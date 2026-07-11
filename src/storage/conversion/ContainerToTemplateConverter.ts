@@ -72,12 +72,12 @@ export class ContainerToTemplateConverter extends BaseTypedRepresentationConvert
       container: isContainerPath(resource),
     }));
 
-    // Sort the resulting list: containers before documents, then on identifier by code point.
-    // Identifiers are always unique so no two entries can be equal.
+    // Sort the resulting list
     return children.sort((left, right): number => {
       if (left.container !== right.container) {
         return left.container ? -1 : 1;
       }
+      // Identifiers are unique so no two entries can be equal.
       return left.identifier < right.identifier ? -1 : 1;
     });
   }
