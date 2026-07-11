@@ -23,10 +23,8 @@ export interface CookieStore {
    * Refreshes the cookie expiration and returns when it will expire if the cookie exists.
    *
    * @param cookie - Cookie to refresh.
-   * @param accountId - The account ID already known to be associated with the cookie, if available.
-   *                    When provided, the store may skip re-reading the cookie-to-account mapping
-   *                    and refresh the expiration directly. When omitted, the mapping is looked up
-   *                    and the expiration is only refreshed if the cookie still maps to an account.
+   * @param accountId - Account ID associated with the cookie, if already known,
+   *                    allowing the store to refresh without looking up the mapping again.
    */
   refresh: (cookie: string, accountId?: string) => Promise<Date | undefined>;
 

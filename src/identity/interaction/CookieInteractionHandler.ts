@@ -56,9 +56,7 @@ export class CookieInteractionHandler extends JsonInteractionHandler {
       return output;
     }
 
-    // Refresh the cookie, reusing the account ID we just read to avoid a redundant lookup.
-    // Nothing mutates the cookie-to-account mapping between the read above and this call
-    // (only a read-only `getSetting`), so the previously fetched `accountId` is still valid.
+    // Refresh the cookie, reusing the account ID read above to avoid a second storage read
     const expiration = await this.cookieStore.refresh(cookie, accountId);
     if (expiration) {
       outputMetadata = outputMetadata ?? new RepresentationMetadata(input.target);

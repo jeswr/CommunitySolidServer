@@ -72,8 +72,6 @@ describe('A CookieInteractionHandler', (): void => {
     await expect(handler.handle(input)).resolves.toEqual(output);
     expect(source.handle).toHaveBeenCalledTimes(1);
     expect(source.handle).toHaveBeenLastCalledWith(input);
-    // The cookie-to-account mapping is only read once per request:
-    // the account ID is fetched here and reused for the refresh below.
     expect(cookieStore.get).toHaveBeenCalledTimes(1);
     expect(cookieStore.get).toHaveBeenLastCalledWith(cookie);
     expect(accountStore.getSetting).toHaveBeenCalledTimes(1);
