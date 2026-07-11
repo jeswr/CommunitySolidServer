@@ -54,7 +54,7 @@ describe('An RdfValidator', (): void => {
     validator = new RdfValidator(converter, 1024);
     const representation = new BasicRepresentation('a'.repeat(512), 'content/type');
     await expect(validator.handle({ representation, identifier })).resolves.toBeDefined();
-    // The under-cap document is still fully available afterwards.
+    // Make sure the data can still be streamed
     await expect(readableToString(representation.data)).resolves.toBe('a'.repeat(512));
     expect(handleSafe).toHaveBeenCalledTimes(1);
   });
@@ -65,16 +65,15 @@ describe('An RdfValidator', (): void => {
     const source = guardStream(new Readable({
       read(): void {
         emitted += 1;
-        // Would emit 1000 KiB in total if it were ever fully read.
+        // Would emit 1000 KiB in total if fully read
         this.push(emitted <= 1000 ? Buffer.alloc(1024, 0x61) : null);
       },
     }));
     const representation = new BasicRepresentation(source, 'content/type', true);
     validator = new RdfValidator(converter, 4096);
     await expect(validator.handle({ representation, identifier })).rejects.toThrow(PayloadHttpError);
-    // The converter is never invoked, proving the document was not buffered/converted in full.
     expect(handleSafe).not.toHaveBeenCalled();
-    // The stream was aborted long before all 1000 chunks were read.
+    // Make sure the stream was aborted before being fully read
     expect(emitted).toBeLessThan(1000);
     expect(representation.data.destroyed).toBe(true);
   });
@@ -83,7 +82,6 @@ describe('An RdfValidator', (): void => {
     const handleSafe = jest.spyOn(converter, 'handleSafe')
       .mockResolvedValue(new BasicRepresentation('transformedData', 'wrong/type'));
     validator = new RdfValidator(converter, 0);
-    // Far larger than the tests above reject, but accepted because the check is disabled.
     const representation = new BasicRepresentation('a'.repeat(100000), 'content/type');
     await expect(validator.handle({ representation, identifier })).resolves.toBeDefined();
     expect(handleSafe).toHaveBeenCalledTimes(1);

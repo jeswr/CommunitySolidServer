@@ -12,8 +12,7 @@ import { Validator } from './Validator';
 
 /**
  * The default maximum number of bytes {@link RdfValidator} buffers while validating a document.
- * Set very generously (several MiB) as ACL and shape documents are normally only a few KiB,
- * so legitimate documents will never reach this value.
+ * ACL and shape documents are usually only a few KiB, so this leaves generous headroom.
  */
 export const DEFAULT_MAX_VALIDATION_SIZE = 4 * 1024 * 1024;
 
@@ -21,10 +20,8 @@ export const DEFAULT_MAX_VALIDATION_SIZE = 4 * 1024 * 1024;
  * Validates a Representation by verifying if the data stream contains valid RDF data.
  * It does this by letting the stored RepresentationConverter convert the data.
  *
- * Validating RDF requires the entire graph, so the data stream is fully buffered in memory during validation.
- * An oversized document is therefore an (authenticated) memory-based denial-of-service vector.
- * To prevent this, the data stream is aborted with a 413 {@link PayloadHttpError}
- * as soon as it exceeds `maxSize` bytes, before the whole document is buffered.
+ * Validation buffers the entire data stream in memory,
+ * so streams exceeding `maxSize` bytes are rejected with a 413 error before being fully buffered.
  */
 export class RdfValidator extends Validator {
   protected readonly converter: RepresentationConverter;
@@ -33,8 +30,7 @@ export class RdfValidator extends Validator {
   /**
    * @param converter - Used to convert the data stream to RDF quads to verify it is valid.
    * @param maxSize - The maximum number of bytes a document may contain before validation rejects it.
-   *                  Set to 0 (or a negative value) to disable the check and allow documents of unlimited size.
-   *                  Defaults to {@link DEFAULT_MAX_VALIDATION_SIZE}.
+   *                  0 or a negative value disables the check. Defaults to {@link DEFAULT_MAX_VALIDATION_SIZE}.
    */
   public constructor(converter: RepresentationConverter, maxSize = DEFAULT_MAX_VALIDATION_SIZE) {
     super();
@@ -50,9 +46,7 @@ export class RdfValidator extends Validator {
     const preferences = { type: { [INTERNAL_QUADS]: 1 }};
     let result;
     try {
-      // Validating RDF needs the full graph, so `cloneRepresentation` below buffers the whole stream in memory.
-      // Guard against oversized documents by aborting the stream once it passes the configured limit,
-      // so a pathologically large document is rejected before it is fully buffered.
+      // Reject oversized documents before cloneRepresentation buffers the entire stream in memory
       if (this.maxSize > 0) {
         representation.data = this.guardSize(representation.data);
       }
@@ -75,12 +69,9 @@ export class RdfValidator extends Validator {
 
   /**
    * Wraps the given data stream so it errors with a 413 {@link PayloadHttpError}
-   * as soon as more than `maxSize` bytes have passed through it.
-   * The data itself is left unchanged, so documents that stay within the limit are unaffected.
+   * once more than `maxSize` bytes have passed through it.
    *
    * @param data - The data stream to guard.
-   *
-   * @returns A stream emitting the same data that aborts once the size limit is exceeded.
    */
   private guardSize(data: Guarded<Readable>): Guarded<Transform> {
     const { maxSize } = this;
