@@ -49,13 +49,9 @@ export interface AppRunnerInput {
    */
   config?: string | string[];
   /**
-   * Path to a file in which the Components.js module state gets cached between server starts.
-   * When defined, a valid cached module state will be reused,
-   * skipping the expensive scan of all `node_modules` directories.
-   * If there is no valid cache entry yet,
-   * the module state generated during the build will be written to this file.
-   * Corresponds to the `--moduleStateCachePath` CLI parameter
-   * and the `CSS_MODULE_STATE_CACHE_PATH` environment variable.
+   * Path to a file in which the Components.js module state gets cached between server starts,
+   * so the expensive scan of all `node_modules` directories can be skipped.
+   * On a cache miss, the newly generated module state gets written to this file.
    */
   moduleStateCachePath?: string;
   /**
@@ -116,8 +112,7 @@ export class AppRunner {
     let configs = input.config ?? [ '@css:config/default.json' ];
     configs = (Array.isArray(configs) ? configs : [ configs ]).map(resolveAssetPath);
 
-    // When a cache path was provided, try to reuse a previously cached Components.js module state,
-    // so the expensive scan of all `node_modules` directories can be skipped.
+    // An explicitly provided module state takes precedence over the cache
     let moduleStateCache: ModuleStateCache | undefined;
     if (input.moduleStateCachePath && !loaderProperties.moduleState) {
       const cache = new ModuleStateCache(

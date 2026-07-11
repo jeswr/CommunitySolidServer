@@ -60,7 +60,7 @@ describe('A ModuleStateCache', (): void => {
   it('stores the module state together with the key.', async(): Promise<void> => {
     await expect(cache.save(moduleState)).resolves.toBeUndefined();
     expect(logger.warn).toHaveBeenCalledTimes(0);
-    // No temporary file (neither the legacy nor a unique name) remains after saving.
+    // No temporary file remains after saving.
     expect(Object.keys(files).some((path): boolean => path.endsWith('.tmp'))).toBe(false);
     expect(JSON.parse(files[cachePath])).toEqual({ key: expect.any(String), moduleState });
   });
@@ -145,7 +145,7 @@ describe('A ModuleStateCache', (): void => {
     await cache.save(moduleState);
     const secondTemp = jest.mocked(fsPromises.writeFile).mock.calls[1][0] as string;
 
-    // The temporary name is unique per process and per call, unlike the fixed `${path}.tmp`.
+    // The temporary name is unique per process and per call.
     expect(firstTemp).toContain(`.${process.pid}.`);
     expect(firstTemp).not.toBe(`${cachePath}.tmp`);
     expect(firstTemp).not.toBe(secondTemp);
