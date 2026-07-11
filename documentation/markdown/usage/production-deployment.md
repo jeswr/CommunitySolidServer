@@ -206,7 +206,8 @@ Cold boot can be slow because CSS assembles its dependency graph with Components
 can cut cold-boot time substantially:
 
 - `--moduleStateCachePath`: caches the resolved module state so it does not have to be recomputed on every boot.
-- A precompiled configuration, which skips re-resolving the dependency-injection graph.
+- `--precompiledConfigPath`: caches a precompiled configuration so the dependency-injection graph does not have to
+  be re-resolved on every boot.
 
 Both are optional optimizations, most useful where startup latency matters (frequent restarts, autoscaling, CI).
 
