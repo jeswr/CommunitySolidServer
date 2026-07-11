@@ -13,13 +13,9 @@ export class HandlebarsTemplateEngine<T extends Dict<unknown> = Dict<unknown>> e
   private readonly baseUrl: string;
 
   /**
-   * Compiled templates, cached for the lifetime of this engine.
-   *
-   * A {@link Map} (rather than a {@link WeakMap}) is deliberate: templates are keyed on their resolved
-   * file path, or on the template string for string-based templates, and both are primitives that a
-   * {@link WeakMap} cannot hold. Since the set of templates is fixed by the server configuration, the
-   * key space is bounded and caching for the process lifetime is safe. The trade-off is that editing a
-   * template file requires a server restart.
+   * Compiled templates, keyed on their resolved file path, or on the template string for string templates.
+   * The server configuration determines the set of templates, so the cache is bounded,
+   * but editing a template file requires a server restart to take effect.
    */
   private readonly cache: PromiseCache<string, TemplateDelegate>;
 
@@ -45,7 +41,6 @@ export class HandlebarsTemplateEngine<T extends Dict<unknown> = Dict<unknown>> e
    */
   private async getCompiledTemplate(template?: Template): Promise<TemplateDelegate> {
     const filePath = getTemplateFilePath(template);
-    // File-based templates are cached on their resolved file path, string-based templates on their contents
     const key = filePath ?? await readTemplate(template);
     return this.cache.getOrCreate(key, async(): Promise<TemplateDelegate> => {
       // For string-based templates the cache key already contains the template contents
