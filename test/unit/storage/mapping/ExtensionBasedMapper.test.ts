@@ -20,7 +20,6 @@ describe('An ExtensionBasedMapper', (): void => {
     jest.clearAllMocks();
     fs.promises = {
       readdir: jest.fn(),
-      // By default there is no file at the direct file path, so the folder scan fallback gets used
       stat: jest.fn().mockRejectedValue(new Error('does not exist')),
     } as any;
     fsPromises = fs.promises as any;
@@ -156,7 +155,6 @@ describe('An ExtensionBasedMapper', (): void => {
         contentType: 'text/turtle',
         isMetadata: true,
       });
-      // The metadata check short-circuits before both the direct stat and the folder scan
       expect(fsPromises.stat).toHaveBeenCalledTimes(0);
       expect(fsPromises.readdir).toHaveBeenCalledTimes(0);
     });
