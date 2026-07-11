@@ -2,10 +2,7 @@
   "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
   "@graph": [
     {
-      "comment": [
-        "Allows multiple simultaneous read operations. Locks are kept in memory, so no file system operations are needed to acquire or release locks.",
-        "Locks expire after inactivity. This locker can not be used with worker threads: use file.json or redis.json for multi-process deployments."
-      ],
+      "comment": "Allows multiple simultaneous read operations. Locks are stored in memory. Locks expire after inactivity. This locker is not threadsafe: use file.json or redis.json for multi-process deployments.",
       "@id": "urn:solid-server:default:ResourceLocker",
       "@type": "WrappedExpiringReadWriteLocker",
       "locker": {
