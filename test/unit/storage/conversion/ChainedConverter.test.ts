@@ -245,8 +245,7 @@ describe('A ChainedConverter', (): void => {
   it('computes the path once for identical inputs and reuses it.', async(): Promise<void> => {
     const converters = [ new DummyConverter({ 'a/a': 1 }, { 'x/x': 1 }) ];
     const converter = new ChainedConverter(converters);
-    // `getOutputTypes` is only called while searching for a path, never by `DummyConverter.handle`,
-    // so a change in its call count reflects that the path search actually ran.
+    // `getOutputTypes` is only called during the path search, so its call count shows whether the search ran.
     const searchSpy = jest.spyOn(converters[0], 'getOutputTypes');
 
     const first = await converter.handle(args);
@@ -256,7 +255,6 @@ describe('A ChainedConverter', (): void => {
 
     const second = await converter.handle(args);
     expect(second.metadata.contentType).toBe('x/x');
-    // The path search did not run again: the cached path was reused.
     expect(searchSpy.mock.calls).toHaveLength(callsAfterFirst);
   });
 
@@ -273,7 +271,6 @@ describe('A ChainedConverter', (): void => {
     args.preferences.type = { 'y/y': 1 };
     const second = await converter.handle(args);
     expect(second.metadata.contentType).toBe('y/y');
-    // Different preferences produce a different cache key, so the search runs again.
     expect(searchSpy.mock.calls.length).toBeGreaterThan(callsAfterFirst);
   });
 
@@ -291,7 +288,6 @@ describe('A ChainedConverter', (): void => {
     const containerMetadata = new RepresentationMetadata({ path: 'http://example.com/foo/' }, 'a/a');
     args.representation = { metadata: containerMetadata } as Representation;
     await converter.handle(args);
-    // Container-ness is part of the cache key, so the search runs again for the container.
     expect(searchSpy.mock.calls.length).toBeGreaterThan(callsAfterDocument);
   });
 
@@ -309,7 +305,6 @@ describe('A ChainedConverter', (): void => {
 
     const second = await converter.handle(args);
     expect(second.metadata.contentType).toBe('x/x');
-    // The application/json content-type bypasses the cache, so the search runs on every request.
     expect(searchSpy.mock.calls.length).toBeGreaterThan(callsAfterFirst);
   });
 
