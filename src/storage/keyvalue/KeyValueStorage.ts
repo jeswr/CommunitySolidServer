@@ -41,7 +41,7 @@ export interface KeyValueStorage<TKey, TValue> {
    * An iterable of entries in the storage.
    *
    * @param matchPrefix - If given, only entries whose key starts with this prefix may be yielded.
-   *   Implementations SHOULD use it to avoid enumerating non-matching entries.
+   *   Implementations should use it to avoid enumerating non-matching entries.
    *   Implementations with non-string keys ignore it.
    */
   entries: (matchPrefix?: string) => AsyncIterableIterator<[TKey, TValue]>;

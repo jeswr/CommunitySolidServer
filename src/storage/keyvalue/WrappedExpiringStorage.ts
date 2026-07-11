@@ -57,7 +57,6 @@ export class WrappedExpiringStorage<TKey, TValue> implements ExpiringStorage<TKe
 
   public async* entries(matchPrefix?: string): AsyncIterableIterator<[TKey, TValue]> {
     // Not deleting expired entries here to prevent iterator issues
-    // Keys are stored unchanged in the source storage, so the prefix can be forwarded as-is
     for await (const [ key, value ] of this.source.entries(matchPrefix)) {
       const { expires, payload } = this.toData(value);
       if (!this.isExpired(expires)) {

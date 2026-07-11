@@ -15,8 +15,7 @@ export class ContainerPathStorage<T> extends PassthroughKeyValueStorage<T> {
   }
 
   public async* entries(matchPrefix?: string): AsyncIterableIterator<[string, T]> {
-    // Source keys are the input keys prepended with the base path,
-    // so the prefix can be forwarded by prepending it with the base path as well.
+    // Source keys start with the base path, so it is always forwarded to scope the source enumeration.
     for await (const [ key, value ] of this.source.entries(`${this.basePath}${matchPrefix ?? ''}`)) {
       // The only relevant entries for this storage are those that start with the base path
       if (!key.startsWith(this.basePath)) {
