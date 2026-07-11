@@ -27,8 +27,6 @@ export class BaseCookieStore implements CookieStore {
   }
 
   public async refresh(cookie: string, accountId?: string): Promise<Date | undefined> {
-    // When the caller already knows the account ID (e.g. it just read it), reuse it
-    // to avoid a redundant storage read; otherwise look up the mapping ourselves.
     const id = accountId ?? await this.storage.get(cookie);
     if (id) {
       await this.storage.set(cookie, id, this.ttl);
