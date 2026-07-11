@@ -58,8 +58,8 @@ export class HttpError<T extends number = number> extends Error implements HttpE
 
   /**
    * The metadata describing this error.
-   * Only built on first access, since errors are frequently used as control flow
-   * where the metadata is never read.
+   * Only built on first access when no metadata was supplied through the constructor,
+   * since errors are frequently used as control flow where the metadata is never read.
    */
   public get metadata(): RepresentationMetadata {
     if (!this.lazyMetadata) {
