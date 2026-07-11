@@ -202,12 +202,11 @@ export class AppRunner {
 
   /**
    * Validates a server configuration as a command-line application, without starting the server.
-   * Will exit the process with a non-zero code on failure.
+   * Will exit the process when done, with a non-zero code on failure.
    *
-   * Made non-async to lower the risk of unhandled promise rejections,
-   * mirroring {@link runCliSync}.
+   * Made non-async to lower the risk of unhandled promise rejections.
    * This is only relevant when this is used to validate as a Node.js application on its own,
-   * if you use this as part of your code you probably want to use the async {@link validateCli} version.
+   * if you use this as part of your code you probably want to use the async version.
    *
    * @param argv - Input parameters.
    * @param argv.argv - Command line arguments.
@@ -225,21 +224,12 @@ export class AppRunner {
   }
 
   /**
-   * Validates a server configuration by fully building and instantiating it, without starting the server.
-   *
-   * This reuses the exact same configuration-loading and instantiation path as {@link createCli}
-   * (building the Components.js manager, registering the configuration(s), resolving the variable bindings,
-   * and instantiating the entire application graph), but it deliberately never calls {@link App.start}.
-   * As a result no port is bound and no HTTP server is started, making this safe to run offline
-   * (e.g. inside a Docker image) to verify a custom configuration before deploying it.
-   *
-   * Any Components.js build, wiring, type, or variable error causes the returned promise to reject.
+   * Validates a server configuration by fully building and instantiating it,
+   * without starting the server, so no port is bound.
    *
    * @param argv - Command line arguments.
    */
   public async validateCli(argv?: CliArgv): Promise<void> {
-    // Building the CLI app instantiates the full config graph but does not start it,
-    // so this both type-checks and instantiates the configuration without binding a port.
     await this.createCli(argv);
     this.logger.info('The configuration is valid: the server can be instantiated with these settings.');
   }

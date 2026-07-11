@@ -591,7 +591,6 @@ describe('AppRunner', (): void => {
     it('instantiates the configuration without starting the server.', async(): Promise<void> => {
       await expect(new AppRunner().validateCli([ 'node', 'script' ])).resolves.toBeUndefined();
 
-      // The full instantiation path is used, exactly like when starting the server.
       expect(ComponentsManager.build).toHaveBeenCalledTimes(1);
       expect(ComponentsManager.build).toHaveBeenCalledWith({
         logLevel: 'info',
@@ -609,7 +608,6 @@ describe('AppRunner', (): void => {
       expect(cliExtractor.handleSafe).toHaveBeenCalledTimes(1);
       expect(shorthandResolver.handleSafe).toHaveBeenCalledTimes(1);
 
-      // The crucial difference with the run path: the server is never started.
       expect(app.start).toHaveBeenCalledTimes(0);
     });
 

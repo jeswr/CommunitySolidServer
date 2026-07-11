@@ -8,6 +8,5 @@ process.on('uncaughtExceptionMonitor', (err, origin) => {
   console.error(`Process is halting due to an ${origin} with error ${err.message}`);
 });
 
-// Validates the configuration without starting the server; exits 0 if valid, non-zero otherwise.
 // eslint-disable-next-line no-sync
 new AppRunner().validateCliSync(process);
