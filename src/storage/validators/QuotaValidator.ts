@@ -11,17 +11,11 @@ import type { QuotaStrategy } from '../quota/QuotaStrategy';
 /**
  * The QuotaValidator validates data streams by making sure they would not exceed the limits of a QuotaStrategy.
  *
- * When the size of a write is known up front (advertised `Content-Length`), the validator reserves that
- * amount of space for the duration of the write. Reservations are keyed on the scope returned by
- * {@link QuotaStrategy.getQuotaScope}, so two concurrent writes measured against the same available-space
- * snapshot can no longer both pass and jointly exceed the quota. The reservation is released again exactly
- * once when the write stream settles (finish, error or abort).
- *
- * The reservation map is kept per-instance. Since the `QuotaValidator` is instantiated as a single
- * component this is effectively per-process, which is sufficient for a single server instance.
- * A multi-instance/multi-process deployment sharing one backend would need shared reservation state;
- * this is a documented follow-up. Writes with an unknown size (chunked, no `Content-Length`) cannot be
- * reserved and fall back to the streaming guard alone, so they retain the original overshoot window.
+ * When the size of a write is known up front, that amount of space is reserved until the write settles.
+ * Reservations are keyed on the scope returned by {@link QuotaStrategy.getQuotaScope},
+ * so concurrent writes in the same scope can not jointly exceed the available space.
+ * Writes with an unknown size can not be reserved and are only checked while streaming.
+ * Reservations are kept in memory and thus not shared between multiple server instances.
  */
 export class QuotaValidator extends Validator {
   private readonly strategy: QuotaStrategy;
@@ -41,8 +35,7 @@ export class QuotaValidator extends Validator {
     // 2. Get the estimated size of the resource that is being written
     const estimatedSize = await this.strategy.estimateSize(metadata);
 
-    // 3. When the size is known up front, account for space already reserved by other in-flight
-    //    writes in the same scope, reject if it no longer fits, and otherwise reserve it ourselves.
+    // 3. Check if the estimated size still fits next to the space reserved by in-flight writes, then reserve it
     let release: (() => void) | undefined;
     if (estimatedSize) {
       const scope = await this.strategy.getQuotaScope(identifier);
@@ -62,13 +55,12 @@ export class QuotaValidator extends Validator {
         };
       }
 
-      // An empty scope means quota does not apply to this identifier, so nothing is reserved.
       if (scope) {
         release = this.reserve(scope, estimatedSize.amount);
       }
     }
 
-    // 4. Track if quota is exceeded during writing (also the only guard for unknown-size writes)
+    // 4. Track if quota is exceeded during writing
     const tracking: Guarded<PassThrough> = await this.strategy.createQuotaGuard(identifier);
 
     // 5. Double check quota is not exceeded after write (concurrent writing possible)
@@ -82,9 +74,7 @@ export class QuotaValidator extends Validator {
 
     const tracked = pipeSafely(pipeSafely(data, tracking), afterWrite);
 
-    // 6. Release the reservation exactly once when the write settles.
-    //    `endOfStream` invokes its callback a single time on finish, error and close (abort) alike,
-    //    so the reserved space is always returned and never released twice.
+    // 6. Release the reservation when the write settles; endOfStream fires exactly once on finish, error and abort
     if (release) {
       endOfStream(tracked).then(release, release);
     }
@@ -96,11 +86,10 @@ export class QuotaValidator extends Validator {
   }
 
   /**
-   * Adds `amount` to the bytes reserved for the given scope and returns a function that releases
-   * exactly that amount again. The release function is meant to be called a single time when the
-   * write settles; it removes the scope from the map once no reservations remain.
+   * Adds `amount` to the bytes reserved for the given scope.
+   * The returned function releases the reservation again and is expected to be called exactly once.
    *
-   * @param scope - the shared-quota scope to reserve space in
+   * @param scope - the scope to reserve space in
    * @param amount - the number of bytes to reserve
    *
    * @returns a function that releases the reserved amount

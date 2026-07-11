@@ -141,7 +141,6 @@ describe('QuotaValidator', (): void => {
       const first = await validator.handle(freshInput());
       expect(first.data).toBeDefined();
 
-      // Second write only has 4 bytes left after the reservation, so its 6 bytes no longer fit.
       const second = await validator.handle(freshInput());
       await expect(readableToString(second.data))
         .rejects.toThrow('Quota exceeded: Advertised Content-Length is 6 bytes and only 4 bytes is available');
@@ -173,16 +172,14 @@ describe('QuotaValidator', (): void => {
       mockedStrategy.getAvailableSpace.mockResolvedValue({ unit: UNIT_BYTES, amount: 100 });
       mockedStrategy.estimateSize.mockResolvedValue({ unit: UNIT_BYTES, amount: 8 });
 
-      // Two in-flight writes reserve 16 bytes in total.
       const first = await validator.handle(freshInput());
       const second = await validator.handle(freshInput());
       expect(second.data).toBeDefined();
 
-      // Finishing the first write releases only its 8 bytes, leaving the second's 8 reserved.
       await readableToString(first.data);
       await flush();
 
-      // A 93-byte write no longer fits (100 - 8 < 93), proving the remaining reservation was kept.
+      // A 93-byte write no longer fits (100 - 8 < 93), proving the second write's reservation was kept.
       mockedStrategy.estimateSize.mockResolvedValueOnce({ unit: UNIT_BYTES, amount: 93 });
       const third = await validator.handle(freshInput());
       await expect(readableToString(third.data)).rejects.toThrow('Quota exceeded');

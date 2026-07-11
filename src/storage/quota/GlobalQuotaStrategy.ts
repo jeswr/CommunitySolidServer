@@ -14,7 +14,6 @@ export class GlobalQuotaStrategy extends QuotaStrategy {
   }
 
   public async getQuotaScope(): Promise<string> {
-    // A global quota is shared by the whole server, so every write reserves against the same scope.
     return this.base;
   }
 
