@@ -26,7 +26,7 @@ export interface AttemptSettings {
   retryJitter?: number;
   /** The factor by which the delay gets multiplied after every attempt. 1 keeps the delay constant. */
   retryBackoffFactor?: number;
-  /** The upper bound for the delay between attempts (in ms), used when `retryBackoffFactor` is larger than 1. */
+  /** The upper bound for the delay between attempts (in ms). */
   retryDelayMax?: number;
 }
 

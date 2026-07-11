@@ -120,7 +120,7 @@ describe('A FileSystemResourceLocker', (): void => {
 
   it('fails immediately when acquiring fails for a reason other than the lock being held.', async(): Promise<void> => {
     // Point the lock folder at a file, so every acquisition attempt fails with a non-`ELOCKED` error.
-    // With the indefinite retry settings, retrying such errors would block this call (and this test) forever.
+    // With indefinite retries, only an immediately thrown error can cause the rejection.
     await writeFile(joinFilePath(rootFilePath, 'blocker'), '');
     const brokenLocker = new FileSystemResourceLocker({
       rootFilePath,

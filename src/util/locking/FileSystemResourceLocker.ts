@@ -96,9 +96,8 @@ export class FileSystemResourceLocker implements ResourceLocker, Initializable, 
 
   /**
    * Wrapper function for lock operations. Only `ELOCKED` errors, indicating the lock is currently held,
-   * will be swallowed, as those are the ones that should trigger a new attempt.
-   * All other errors, such as the lock folder not being accessible, would fail every future attempt as well,
-   * so those are thrown immediately instead of retrying until the maximum number of attempts is reached.
+   * will be swallowed to trigger a new attempt;
+   * any other error would fail every future attempt as well, so those are thrown immediately.
    * This wrapper returns undefined because {@link retryFunction} expects that when a retry needs to happen.
    *
    * @param fn - The function reference to swallow `ELOCKED` errors from.
@@ -111,7 +110,6 @@ export class FileSystemResourceLocker implements ResourceLocker, Initializable, 
         await fn();
         return true;
       } catch (err: unknown) {
-        // Only a held lock should trigger a retry
         if (isCodedError(err) && err.code === 'ELOCKED') {
           return;
         }
