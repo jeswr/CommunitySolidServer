@@ -385,6 +385,7 @@ export * from './server/notifications/cluster/ClusterActivityBus';
 export * from './server/notifications/cluster/ClusterActivityEmitter';
 export * from './server/notifications/cluster/ClusterActivityUtil';
 export * from './server/notifications/cluster/InMemoryActivityBus';
+export * from './server/notifications/cluster/RedisActivityBus';
 
 // Server/Notifications/Generate
 export * from './server/notifications/generate/ActivityNotificationGenerator';
