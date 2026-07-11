@@ -154,22 +154,18 @@ describe('WinstonLoggerFactory', (): void => {
   it('escapes control characters in the pretty message so extra lines cannot be forged.', async(): Promise<void> => {
     (factory as any).createTransports = (): any => [ transport ];
 
-    // Create logger, and log a message with newline, carriage return, ESC, NUL and a C1 control
-    // character: all of these are attacker-influenceable (e.g. via a WebID or request URL).
+    // Create logger, and log a message with newline, carriage return, ESC, NUL and a C1 control character
     const logger = factory.createLogger('MyLabel');
     logger.log('debug', 'a\nb\rc\u001Bd\u0000e\u0085f');
 
     expect(transport.write).toHaveBeenCalledTimes(1);
     const line: string = transport.write.mock.calls[0][0][Symbol.for('message')];
-    // No raw newline/CR/NUL survive in the output to forge a new line.
     expect(line).not.toContain('\n');
     expect(line).not.toContain('\r');
     expect(line).not.toContain('\u0000');
-    // The message renders on a single line with every control character escaped.
     expect(line).toContain('a\\nb\\rc\\u001bd\\u0000e\\u0085f');
-    // The message's own ESC is neutralised (the raw injected sequence no longer appears)...
     expect(line).not.toContain('c\u001Bd');
-    // ...yet the level's legitimate ANSI color codes (also ESC-based) are still present.
+    // The level's legitimate ANSI color codes are still present
     // eslint-disable-next-line no-control-regex
     expect(line).toMatch(/\u001B\[\d+m/u);
   });
@@ -198,8 +194,7 @@ describe('WinstonLoggerFactory', (): void => {
 
     expect(transport.write).toHaveBeenCalledTimes(1);
     const line: string = transport.write.mock.calls[0][0][Symbol.for('message')];
-    // JSON.stringify already escapes these safely, so the message round-trips to the raw input:
-    // this proves the json branch was left untouched and no extra backslash-escaping was applied.
+    // JSON escaping already handles control characters, so the message round-trips to the raw input
     expect(JSON.parse(line).message).toBe('a\nb\u001Bc');
   });
 });

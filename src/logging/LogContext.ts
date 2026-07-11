@@ -25,12 +25,10 @@ export function getRequestId(): string | undefined {
 }
 
 /**
- * Binds the given function to the request identifier of the current logging context.
- * This is needed when a function can be called from outside the current asynchronous context,
- * such as an event listener that gets invoked by an external emitter,
- * as the identifier would otherwise be lost.
- * The `this` binding the function gets called with is preserved,
- * matching the behavior of `AsyncLocalStorage.bind`.
+ * Binds the given function to the request identifier of the current logging context,
+ * so the identifier is not lost when the function gets called from outside that context,
+ * such as an event listener invoked by an external emitter.
+ * Preserves the `this` binding, matching the behavior of `AsyncLocalStorage.bind`.
  *
  * @param fn - The function to bind.
  *

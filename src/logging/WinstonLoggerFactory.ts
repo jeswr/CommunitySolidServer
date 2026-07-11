@@ -13,10 +13,7 @@ export const LOG_FORMATS = [ 'pretty', 'json' ] as const;
 export type LogFormat = typeof LOG_FORMATS[number];
 
 /**
- * Matches the characters that must be escaped before being written to the `pretty` log output:
- * every C0 control character except tab (`\t`), the DEL character, and the C1 control range.
- * These can otherwise be abused by attacker-influenced log fields (e.g. a WebID or request URL)
- * to forge additional log lines or emit terminal escape (ANSI) sequences.
+ * Every C0 control character except tab (`\t`), together with DEL and the C1 control range.
  */
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARACTERS = /[\u0000-\u0008\u000A-\u001F\u007F-\u009F]/gu;
@@ -61,15 +58,10 @@ export class WinstonLoggerFactory implements LoggerFactory {
   };
 
   /**
-   * Escapes control characters in an attacker-influenceable value so it cannot forge additional
-   * lines or emit terminal escape sequences in the `pretty` log output.
-   * Newlines and carriage returns become the literal two-character `\n`/`\r` sequences, tab is
-   * kept as-is, and every other control character becomes its `\uXXXX` escape.
-   * Legitimate printable Unicode (including backslashes) is left untouched.
+   * Escapes control characters so an attacker-influenced value, such as a WebID or request URL,
+   * cannot forge additional log lines or emit terminal escape sequences in the `pretty` output.
    *
    * @param value - The value to escape.
-   *
-   * @returns The value with all dangerous control characters escaped.
    */
   private sanitize(value: string): string {
     return value.replaceAll(CONTROL_CHARACTERS, (char: string): string => {
