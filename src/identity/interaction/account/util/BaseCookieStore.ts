@@ -7,15 +7,10 @@ import type { CookieStore } from './CookieStore';
  * Cookies have a specified time to live in seconds, default is 14 days,
  * after which they will be removed.
  *
- * To avoid a storage write on every refresh,
- * the expiration is only re-persisted when it would advance the stored expiration
- * by more than `refreshThreshold` milliseconds.
- * When the write is skipped, the currently stored expiration is returned,
- * so the expiration communicated to the client always matches the state stored on the server.
- * As the decision is based on the stored expiration,
- * it is consistent across multiple worker threads or server instances sharing the same storage.
- * Setting `refreshThreshold` to 0 disables the throttling entirely,
- * restoring a write on every refresh.
+ * To avoid a storage write on every refresh, the expiration is only re-persisted
+ * when it advances the stored expiration by more than `refreshThreshold` milliseconds.
+ * A skipped refresh returns the stored expiration, so the expiration sent to the client
+ * always matches the stored state. Setting `refreshThreshold` to 0 disables the throttling.
  */
 export class BaseCookieStore implements CookieStore {
   private readonly storage: ExpiringStorage<string, string>;
@@ -60,19 +55,9 @@ export class BaseCookieStore implements CookieStore {
     if (this.refreshThreshold > 0) {
       // Storages that cannot report the stored expiration fall through to a write on every refresh.
       const stored = await this.storage.getExpiration?.(cookie);
-      // Skip the write if it would advance the stored expiration by less than the threshold.
-      // Reading the shared stored expiration (instead of tracking writes per instance)
-      // keeps this decision consistent across worker threads/instances,
-      // and it is much cheaper than the (locked) write it replaces.
-      // Returning the *stored* expiration rather than a freshly computed one
-      // keeps the `Set-Cookie` expiration sent to the client identical to the server-side state,
-      // so the two can never diverge.
-      // A session can thus expire at most `refreshThreshold` earlier than without throttling,
-      // and its validity is never extended.
-      // A negative advance means the stored expiration exceeds a fresh one (e.g. after a TTL reduction),
-      // in which case the fresh expiration is persisted, exactly as it would be without throttling.
       if (stored) {
         const advance = Date.now() + this.ttl - stored.getTime();
+        // A negative advance (stored expiration past a fresh one, e.g. after a TTL reduction) falls through to a write.
         if (advance >= 0 && advance <= this.refreshThreshold) {
           return stored;
         }

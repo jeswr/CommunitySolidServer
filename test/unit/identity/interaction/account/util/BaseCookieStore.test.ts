@@ -71,7 +71,6 @@ describe('A BaseCookieStore', (): void => {
   });
 
   it('persists on every refresh if the storage cannot report the stored expiration.', async(): Promise<void> => {
-    // Without `getExpiration` there is no way to safely skip a write, so every refresh persists.
     await expect(store.refresh(cookie, accountId)).resolves.toEqual(new Date(now.getTime() + ttl));
     await expect(store.refresh(cookie, accountId)).resolves.toEqual(new Date(now.getTime() + ttl));
     expect(storage.set).toHaveBeenCalledTimes(2);
@@ -93,13 +92,10 @@ describe('A BaseCookieStore', (): void => {
     });
 
     it('skips the write if the expiration would advance by less than the threshold.', async(): Promise<void> => {
-      // The stored expiration was last persisted 30 seconds ago,
-      // so a fresh expiration would only advance it by 30 seconds, which is below the 1 minute threshold.
+      // Last persisted 30 seconds ago, so a fresh expiration only advances it by 30 seconds, below the threshold.
       const stored = new Date(now.getTime() + ttl - (30 * 1000));
       getExpiration.mockResolvedValueOnce(stored);
       const expiration = await store.refresh(cookie, accountId);
-      // The returned expiration is exactly the stored one,
-      // so the value communicated to the client can never diverge from the server-side state.
       expect(expiration!.toISOString()).toBe(stored.toISOString());
       expect(getExpiration).toHaveBeenCalledTimes(1);
       expect(getExpiration).toHaveBeenLastCalledWith(cookie);
@@ -124,8 +120,7 @@ describe('A BaseCookieStore', (): void => {
     });
 
     it('persists a fresh expiration if the stored one is further in the future.', async(): Promise<void> => {
-      // This can happen when the configured TTL is reduced:
-      // just like without throttling, the next refresh then clamps the session to the new, shorter TTL.
+      // A stored expiration can exceed a fresh one when the configured TTL is reduced.
       const stored = new Date(now.getTime() + ttl + 1000);
       getExpiration.mockResolvedValueOnce(stored);
       await expect(store.refresh(cookie, accountId)).resolves.toEqual(new Date(now.getTime() + ttl));
@@ -150,9 +145,6 @@ describe('A BaseCookieStore', (): void => {
     });
 
     it('persists a fresh expiration on every refresh if the threshold is 0.', async(): Promise<void> => {
-      // A threshold of 0 restores the exact behaviour from before throttling was introduced:
-      // every refresh persists and returns a freshly computed expiration,
-      // without ever reading the stored expiration.
       store = new BaseCookieStore(storage, 14 * 24 * 60 * 60, 0);
       for (let count = 1; count <= 3; count++) {
         jest.setSystemTime(now.getTime() + (count * 10));
@@ -193,8 +185,7 @@ describe('A BaseCookieStore backed by a WrappedExpiringStorage', (): void => {
       const record = await source.get(generated);
       // The expiration sent to the client always matches the stored server-side state exactly.
       expect(expiration!.toISOString()).toBe(record!.expires);
-      // The effective lifetime is unchanged within the threshold:
-      // the session expires at most `threshold` earlier than without throttling, and never later.
+      // The session expires at most `threshold` earlier than an unthrottled refresh allows, and never later.
       const drift = Date.now() + ttl - expiration!.getTime();
       expect(drift).toBeGreaterThanOrEqual(0);
       expect(drift).toBeLessThanOrEqual(threshold);
@@ -219,8 +210,7 @@ describe('A BaseCookieStore backed by a WrappedExpiringStorage', (): void => {
     jest.setSystemTime(start + (280 * 1000) + ttl - 1);
     await expect(store.get(generated)).resolves.toBe(accountId);
 
-    // After 14 days of inactivity the session has expired:
-    // at most `threshold` earlier than it would have without throttling (280s + ttl vs 300s + ttl).
+    // After 14 days of inactivity the session has expired (stored expiration: 280s + ttl).
     jest.setSystemTime(start + (300 * 1000) + ttl);
     await expect(store.get(generated)).resolves.toBeUndefined();
   });
