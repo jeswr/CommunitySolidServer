@@ -58,7 +58,7 @@
       "@type": "Variable"
     },
     {
-      "comment": "The bcrypt cost factor (salt rounds) used when hashing passwords. Higher is more secure but slower.",
+      "comment": "The bcrypt cost factor (salt rounds) used when hashing passwords.",
       "@id": "urn:solid-server:default:variable:saltRounds",
       "@type": "Variable"
     }

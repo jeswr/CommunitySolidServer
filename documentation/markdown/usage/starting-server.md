@@ -64,7 +64,7 @@ to some commonly used settings:
 | `--seedConfig`          |                            | Path to the file that keeps track of seeded account configurations.                                                                           |
 | `--mainModulePath, -m`  |                            | Path from where Components.js will start its lookup when initializing configurations.                                                         |
 | `--workers, -w`         | `1`                        | Run in multithreaded mode using workers. Special values are `-1` (scale to `num_cores-1`), `0` (scale to `num_cores`) and 1 (singlethreaded). |
-| `--saltRounds`          | `10`                       | The bcrypt cost factor (salt rounds) used when hashing passwords. Also settable via `CSS_SALT_ROUNDS`.                                        |
+| `--saltRounds`          | `10`                       | The bcrypt cost factor (salt rounds) used when hashing passwords.                                                                             |
 
 Parameters can also be passed through environment variables.
 
