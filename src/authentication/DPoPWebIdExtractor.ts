@@ -54,8 +54,7 @@ export class DPoPWebIdExtractor extends CredentialsExtractor {
         },
       );
       const { webid: webId, client_id: clientId, iss: issuer } = payload;
-      // The type of the verified payload omits `jti`,
-      // but JWT access tokens issued by the server always contain one
+      // The payload type omits `jti`, but JWT access tokens issued by the server always contain one.
       const tokenId = (payload as { jti?: string }).jti;
       this.logger.info(`Verified WebID via DPoP-bound access token. WebID: ${webId
       }, client ID: ${clientId ?? 'none'}, issuer: ${issuer}, token ID: ${tokenId ?? 'none'}`);
