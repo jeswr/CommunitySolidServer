@@ -1,16 +1,10 @@
 import { collectDefaultMetrics, Counter, Histogram, Registry } from 'prom-client';
 
 /**
- * Creates and owns a Prometheus {@link Registry} together with the instruments used to observe
- * incoming HTTP requests.
- *
- * Default process metrics (CPU, memory, event loop lag, garbage collection, ...) are collected on the
- * same registry through `collectDefaultMetrics`.
- *
- * The request instruments are intentionally kept low-cardinality: they are only labelled by the
- * request `method` and the response status `code`.
- * The request target/path is deliberately *not* used as a label:
- * the unbounded number of resource URLs would cause a cardinality explosion in the time-series database.
+ * Creates a Prometheus {@link Registry} collecting the default process metrics,
+ * together with the instruments used to observe incoming HTTP requests.
+ * These are only labelled by request `method` and response status `code`:
+ * a label on the request path would cause a cardinality explosion, since every resource URL is distinct.
  */
 export class PrometheusMetrics {
   public readonly registry: Registry;
@@ -19,7 +13,6 @@ export class PrometheusMetrics {
 
   public constructor() {
     this.registry = new Registry();
-    // Collect the default Node.js/process metrics (cpu, memory, event loop lag, gc, ...) on this registry.
     collectDefaultMetrics({ register: this.registry });
 
     this.requestsTotal = new Counter({

@@ -6,16 +6,9 @@ import type { PrometheusMetrics } from './PrometheusMetrics';
 
 /**
  * A {@link ServerConfigurator} that attaches an observe-only listener to the `request` event of a
- * {@link Server} to record Prometheus metrics.
- *
- * The listener runs alongside the main request listener without interfering with it:
- * it never writes to the response, never consumes the request body,
- * and never throws into the request flow.
- * Any error while instrumenting or recording is caught and logged so that a metrics failure
- * can never break request handling.
- *
- * On every request a timer is started; when the response emits `finish` the duration is observed and
- * the request counter is incremented with the request method and the response status code.
+ * {@link Server}, recording the request count and duration, labelled by method and status code,
+ * once the response finishes. The listener never writes to the response,
+ * and errors are caught and logged, so a metrics failure can never break request handling.
  */
 export class MetricsServerConfigurator extends ServerConfigurator {
   protected readonly logger = getLoggerFor(this);
@@ -33,7 +26,6 @@ export class MetricsServerConfigurator extends ServerConfigurator {
   public async handle(server: Server): Promise<void> {
     server.on('request', (request: IncomingMessage, response: ServerResponse): void => {
       try {
-        // Start timing before the request is handled; the returned function observes the duration.
         const stopTimer = this.metrics.requestDuration.startTimer();
         response.on('finish', (): void => {
           try {

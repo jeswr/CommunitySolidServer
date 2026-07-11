@@ -3,8 +3,8 @@
   "@graph": [
     {
       "comment": [
-        "OPT-IN Prometheus metrics. This file is NOT imported by any shipped config: add it next to your main config, e.g. `community-solid-server -c config/file.json -c config/util/metrics/default.json`.",
-        "SECURITY: the /metrics endpoint is UNAUTHENTICATED and exposes internal counters (request rates, latencies, process cpu/memory). Restrict it at your reverse proxy or firewall; never expose it to the public internet.",
+        "Opt-in Prometheus metrics. This file is not imported by any shipped config: add it next to your main config, e.g. `community-solid-server -c config/file.json -c config/util/metrics/default.json`.",
+        "The /metrics endpoint is unauthenticated and exposes internal counters (request rates, latencies, process CPU/memory), so restrict it at your reverse proxy or firewall.",
         "This recipe assumes the default handler waterfall (config/http/handler/default.json). If you use a different handler configuration, adjust the Override list below to match its handlers."
       ]
     },

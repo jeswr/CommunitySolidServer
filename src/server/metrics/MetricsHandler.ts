@@ -4,13 +4,10 @@ import { HttpHandler } from '../HttpHandler';
 import type { PrometheusMetrics } from './PrometheusMetrics';
 
 /**
- * An {@link HttpHandler} that exposes the collected Prometheus metrics on a fixed path (default `/metrics`).
- *
- * Only `GET` requests on the configured path are handled;
- * any other request is rejected with a {@link NotImplementedHttpError} so it continues down the waterfall.
- *
- * The response is UNAUTHENTICATED and exposes internal counters:
- * make sure this endpoint is restricted at the reverse proxy or firewall when the server is publicly reachable.
+ * An {@link HttpHandler} that serves the collected Prometheus metrics on a fixed path (default `/metrics`).
+ * Only `GET` requests on that path are handled.
+ * The response is unauthenticated and exposes internal counters:
+ * restrict access to this endpoint at the reverse proxy or firewall.
  */
 export class MetricsHandler extends HttpHandler {
   private readonly metrics: PrometheusMetrics;
@@ -30,7 +27,6 @@ export class MetricsHandler extends HttpHandler {
     if (request.method !== 'GET') {
       throw new NotImplementedHttpError('Only GET requests are supported');
     }
-    // Strip a potential query string before comparing to the configured path.
     if (request.url?.split('?')[0] !== this.path) {
       throw new NotImplementedHttpError(`Only ${this.path} is supported`);
     }
