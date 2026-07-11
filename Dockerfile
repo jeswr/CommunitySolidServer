@@ -10,8 +10,8 @@ COPY . .
 # Install and build the Solid community server
 RUN npm ci && npm run build
 
-# Remove the development dependencies as the runtime stage only needs production dependencies.
-# --ignore-scripts prevents the root prepare script (a full build requiring development dependencies) from running.
+# The runtime stage only needs the production dependencies;
+# --ignore-scripts prevents the root prepare script (a full build) from running
 RUN npm prune --omit=dev --ignore-scripts
 
 
@@ -22,23 +22,19 @@ FROM node:18-alpine
 # Add contact informations for questions about the container
 LABEL maintainer="Solid Community Server Docker Image Maintainer <thomas.dupont@ugent.be>"
 
-# tini runs as PID 1, reaps zombie processes,
-# and forwards signals such as the SIGTERM from `docker stop` to the node process,
-# which would otherwise ignore them while running as PID 1.
+# Use tini as PID 1 to reap zombies and forward signals such as the SIGTERM from `docker stop` to node
 RUN apk add --no-cache tini
 
-# Container config & data dir for volume sharing.
-# Defaults to filestorage with /data directory (passed through CMD below).
-# Owned by the non-root node user (uid 1000) the server runs as,
-# so named volumes and bind mounts remain writable.
+# Container config & data dir for volume sharing
+# Defaults to filestorage with /data directory (passed through CMD below)
+# Owned by the non-root node user so mounted volumes stay writable
 RUN mkdir -p /config /data && chown node:node /config /data
 
 # Set current directory
 WORKDIR /community-server
 
-# Copy runtime files from build stage.
-# The application files stay owned by root so the server process cannot modify them;
-# all runtime writes go to /data (or wherever -f / CSS_ROOT_FILE_PATH points).
+# Copy runtime files from build stage
+# Application files stay root-owned so the runtime user cannot modify them
 COPY --from=build /community-server/package.json .
 COPY --from=build /community-server/bin ./bin
 COPY --from=build /community-server/config ./config
@@ -58,9 +54,7 @@ ENV NODE_ENV=production
 ENV CSS_CONFIG=config/file.json
 ENV CSS_ROOT_FILE_PATH=/data
 
-# Periodically check the health endpoint of the server.
-# The check follows the CSS_PORT environment variable if set;
-# it needs to be overridden when configuring the port through other means.
+# The health check follows CSS_PORT; override it when the port is configured through other means
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node -e "fetch('http://localhost:' + (process.env.CSS_PORT ?? 3000) + '/.well-known/css/health').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
 
