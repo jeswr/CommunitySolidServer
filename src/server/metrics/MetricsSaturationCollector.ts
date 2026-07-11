@@ -11,7 +11,8 @@ import type { PrometheusMetrics } from './PrometheusMetrics';
  * `solid_notification_connections{type}` (open notification connections per channel type).
  * The sources are only read on each `/metrics` scrape, through a prom-client `collect` callback,
  * so the request and notification hot paths are untouched.
- * Every source is optional: an absent source leaves its gauge unset.
+ * Every source is optional: without a locker the lock gauge reports `0`,
+ * while a missing notification map omits its labelled series.
  */
 export class MetricsSaturationCollector extends Initializer {
   private readonly metrics: PrometheusMetrics;
