@@ -73,14 +73,10 @@ export interface AppRunnerInput {
   /**
    * Path to a file where a precompiled version of the configuration(s) is stored,
    * allowing the server to start without having to parse any modules or configurations.
-   * If there is no such file yet, or if it is out of date,
-   * the server starts normally and afterwards writes the precompiled configuration to this path,
-   * so it can be used to speed up future server starts.
-   *
-   * Note that changes to configuration files imported by the top-level configuration(s) can not be detected,
+   * If there is no valid file at this path yet, the server starts normally and then generates it.
+   * Changes to transitively imported configuration files can not be detected,
    * so after such changes this file needs to be deleted manually to force a new compilation.
-   * Multithreaded setups are not supported:
-   * for those the file is ignored and the server always starts normally.
+   * Multithreaded setups ignore this value and always start normally.
    */
   precompiledConfigPath?: string;
 }
@@ -159,9 +155,8 @@ export class AppRunner {
 
   /**
    * Creates an App from the precompiled configuration in the given artifact, if possible.
-   * Falls back to {@link AppRunner.createFromConfigs} if there is no valid artifact,
-   * in which case the artifact also gets (re)generated to speed up future server starts,
-   * or if the resolved variables imply a multithreaded setup.
+   * Falls back to {@link AppRunner.createFromConfigs} in multithreaded setups,
+   * or if there is no valid artifact, in which case the artifact also gets (re)generated.
    *
    * @param precompilerInput - Determines the artifact location and the values used to verify its key.
    * @param loaderProperties - Properties used when building the Components.js manager, in case of a fallback.
@@ -180,8 +175,7 @@ export class AppRunner {
       if (app) {
         return app;
       }
-      // Multithreaded setups require a Components.js manager for the thread safety check,
-      // so those fall back to a full build without regenerating the artifact.
+      // The artifact is still valid, so it does not need to be regenerated
       return this.createFromConfigs(loaderProperties, configs, input);
     }
 
@@ -231,7 +225,6 @@ export class AppRunner {
   /**
    * Determines the variable values by extracting shorthand values from the CLI arguments, if any,
    * and resolving those together with the shorthand input.
-   * Values from the `variableBindings` input override the resolved values.
    *
    * @param cliResolver - {@link CliResolver} used to extract and resolve shorthand values.
    * @param input - All values necessary to configure the server.

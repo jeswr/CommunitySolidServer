@@ -59,13 +59,6 @@ export interface PrecompiledConfig {
  * without having to parse any modules or configurations,
  * significantly reducing server startup time.
  * The artifact is a CommonJS module with the exports described in {@link PrecompiledConfig}.
- *
- * To detect artifacts that are out of date,
- * the artifact also exports a key generated from the server version, the Node.js version,
- * the main module path, and the paths and contents of the top-level configuration files.
- * Configurations imported by those files are not part of the key,
- * so changes to such transitively imported configuration files can not be detected:
- * in that case the artifact file needs to be deleted manually to force a new compilation.
  */
 export class ConfigPrecompiler {
   protected readonly logger = getLoggerFor(this);
@@ -81,9 +74,7 @@ export class ConfigPrecompiler {
   public async precompile(input: ConfigPrecompilerInput): Promise<void> {
     try {
       const key = await this.generateKey(input);
-      // Compiled instantiations of components in the main module get emitted
-      // as `require` calls relative to the main module path,
-      // so the artifact resolves them with a `require` scoped to that directory.
+      // Compiled `require` calls are relative to the main module path, so the artifact resolves them from there
       const req = createRequire(joinFilePath(input.mainModulePath, 'package.json'));
       const strategy = new ConstructionStrategyCommonJsString({ asFunction: true, req });
       const manager = await ComponentsManager.build<string>({
@@ -96,8 +87,7 @@ export class ConfigPrecompiler {
           }
         },
       });
-      // With the above construction strategy,
-      // `instantiate` returns the name of the variable containing the instance in the compiled source
+      // With this construction strategy, `instantiate` returns the instance's variable name in the compiled source
       const cliVariable = await manager.instantiate(DEFAULT_CLI_RESOLVER);
       const cliSource = strategy.serializeDocument(cliVariable);
       const appVariable = await manager.instantiate(DEFAULT_APP);
@@ -142,6 +132,8 @@ export class ConfigPrecompiler {
    * Generates the key used to detect precompiled configurations that are out of date.
    * This is a hash of the server version, the Node.js version, the main module path,
    * and the paths and contents of the top-level configuration files.
+   * Transitively imported configurations are not part of the key,
+   * so changes to those files can not be detected.
    *
    * @param input - The values that determine the compilation result.
    */
