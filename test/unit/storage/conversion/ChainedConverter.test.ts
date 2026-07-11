@@ -43,8 +43,7 @@ class DummyConverter extends BaseTypedRepresentationConverter {
   }
 }
 
-// Simulates a converter such as `ContainerToTemplateConverter` whose `canHandle` depends on the identifier,
-// so the chosen path can differ between container and non-container identifiers.
+// Simulates a converter such as `ContainerToTemplateConverter` whose `canHandle` depends on the identifier.
 class ContainerOnlyConverter extends DummyConverter {
   public async canHandle(input: RepresentationConverterArgs): Promise<void> {
     if (!isContainerIdentifier(input.identifier)) {
