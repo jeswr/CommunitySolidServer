@@ -11,11 +11,9 @@ import { deserializeMetadata, serializeMetadata } from './ClusterActivityUtil';
 
 /**
  * An {@link ActivityEmitter} that emits the activities of all instances in a cluster.
- *
- * Events of the given source emitter are published on the given {@link ClusterActivityBus}.
- * Every activity received from the bus, including those published by this instance,
- * is emitted again by this class,
- * so listeners observe the resource changes of the entire cluster.
+ * Activities of the source emitter are published on the {@link ClusterActivityBus},
+ * and every activity received from the bus, including those published by this instance,
+ * is emitted again, so listeners observe the resource changes of the entire cluster.
  */
 export class ClusterActivityEmitter extends BaseActivityEmitter {
   protected readonly logger = getLoggerFor(this);
@@ -52,8 +50,7 @@ export class ClusterActivityEmitter extends BaseActivityEmitter {
   }
 
   /**
-   * Emits an activity received from the bus,
-   * mirroring the events emitted by the source emitter.
+   * Emits an activity received from the bus, mirroring the events of the source emitter.
    */
   private async emitActivity(activity: SerializedActivity): Promise<void> {
     const metadata = await deserializeMetadata(activity.metadata);

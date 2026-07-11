@@ -1,9 +1,7 @@
 /**
  * Serialized RDF term identifying the subject of the metadata in a {@link SerializedMetadata}.
- *
  * This is not always the topic IRI:
- * `Add`/`Remove` activities on containers, for example,
- * generate metadata whose identifier is a blank node.
+ * `Add`/`Remove` activities on containers generate metadata identified by a blank node.
  */
 export interface SerializedMetadataIdentifier {
   /**
@@ -47,27 +45,24 @@ export interface SerializedActivity {
    */
   metadata: SerializedMetadata;
   /**
-   * Optional identifier of the originating instance, for tracing or idempotency purposes.
+   * Identifier of the originating instance, for tracing or idempotency purposes.
    */
   origin?: string;
 }
 
 /**
  * A pluggable cross-instance transport for resource-change activities.
- *
- * Implementations are expected to deliver every published activity to all instances of the cluster,
- * including, by contract, the publishing instance itself.
  */
 export interface ClusterActivityBus {
   /**
-   * Publishes an activity to all instances, including this one.
+   * Publishes an activity to all instances of the cluster, including this one.
    *
    * @param activity - The activity to publish.
    */
   publish: (activity: SerializedActivity) => Promise<void>;
 
   /**
-   * Registers a listener that will be invoked once for every activity received from the bus.
+   * Registers a listener that is invoked once for every activity received from the bus.
    *
    * @param listener - The listener to register.
    */

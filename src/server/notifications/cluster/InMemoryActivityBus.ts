@@ -2,10 +2,8 @@ import type { ClusterActivityBus, SerializedActivity } from './ClusterActivityBu
 
 /**
  * A {@link ClusterActivityBus} for single-process deployments.
- *
  * Publishing synchronously calls every subscribed listener,
- * so activities loop back to the publishing instance
- * with the same semantics as the in-process `ActivityEmitter`.
+ * so activities loop back with the same semantics as the in-process `ActivityEmitter`.
  */
 export class InMemoryActivityBus implements ClusterActivityBus {
   private readonly listeners: ((activity: SerializedActivity) => void)[] = [];
