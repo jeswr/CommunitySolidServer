@@ -17,7 +17,7 @@ import { addResourceMetadata, updateModifiedDate } from '../../util/ResourceUtil
 import { toLiteral, toNamedTerm } from '../../util/TermUtil';
 import { CONTENT_TYPE_TERM, DC, IANA, LDP, POSIX, RDF, SOLID_META, XSD } from '../../util/Vocabularies';
 import type { FileIdentifierMapper, ResourceLink } from '../mapping/FileIdentifierMapper';
-import type { DataAccessor } from './DataAccessor';
+import type { DataAccessor, RangeOptions } from './DataAccessor';
 
 /**
  * DataAccessor that uses the file system to store documents as files and containers as folders.
@@ -44,11 +44,14 @@ export class FileDataAccessor implements DataAccessor {
    * Will return data stream directly to the file corresponding to the resource.
    * Will throw NotFoundHttpError if the input is a container.
    */
-  public async getData(identifier: ResourceIdentifier): Promise<Guarded<Readable>> {
+  public async getData(identifier: ResourceIdentifier, range?: RangeOptions): Promise<Guarded<Readable>> {
     const link = await this.resourceMapper.mapUrlToFilePath(identifier, false);
     const stats = await this.getStats(link.filePath);
 
     if (stats.isFile()) {
+      if (range) {
+        return guardStream(createReadStream(link.filePath, { start: range.start, end: range.end }));
+      }
       return guardStream(createReadStream(link.filePath));
     }
 

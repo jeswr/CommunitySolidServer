@@ -70,6 +70,12 @@ describe('A FileDataAccessor', (): void => {
       await expect(readableToString(stream)).resolves.toBe('data');
     });
 
+    it('returns only the requested byte range when a range is provided.', async(): Promise<void> => {
+      cache.data = { resource: '0123456789' };
+      const stream = await accessor.getData({ path: `${base}resource` }, { start: 2, end: 5 });
+      await expect(readableToString(stream)).resolves.toBe('2345');
+    });
+
     it('throws an error if something else went wrong.', async(): Promise<void> => {
       jest.requireMock('fs-extra').stat = (): any => {
         throw new Error('error');

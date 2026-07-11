@@ -778,4 +778,35 @@ describe.each(stores)('An LDP handler allowing all requests %s', (name, { storeC
     response = await fetch(resourceUrl, { headers: { range: 'bytes=5-15' }});
     expect(response.status).toBe(416);
   });
+
+  it('returns identical windows for explicit byte ranges.', async(): Promise<void> => {
+    const resourceUrl = joinUrl(baseUrl, 'range-windows');
+    const body = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    await putResource(resourceUrl, { contentType: 'text/plain', body });
+
+    // Start-of-file, mid-file, and end-of-file windows
+    const windows: [number, number][] = [[ 0, 5 ], [ 10, 15 ], [ 20, 25 ], [ 24, 25 ], [ 0, 25 ]];
+    for (const [ start, end ] of windows) {
+      const response = await fetch(resourceUrl, { headers: { range: `bytes=${start}-${end}` }});
+      expect(response.status).toBe(206);
+      expect(response.headers.get('content-range')).toBe(`bytes ${start}-${end}/${body.length}`);
+      expect(response.headers.get('content-length')).toBe(`${end - start + 1}`);
+      await expect(response.text()).resolves.toBe(body.slice(start, end + 1));
+    }
+  });
+
+  it('applies byte ranges to the converted representation, not the stored bytes.', async(): Promise<void> => {
+    const resourceUrl = joinUrl(baseUrl, 'convert-range');
+    await putResource(resourceUrl, { contentType: 'text/turtle', body: '<http://ex/s> <http://ex/p> <http://ex/o>.' });
+
+    const fullResponse = await fetch(resourceUrl, { headers: { accept: 'application/n-triples' }});
+    expect(fullResponse.status).toBe(200);
+    const fullConverted = await fullResponse.text();
+    expect(fullConverted.length).toBeGreaterThan(5);
+
+    // The range has to slice the converted output, so the seek optimization can not apply here
+    const response = await fetch(resourceUrl, { headers: { accept: 'application/n-triples', range: 'bytes=0-4' }});
+    expect(response.status).toBe(206);
+    await expect(response.text()).resolves.toBe(fullConverted.slice(0, 5));
+  });
 });

@@ -8,8 +8,9 @@ import type { AuxiliaryStrategy } from '../../../src/http/auxiliary/AuxiliaryStr
 import { BasicRepresentation } from '../../../src/http/representation/BasicRepresentation';
 import type { Representation } from '../../../src/http/representation/Representation';
 import { RepresentationMetadata } from '../../../src/http/representation/RepresentationMetadata';
+import type { RepresentationPreferences } from '../../../src/http/representation/RepresentationPreferences';
 import type { ResourceIdentifier } from '../../../src/http/representation/ResourceIdentifier';
-import type { DataAccessor } from '../../../src/storage/accessors/DataAccessor';
+import type { DataAccessor, RangeOptions } from '../../../src/storage/accessors/DataAccessor';
 import { DataAccessorBasedStore } from '../../../src/storage/DataAccessorBasedStore';
 import { INTERNAL_QUADS } from '../../../src/util/ContentTypes';
 import { BadRequestHttpError } from '../../../src/util/errors/BadRequestHttpError';
@@ -23,13 +24,30 @@ import type { Guarded } from '../../../src/util/GuardedStream';
 import { ContentType } from '../../../src/util/Header';
 import { SingleRootIdentifierStrategy } from '../../../src/util/identifiers/SingleRootIdentifierStrategy';
 import { trimTrailingSlashes } from '../../../src/util/PathUtil';
-import { guardedStreamFrom } from '../../../src/util/StreamUtil';
-import { AS, CONTENT_TYPE, DC, LDP, PIM, RDF, SOLID_AS, SOLID_HTTP, SOLID_META } from '../../../src/util/Vocabularies';
+import { guardedStreamFrom, readableToString } from '../../../src/util/StreamUtil';
+import { toLiteral } from '../../../src/util/TermUtil';
+import {
+  AS,
+  CONTENT_TYPE,
+  DC,
+  LDP,
+  PIM,
+  POSIX,
+  RDF,
+  SOLID_AS,
+  SOLID_HTTP,
+  SOLID_META,
+} from '../../../src/util/Vocabularies';
 import { SimpleSuffixStrategy } from '../../util/SimpleSuffixStrategy';
 
 const { namedNode, quad, literal } = DataFactory;
 
 const GENERATED_PREDICATE = namedNode('generated');
+
+// Preferences with a fixed satisfiable byte range and the given output type preferences.
+function rangeWithType(type: RepresentationPreferences['type']): RepresentationPreferences {
+  return { range: { unit: 'bytes', parts: [{ start: 2, end: 5 }]}, type };
+}
 
 class SimpleDataAccessor implements DataAccessor {
   public readonly data: Record<string, Representation> = {};
@@ -51,9 +69,15 @@ class SimpleDataAccessor implements DataAccessor {
     delete this.data[identifier.path];
   }
 
-  public async getData(identifier: ResourceIdentifier): Promise<Guarded<Readable>> {
+  public async getData(identifier: ResourceIdentifier, range?: RangeOptions): Promise<Guarded<Readable>> {
     this.checkExists(identifier);
-    return this.data[identifier.path].data;
+    const data = this.data[identifier.path].data;
+    if (range) {
+      // Mirrors a range-honouring accessor such as the FileDataAccessor by returning only the requested window
+      const buffer = await readableToString(data);
+      return guardedStreamFrom(buffer.slice(range.start, range.end + 1));
+    }
+    return data;
   }
 
   public async getMetadata(identifier: ResourceIdentifier): Promise<RepresentationMetadata> {
@@ -220,6 +244,190 @@ describe('A DataAccessorBasedStore', (): void => {
         ),
       );
       expect(result.metadata.contentType).toBe(INTERNAL_QUADS);
+    });
+  });
+
+  describe('getting a byte range of a Representation', (): void => {
+    const resourceID = { path: `${root}resource` };
+    let seekStore: DataAccessorBasedStore;
+    let getDataSpy: jest.SpyInstance;
+
+    // Stores a document with the given body/content-type and (unless omitted) a matching `posix:size`.
+    function storeResource(body: string, contentType: string | undefined = 'text/plain', size?: number): void {
+      const metadata = new RepresentationMetadata({ [RDF.type]: namedNode(LDP.Resource) });
+      metadata.identifier = namedNode(resourceID.path);
+      if (typeof contentType === 'string') {
+        metadata.contentType = contentType;
+      }
+      metadata.set(POSIX.terms.size, toLiteral(size ?? body.length, XSD.terms.integer));
+      accessor.data[resourceID.path] = {
+        binary: true,
+        data: guardedStreamFrom([ body ]),
+        metadata,
+        isEmpty: false,
+      } as Representation;
+    }
+
+    // Asserts the range was not pushed down: full stream returned, no range metadata, no range passed to getData.
+    async function expectFullRead(result: Representation, body: string): Promise<void> {
+      expect(result.metadata.has(SOLID_HTTP.terms.unit)).toBe(false);
+      await expect(readableToString(result.data)).resolves.toBe(body);
+      expect(getDataSpy).toHaveBeenLastCalledWith(resourceID);
+    }
+
+    beforeEach((): void => {
+      seekStore = new DataAccessorBasedStore(accessor, identifierStrategy, auxiliaryStrategy, metadataStrategy, true);
+      getDataSpy = jest.spyOn(accessor, 'getData');
+    });
+
+    it('pushes a satisfiable byte range down to the accessor and sets the range metadata.', async(): Promise<void> => {
+      storeResource('0123456789');
+      const result = await seekStore.getRepresentation(
+        resourceID,
+        { range: { unit: 'bytes', parts: [{ start: 2, end: 5 }]}},
+      );
+      await expect(readableToString(result.data)).resolves.toBe('2345');
+      expect(result.metadata.get(SOLID_HTTP.terms.unit)?.value).toBe('bytes');
+      expect(result.metadata.get(SOLID_HTTP.terms.start)?.value).toBe('2');
+      expect(result.metadata.get(SOLID_HTTP.terms.end)?.value).toBe('5');
+      expect(getDataSpy).toHaveBeenLastCalledWith(resourceID, { start: 2, end: 5 });
+    });
+
+    it('returns byte-identical windows to a full slice for many ranges.', async(): Promise<void> => {
+      const body = 'abcdefghijklmnopqrstuvwxyz';
+      const ranges: [number, number][] = [[ 0, 3 ], [ 0, 24 ], [ 10, 15 ], [ 22, 24 ], [ 5, 6 ], [ 24, 25 ]];
+      for (const [ start, end ] of ranges) {
+        storeResource(body);
+        const result = await seekStore.getRepresentation(
+          resourceID,
+          { range: { unit: 'bytes', parts: [{ start, end }]}},
+        );
+        // The seek window must equal the slice a top-level SliceStream would produce (inclusive end).
+        await expect(readableToString(result.data)).resolves.toBe(body.slice(start, end + 1));
+        expect(result.metadata.get(SOLID_HTTP.terms.start)?.value).toBe(`${start}`);
+        expect(result.metadata.get(SOLID_HTTP.terms.end)?.value).toBe(`${end}`);
+        expect(getDataSpy).toHaveBeenLastCalledWith(resourceID, { start, end });
+      }
+    });
+
+    it('does not seek when range optimization is disabled.', async(): Promise<void> => {
+      storeResource('0123456789');
+      // The default `store` is constructed without the optimizeRange flag.
+      const result = await store.getRepresentation(
+        resourceID,
+        { range: { unit: 'bytes', parts: [{ start: 2, end: 5 }]}},
+      );
+      await expectFullRead(result, '0123456789');
+    });
+
+    it('does not seek when there are no or non-byte range preferences.', async(): Promise<void> => {
+      storeResource('0123456789');
+      // No preferences at all.
+      await expectFullRead(await seekStore.getRepresentation(resourceID), '0123456789');
+      storeResource('0123456789');
+      // Empty preferences.
+      await expectFullRead(await seekStore.getRepresentation(resourceID, {}), '0123456789');
+      storeResource('0123456789');
+      // Non-bytes unit.
+      await expectFullRead(
+        await seekStore.getRepresentation(resourceID, { range: { unit: 'items', parts: [{ start: 2, end: 5 }]}}),
+        '0123456789',
+      );
+      storeResource('0123456789');
+      // Multipart range.
+      await expectFullRead(
+        await seekStore.getRepresentation(
+          resourceID,
+          { range: { unit: 'bytes', parts: [{ start: 0, end: 1 }, { start: 3, end: 4 }]}},
+        ),
+        '0123456789',
+      );
+    });
+
+    it('does not seek for open-ended, suffix or malformed ranges.', async(): Promise<void> => {
+      // Open-ended range (no `end`): left to the slicing store so `defaultSliceSize` stays authoritative.
+      storeResource('0123456789');
+      await expectFullRead(
+        await seekStore.getRepresentation(resourceID, { range: { unit: 'bytes', parts: [{ start: 2 }]}}),
+        '0123456789',
+      );
+      // Suffix range (negative start).
+      storeResource('0123456789');
+      await expectFullRead(
+        await seekStore.getRepresentation(resourceID, { range: { unit: 'bytes', parts: [{ start: -4, end: 5 }]}}),
+        '0123456789',
+      );
+      // Malformed range with a missing start.
+      storeResource('0123456789');
+      await expectFullRead(
+        await seekStore.getRepresentation(
+          resourceID,
+          { range: { unit: 'bytes', parts: [ { end: 5 } as any ]}},
+        ),
+        '0123456789',
+      );
+    });
+
+    it('does not seek when a conversion would happen.', async(): Promise<void> => {
+      // JSON is excluded because a converter can transform it ahead of the content-negotiation decision.
+      storeResource('0123456789', 'application/json');
+      await expectFullRead(
+        await seekStore.getRepresentation(resourceID, rangeWithType({ '*/*': 1 })),
+        '0123456789',
+      );
+
+      // Unexpected media type makes `getTypeWeight` throw; must fall back.
+      storeResource('0123456789', 'text/plain');
+      accessor.data[resourceID.path].metadata.set(CONTENT_TYPE_TERM, literal('nomedia'));
+      await expectFullRead(
+        await seekStore.getRepresentation(resourceID, rangeWithType({ '*/*': 1 })),
+        '0123456789',
+      );
+
+      // Stored type does not match the preferences at all (weight 0) so a conversion/406 would occur.
+      storeResource('0123456789', 'text/plain');
+      await expectFullRead(
+        await seekStore.getRepresentation(resourceID, rangeWithType({ 'image/png': 1 })),
+        '0123456789',
+      );
+
+      // Stored type matches but a different type is preferred more strongly, so a conversion would occur.
+      storeResource('0123456789', 'text/plain');
+      await expectFullRead(
+        await seekStore.getRepresentation(resourceID, rangeWithType({ 'text/plain': 0.5, 'text/html': 1 })),
+        '0123456789',
+      );
+    });
+
+    it('does not seek when the content-type is missing.', async(): Promise<void> => {
+      storeResource('0123456789', 'text/plain');
+      accessor.data[resourceID.path].metadata.removeAll(CONTENT_TYPE_TERM);
+      await expectFullRead(
+        await seekStore.getRepresentation(resourceID, { range: { unit: 'bytes', parts: [{ start: 2, end: 5 }]}}),
+        '0123456789',
+      );
+    });
+
+    it('falls back for unsatisfiable ranges so the slicing store 416s.', async(): Promise<void> => {
+      // Unknown size.
+      storeResource('0123456789', 'text/plain');
+      accessor.data[resourceID.path].metadata.removeAll(POSIX.terms.size);
+      await expectFullRead(
+        await seekStore.getRepresentation(resourceID, { range: { unit: 'bytes', parts: [{ start: 2, end: 5 }]}}),
+        '0123456789',
+      );
+      // Start >= end.
+      storeResource('0123456789');
+      await expectFullRead(
+        await seekStore.getRepresentation(resourceID, { range: { unit: 'bytes', parts: [{ start: 5, end: 5 }]}}),
+        '0123456789',
+      );
+      // End >= size.
+      storeResource('0123456789');
+      await expectFullRead(
+        await seekStore.getRepresentation(resourceID, { range: { unit: 'bytes', parts: [{ start: 0, end: 10 }]}}),
+        '0123456789',
+      );
     });
   });
 

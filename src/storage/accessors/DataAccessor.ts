@@ -5,6 +5,24 @@ import type { ResourceIdentifier } from '../../http/representation/ResourceIdent
 import type { Guarded } from '../../util/GuardedStream';
 
 /**
+ * A resolved byte range that can be requested from a {@link DataAccessor}.
+ * Both `start` and `end` are inclusive offsets, matching the semantics of
+ * `fs.createReadStream(path, { start, end })` and of the HTTP `Range` header.
+ * Resolving relative, suffix, or unsatisfiable ranges is the responsibility of the caller,
+ * so implementations only ever receive a concrete, satisfiable window.
+ */
+export interface RangeOptions {
+  /**
+   * The first byte offset to return (inclusive).
+   */
+  start: number;
+  /**
+   * The last byte offset to return (inclusive).
+   */
+  end: number;
+}
+
+/**
  * A DataAccessor is the building block closest to the actual data storage.
  * It should not worry about most Solid logic, most of that will be handled before it is called.
  * There are a few things it still needs to do, and it is very important every implementation does this:
@@ -28,9 +46,14 @@ export interface DataAccessor {
    * Returns a data stream stored for the given identifier.
    * It can be assumed that the incoming identifier will always correspond to a document.
    *
+   * The optional `range` asks for only the given inclusive byte window of the data,
+   * which implementations can provide more efficiently by seeking in the underlying storage.
+   * Implementations that do not support ranged reads can ignore it and return the full stream.
+   *
    * @param identifier - Identifier for which the data is requested.
+   * @param range - Optional byte range to return instead of the full stream.
    */
-  getData: (identifier: ResourceIdentifier) => Promise<Guarded<Readable>>;
+  getData: (identifier: ResourceIdentifier, range?: RangeOptions) => Promise<Guarded<Readable>>;
 
   /**
    * Returns the metadata corresponding to the identifier.

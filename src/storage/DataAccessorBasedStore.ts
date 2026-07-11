@@ -7,9 +7,10 @@ import { BasicRepresentation } from '../http/representation/BasicRepresentation'
 import type { Patch } from '../http/representation/Patch';
 import type { Representation } from '../http/representation/Representation';
 import { RepresentationMetadata } from '../http/representation/RepresentationMetadata';
+import type { RepresentationPreferences } from '../http/representation/RepresentationPreferences';
 import type { ResourceIdentifier } from '../http/representation/ResourceIdentifier';
 import { getLoggerFor } from '../logging/LogUtil';
-import { INTERNAL_QUADS } from '../util/ContentTypes';
+import { APPLICATION_JSON, INTERNAL_QUADS } from '../util/ContentTypes';
 import { BadRequestHttpError } from '../util/errors/BadRequestHttpError';
 import { ConflictHttpError } from '../util/errors/ConflictHttpError';
 import { createErrorMessage } from '../util/errors/ErrorUtil';
@@ -28,7 +29,9 @@ import {
   toCanonicalUriPath,
   trimTrailingSlashes,
 } from '../util/PathUtil';
+import { termToInt } from '../util/QuadUtil';
 import { addResourceMetadata, updateModifiedDate } from '../util/ResourceUtil';
+import { toLiteral } from '../util/TermUtil';
 import {
   AS,
   CONTENT_TYPE_TERM,
@@ -43,8 +46,9 @@ import {
   SOLID_META,
   XSD,
 } from '../util/Vocabularies';
-import type { DataAccessor } from './accessors/DataAccessor';
+import type { DataAccessor, RangeOptions } from './accessors/DataAccessor';
 import type { Conditions } from './conditions/Conditions';
+import { cleanPreferences, getTypeWeight } from './conversion/ConversionUtil';
 import type { ChangeMap, ResourceStore } from './ResourceStore';
 import namedNode = DataFactory.namedNode;
 
@@ -70,6 +74,12 @@ import namedNode = DataFactory.namedNode;
  *
  * Work has been done to minimize the number of required calls to the DataAccessor,
  * but the main disadvantage is that sometimes multiple calls are required where a specific store might only need one.
+ *
+ * The `optimizeRange` parameter can be used to push explicit, satisfiable byte ranges
+ * down to the accessor, so it can seek to the requested window instead of streaming the full resource.
+ * This only happens when no content conversion is needed,
+ * and should only be enabled for accessors that support the `range` argument of `getData`,
+ * such as a {@link FileDataAccessor}.
  */
 export class DataAccessorBasedStore implements ResourceStore {
   protected readonly logger = getLoggerFor(this);
@@ -78,17 +88,20 @@ export class DataAccessorBasedStore implements ResourceStore {
   private readonly identifierStrategy: IdentifierStrategy;
   private readonly auxiliaryStrategy: AuxiliaryStrategy;
   private readonly metadataStrategy: AuxiliaryStrategy;
+  private readonly optimizeRange: boolean;
 
   public constructor(
     accessor: DataAccessor,
     identifierStrategy: IdentifierStrategy,
     auxiliaryStrategy: AuxiliaryStrategy,
     metadataStrategy: AuxiliaryStrategy,
+    optimizeRange = false,
   ) {
     this.accessor = accessor;
     this.identifierStrategy = identifierStrategy;
     this.auxiliaryStrategy = auxiliaryStrategy;
     this.metadataStrategy = metadataStrategy;
+    this.optimizeRange = optimizeRange;
   }
 
   public async hasResource(identifier: ResourceIdentifier): Promise<boolean> {
@@ -107,7 +120,10 @@ export class DataAccessorBasedStore implements ResourceStore {
     }
   }
 
-  public async getRepresentation(identifier: ResourceIdentifier): Promise<Representation> {
+  public async getRepresentation(
+    identifier: ResourceIdentifier,
+    preferences?: RepresentationPreferences,
+  ): Promise<Representation> {
     this.validateIdentifier(identifier);
     let isMetadata = false;
 
@@ -157,10 +173,70 @@ export class DataAccessorBasedStore implements ResourceStore {
     if (isContainer || isMetadata) {
       representation = new BasicRepresentation(data, metadata, INTERNAL_QUADS);
     } else {
-      representation = new BasicRepresentation(await this.accessor.getData(identifier), metadata);
+      const range = this.getSeekRange(preferences, metadata);
+      if (range) {
+        // Writing the unit/start/end metadata indicates the range was already applied to the stream
+        metadata.set(SOLID_HTTP.terms.unit, 'bytes');
+        metadata.set(SOLID_HTTP.terms.start, toLiteral(range.start, XSD.terms.integer));
+        metadata.set(SOLID_HTTP.terms.end, toLiteral(range.end, XSD.terms.integer));
+        representation = new BasicRepresentation(await this.accessor.getData(identifier, range), metadata);
+      } else {
+        representation = new BasicRepresentation(await this.accessor.getData(identifier), metadata);
+      }
     }
 
     return representation;
+  }
+
+  /**
+   * Determines whether the requested range can be read directly from the accessor,
+   * instead of slicing the full stream in a store such as the {@link BinarySliceResourceStore}.
+   * Only returns a range for a single explicit satisfiable `bytes` range
+   * where the stored content-type fully matches the preferences,
+   * which is exactly the case in which a {@link ChainedConverter} returns the representation unchanged.
+   */
+  private getSeekRange(
+    preferences: RepresentationPreferences | undefined,
+    metadata: RepresentationMetadata,
+  ): RangeOptions | undefined {
+    if (!this.optimizeRange) {
+      return;
+    }
+    const range = preferences?.range;
+    if (!range || range.unit !== 'bytes' || range.parts.length !== 1) {
+      return;
+    }
+    const { start, end } = range.parts[0];
+    // Open-ended and suffix ranges are left to the slicing store
+    if (typeof start !== 'number' || typeof end !== 'number' || start < 0) {
+      return;
+    }
+
+    // JSON is excluded since a converter can transform it even when the content-type matches the preferences
+    const { contentType } = metadata;
+    if (typeof contentType !== 'string' || contentType === APPLICATION_JSON) {
+      return;
+    }
+    let weight: number;
+    let maxWeight: number;
+    try {
+      const cleaned = cleanPreferences(preferences?.type);
+      maxWeight = Math.max(...Object.values(cleaned));
+      weight = getTypeWeight(contentType, cleaned);
+    } catch {
+      // Fall back to the full read on unexpected media types, which make `getTypeWeight` throw
+      return;
+    }
+    if (weight <= 0 || weight < maxWeight) {
+      return;
+    }
+
+    // Unsatisfiable ranges are left to the slicing store, which generates the 416 response
+    const size = termToInt(metadata.get(POSIX.terms.size));
+    if (typeof size !== 'number' || start >= end || end >= size) {
+      return;
+    }
+    return { start, end };
   }
 
   public async addResource(container: ResourceIdentifier, representation: Representation, conditions?: Conditions):
