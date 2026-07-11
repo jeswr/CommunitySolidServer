@@ -29,4 +29,15 @@ export interface ExpiringStorage<TKey, TValue> extends KeyValueStorage<TKey, TVa
    * @returns The storage.
    */
   set(key: TKey, value: TValue, expires?: Date): Promise<this>;
+
+  /**
+   * Returns the expiration date of the value stored under the given key.
+   * Returns `undefined` if there is no such entry, the entry has expired, or it never expires.
+   * Implementations are not required to support this method, so callers need a fallback.
+   *
+   * @param key - Key to check.
+   *
+   * @returns The expiration date of the corresponding entry, if any.
+   */
+  getExpiration?(key: TKey): Promise<Date | undefined>;
 }

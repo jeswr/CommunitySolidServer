@@ -34,6 +34,11 @@ to achieve the same result.
 
 The expiration time of this cookie will be refreshed
 every time there is a successful request to the server with that cookie.
+To reduce storage writes, the refreshed expiration is only persisted
+when it advances the stored expiration by more than a threshold, 1 minute by default.
+This threshold can be changed through the `refreshThreshold` parameter
+of `urn:solid-server:default:CookieStore`, in milliseconds.
+Setting it to 0 persists a fresh expiration on every request.
 
 ## Redirecting
 

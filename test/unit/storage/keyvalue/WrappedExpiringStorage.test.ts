@@ -71,6 +71,30 @@ describe('A WrappedExpiringStorage', (): void => {
     expect(source.delete).toHaveBeenLastCalledWith('key');
   });
 
+  it('returns the expiration date of non-expired data.', async(): Promise<void> => {
+    source.get.mockResolvedValueOnce(createExpires('data!', tomorrow));
+    await expect(storage.getExpiration('key')).resolves.toEqual(tomorrow);
+    expect(source.get).toHaveBeenCalledTimes(1);
+    expect(source.get).toHaveBeenLastCalledWith('key');
+  });
+
+  it('returns no expiration date if there is no data.', async(): Promise<void> => {
+    await expect(storage.getExpiration('key')).resolves.toBeUndefined();
+    expect(source.get).toHaveBeenCalledTimes(1);
+    expect(source.get).toHaveBeenLastCalledWith('key');
+  });
+
+  it('returns no expiration date for expired data, without deleting it.', async(): Promise<void> => {
+    source.get.mockResolvedValueOnce(createExpires('data!', yesterday));
+    await expect(storage.getExpiration('key')).resolves.toBeUndefined();
+    expect(source.delete).toHaveBeenCalledTimes(0);
+  });
+
+  it('returns no expiration date for data that does not expire.', async(): Promise<void> => {
+    source.get.mockResolvedValueOnce(createExpires('data!'));
+    await expect(storage.getExpiration('key')).resolves.toBeUndefined();
+  });
+
   it('converts the expiry date to a string when storing data.', async(): Promise<void> => {
     await storage.set('key', 'data!', tomorrow);
     expect(source.set).toHaveBeenCalledTimes(1);

@@ -22,6 +22,9 @@ export interface CookieStore {
   /**
    * Refreshes the cookie expiration and returns when it will expire if the cookie exists.
    *
+   * Implementations may skip re-persisting the expiration when it would only advance marginally;
+   * the returned date always matches the expiration that is actually stored.
+   *
    * @param cookie - Cookie to refresh.
    * @param accountId - The account ID already known to be associated with the cookie, if available.
    *                    When provided, the store may skip re-reading the cookie-to-account mapping

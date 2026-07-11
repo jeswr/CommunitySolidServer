@@ -35,6 +35,11 @@
     {
       "@id": "urn:solid-server:default:CookieStore",
       "@type": "BaseCookieStore",
+      "comment": [
+        "refreshThreshold: a refresh only re-persists the cookie expiration when it advances it by more than this many milliseconds.",
+        "Set to 0 to persist a fresh expiration on every authenticated account request."
+      ],
+      "refreshThreshold": 60000,
       "storage": {
         "@id": "urn:solid-server:default:CookieStorage",
         "@type": "WrappedExpiringStorage",
