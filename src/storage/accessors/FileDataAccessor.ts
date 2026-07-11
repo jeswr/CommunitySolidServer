@@ -369,14 +369,10 @@ export class FileDataAccessor implements DataAccessor {
 
   /**
    * Helper function without extra validation checking to create a data file.
-   * The data will first be streamed to a temporary file in the same folder,
-   * which only gets renamed to the requested path after all data was written successfully.
-   * This prevents an interrupted write, for example due to a server crash,
-   * from leaving behind a partially written file at the destination.
-   *
-   * The temporary file name ends with the metadata suffix,
-   * ensuring a leftover temporary file is never interpreted as a resource by a {@link FileIdentifierMapper},
-   * in case the server stops before the file could be removed.
+   * Streams to a temporary file in the same folder and only renames it to the requested path on success,
+   * so an interrupted write can never leave a partial file at the destination.
+   * The temporary name ends with the metadata suffix
+   * so a leftover file is never interpreted as a resource by a {@link FileIdentifierMapper}.
    *
    * @param path - The filepath of the file to be created.
    * @param data - The data to be put in the file.
@@ -389,9 +385,7 @@ export class FileDataAccessor implements DataAccessor {
       await this.streamToFile(tempFilePath, data);
       await rename(tempFilePath, path);
     } catch (error: unknown) {
-      // Clean up the temporary file.
-      // The error that interrupted the write is more relevant to the caller,
-      // so if the cleanup fails as well, only the original error gets thrown.
+      // Only log a cleanup failure since the error that interrupted the write is more relevant to the caller
       try {
         await remove(tempFilePath);
       } catch (removeError: unknown) {
