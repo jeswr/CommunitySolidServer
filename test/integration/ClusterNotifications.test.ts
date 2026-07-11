@@ -37,12 +37,9 @@ async function readChunk(reader: ReadableStreamDefaultReader): Promise<Store> {
 }
 
 /**
- * These tests validate the opt-in cluster notification wiring of `http/notifications/cluster/memory.json`:
- * the split WebSocket/Webhook listening handlers and the `ClusterActivityEmitter` in front of the
- * connection-pinned channel types.
- * With the in-memory bus everything stays within this single process,
- * so every channel type is expected to behave exactly as it does with the default wiring,
- * receiving every notification exactly once.
+ * Test the cluster notification wiring of `http/notifications/cluster/memory.json`.
+ * With the in-memory bus every channel type should receive each notification exactly once,
+ * as it does with the default wiring.
  */
 describe('A server with cluster notifications using the in-memory bus', (): void => {
   let app: App;

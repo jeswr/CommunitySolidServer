@@ -60,7 +60,7 @@
       "streamMap": { "@id": "urn:solid-server:default:StreamingHttpMap" }
     },
     {
-      "comment": "Streams are pinned to an instance, so, unlike its default counterpart, this handler listens to the changes of the entire cluster and delivers to the streams held by this instance.",
+      "comment": "Streams are pinned to an instance, so this handler listens to the changes of the entire cluster and delivers to the streams held by this instance.",
       "@id": "urn:solid-server:default:StreamingHttpListeningActivityHandler",
       "@type": "StreamingHttpListeningActivityHandler",
       "emitter": { "@id": "urn:solid-server:default:ClusterActivityEmitter" },

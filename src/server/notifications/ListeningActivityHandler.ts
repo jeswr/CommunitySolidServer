@@ -15,10 +15,6 @@ import type { NotificationHandler } from './NotificationHandler';
  *
  * Takes the `rate` feature into account so only channels that want a new notification will receive one.
  *
- * Subclasses dedicated to a single channel type can override `supports`
- * to filter out the channels that should be handled by a different instance of this class,
- * and `emit` to skip work entirely when no matching channel can exist.
- *
  * Extends {@link StaticHandler} so it can be more easily injected into a Components.js configuration.
  * No class takes this one as input, so to make sure Components.js instantiates it,
  * it needs to be added somewhere where its presence has no impact, such as the list of initializers.
@@ -88,10 +84,8 @@ export class ListeningActivityHandler extends StaticHandler {
 
   /**
    * Whether this handler is responsible for the given channel.
-   *
-   * The base implementation supports every channel.
-   * Subclasses dedicated to a single channel type should override this,
-   * so channels of other types are left, without error, to the handler dedicated to them.
+   * Subclasses dedicated to a single channel type can override this
+   * so channels of other types are silently left to the handler dedicated to them.
    */
   // eslint-disable-next-line unused-imports/no-unused-vars
   protected supports(channel: NotificationChannel): boolean {

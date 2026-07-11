@@ -15,15 +15,8 @@ import { isWebSocket2023Channel } from './WebSocketChannel2023Type';
  *
  * WebSockets are pinned to the instance that accepted them,
  * so in a multi-instance deployment this handler should listen to an emitter
- * that reports the resource changes of the entire cluster, such as a `ClusterActivityEmitter`:
- * every instance can then deliver notifications to the sockets it holds,
- * no matter which instance performed the change.
- *
- * For the same reason, all work can be skipped when this instance holds no matching socket:
- * an instance without the socket of a channel could never deliver its notifications anyway.
- * Events are ignored entirely when there are no local sockets at all,
- * without even querying the channel storage,
- * and individual channels are skipped when their socket lives on a different instance.
+ * that reports the resource changes of the entire cluster, such as a `ClusterActivityEmitter`,
+ * and only handles the channels whose socket is held by this instance.
  */
 export class WebSocketListeningActivityHandler extends ListeningActivityHandler {
   private readonly socketMap: SetMultiMap<string, WebSocket>;
