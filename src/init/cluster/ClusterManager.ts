@@ -34,30 +34,26 @@ function toClusterMode(workers: number): ClusterMode {
 }
 
 /**
- * Base delay, in milliseconds, before a replacement is forked for a worker that exited unexpectedly.
- * The actual delay doubles for every restart that already happened
- * within the last {@link WORKER_RESTART_WINDOW_MS} milliseconds.
+ * Base delay, in milliseconds, before a replacement worker is forked after an unexpected exit.
+ * Doubles for every restart within the last {@link WORKER_RESTART_WINDOW_MS} milliseconds.
  */
 const WORKER_RESTART_BASE_DELAY_MS = 100;
 
 /**
  * Upper bound, in milliseconds, on the exponential backoff delay between worker restarts.
- * This is a safeguard in case the other restart constants get tuned to values
- * where the doubling would otherwise grow unbounded.
  */
 const WORKER_RESTART_MAX_DELAY_MS = 30_000;
 
 /**
- * Length, in milliseconds, of the rolling window in which worker restarts are counted.
- * Restarts older than this no longer count towards {@link WORKER_RESTART_BUDGET} or the backoff delay.
+ * Length, in milliseconds, of the rolling window in which worker restarts
+ * count towards {@link WORKER_RESTART_BUDGET} and the backoff delay.
  */
 const WORKER_RESTART_WINDOW_MS = 60_000;
 
 /**
  * Maximum number of worker restarts within {@link WORKER_RESTART_WINDOW_MS} milliseconds.
- * Once this budget is spent, unexpectedly exiting workers are no longer replaced,
- * so a deterministic worker crash can not degenerate into a tight fork loop.
- * The primary process keeps running; an external supervisor is expected to restart the server.
+ * Once this budget is spent, unexpectedly exiting workers are no longer replaced;
+ * the primary keeps running so an external supervisor can restart the server.
  */
 const WORKER_RESTART_BUDGET = 5;
 
@@ -78,10 +74,6 @@ export class ClusterManager {
   private readonly logger = getLoggerFor(this);
   private readonly workers: number;
   private readonly clusterMode: ClusterMode;
-  /**
-   * Timestamps, in epoch milliseconds, of recent worker restarts.
-   * Entries older than {@link WORKER_RESTART_WINDOW_MS} milliseconds get pruned on every unexpected worker exit.
-   */
   private restartTimestamps: number[] = [];
 
   public constructor(workers: number) {
@@ -143,7 +135,7 @@ export class ClusterManager {
       this.logger.warn(`Starting a new worker in ${delay} ms ` +
         `(restart ${this.restartTimestamps.length} of ${WORKER_RESTART_BUDGET} ` +
         `in the last ${WORKER_RESTART_WINDOW_MS} ms)`);
-      // `unref` so a pending refork timer never keeps a stopping primary process alive
+      // Unreffing the timer prevents a pending refork from keeping a stopping primary process alive.
       setTimeout((): void => {
         cluster.fork().on('message', (msg: string): void => {
           this.logger.info(msg);
