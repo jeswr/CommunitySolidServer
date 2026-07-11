@@ -14,8 +14,6 @@ export class HealthHandler extends HttpHandler {
   private readonly logger = getLoggerFor(this);
 
   /**
-   * Creates a handler that answers health requests on the given path.
-   *
    * @param path - The URL path on which to respond to health requests.
    */
   public constructor(path = '/.well-known/css/health') {
@@ -43,7 +41,6 @@ export class HealthHandler extends HttpHandler {
       'cache-control': 'no-store',
     });
 
-    // With HEAD, only write the headers
     if (request.method === 'HEAD') {
       response.end();
     } else {
