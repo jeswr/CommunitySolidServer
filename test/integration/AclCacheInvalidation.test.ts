@@ -15,9 +15,8 @@ const port = getPort('AclCacheInvalidation');
 const baseUrl = `http://localhost:${port}/`;
 
 /**
- * These tests are the adversarial phase-1 gate for the {@link CachingResourceStore}: after the ACL cache has
- * been warmed by a real authorization decision, a real ACL write must flip the very next decision with NO ttl
- * wait. A regression here (a stale cache serving old ACL data) would be a security bypass.
+ * After the ACL cache has been warmed by an authorization decision, an ACL write must be reflected in the very
+ * next decision, without waiting for the ttl: a stale entry serving old ACL data would bypass access control.
  */
 describe('An ACL cache with write-driven invalidation using in-memory storage', (): void => {
   let app: App;
@@ -74,7 +73,7 @@ describe('An ACL cache with write-driven invalidation using in-memory storage', 
       accessTo: true,
     });
 
-    // With NO ttl wait, the next decision must use the new ACL and deny the read.
+    // The next decision must use the new ACL and deny the read, without waiting for the ttl.
     response = await fetch(document);
     expect(response.status).toBe(401);
   });
@@ -104,7 +103,7 @@ describe('An ACL cache with write-driven invalidation using in-memory storage', 
       default: true,
     });
 
-    // With NO ttl wait, the next decision must find the new intermediate ACL and deny the read.
+    // The next decision must find the new intermediate ACL and deny the read, without waiting for the ttl.
     response = await fetch(document);
     expect(response.status).toBe(401);
   });

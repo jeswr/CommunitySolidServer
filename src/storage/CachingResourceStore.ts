@@ -37,7 +37,7 @@ interface ExistenceCacheEntry {
 export interface CachingResourceStoreOptions {
   /**
    * Time in milliseconds an entry remains valid.
-   * Doubles as the kill switch: a value of `0` (or lower) disables all caching, turning this into a pure passthrough.
+   * A value of `0` (or lower) disables all caching, making this store a pure passthrough.
    */
   ttl?: number;
   /**
@@ -59,22 +59,12 @@ export interface CachingResourceStoreOptions {
 }
 
 /**
- * A {@link ResourceStore} wrapper that caches, across requests, the quad representations and existence results
- * of auxiliary (by default ACL) documents.
- *
- * This store MUST be positioned directly below the store that emits change events (the `MonitoringStore`)
- * and above the rest of the stack: it invalidates its cache synchronously from the {@link ChangeMap} returned
- * by every write, so a read that happens after a write (and any notification-driven authorization) always sees
- * fresh data. Because invalidation is driven purely by that `ChangeMap`, all writes MUST flow through this
- * wrapper; a store that mutates ACL data while bypassing this wrapper would leave the cache stale.
- *
- * Correctness of access control is non-negotiable, so every failure mode degrades to a cache miss and never to
- * stale data: oversized documents are served but not stored, and a write landing while a read is in flight
- * prevents that read from populating the cache (via a per-key generation counter).
- *
- * The class is {@link SingleThreaded}: its cache lives in process memory and is invalidated through in-process
- * events only, so a multi-worker setup would not share invalidations and could serve stale authorization data.
- * The marker makes multi-worker boot fail fast.
+ * Caches the quad representations and existence results of auxiliary (by default ACL) documents across requests.
+ * The cache is invalidated synchronously from the {@link ChangeMap} of every write, before that write returns,
+ * so a subsequent read always sees fresh data. All writes must therefore flow through this store.
+ * Failure modes degrade to a cache miss, never to stale data: oversized documents are served but not stored,
+ * and a write landing while a read is in flight prevents that read from populating the cache.
+ * Since the cache lives in process memory, this store is {@link SingleThreaded}.
  */
 export class CachingResourceStore<T extends ResourceStore = ResourceStore>
   extends PassthroughStore<T> implements SingleThreaded {
@@ -92,11 +82,9 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
   private totalQuads: number;
 
   /**
-   * @param source - The store whose ACL reads and existence checks are being cached.
-   * @param cacheStrategy - Strategy identifying which resources are cacheable auxiliary (ACL) documents.
-   *                        Injecting the ACP `.acr` strategy instead of the WAC `.acl` strategy reuses this store
-   *                        for ACP without any code change.
-   * @param options - Cache tuning parameters. See {@link CachingResourceStoreOptions}.
+   * @param source - The store whose auxiliary reads and existence checks are being cached.
+   * @param cacheStrategy - Identifies the auxiliary documents this store caches.
+   * @param options - Cache tuning parameters.
    */
   public constructor(
     source: T,
@@ -162,7 +150,7 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
 
     const generation = this.generationOf(key);
     const value = await this.source.hasResource(identifier);
-    // Only store if no write invalidated this key while the check was in flight (else degrade to a miss).
+    // Only store if no write invalidated this key while the check was in flight.
     if (this.generationOf(key) === generation) {
       this.has.set(key, { value, expires: Date.now() + this.ttl });
       this.enforceHasBounds();
@@ -210,13 +198,8 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
   }
 
   /**
-   * Determines whether a read can be served from / stored in the cache.
-   * Only exact quad reads (`{ type: { 'internal/quads': 1 } }`) of an auxiliary resource, without conditions
-   * or range, are cacheable. Anything else is pure passthrough.
-   *
-   * @param identifier - Identifier being read.
-   * @param preferences - Preferences of the read.
-   * @param conditions - Conditions of the read.
+   * Determines whether a read can be served from and stored in the cache:
+   * only quad reads of an auxiliary document, without conditions or extra preferences.
    */
   private isCacheableRead(
     identifier: ResourceIdentifier,
@@ -230,10 +213,7 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
   }
 
   /**
-   * Checks that the preferences are exactly `{ type: { 'internal/quads': 1 } }` and nothing else,
-   * so any additional dimension (charset, range, ...) makes the read non-cacheable.
-   *
-   * @param preferences - Preferences to check.
+   * Checks that the preferences contain exactly one entry, requesting `internal/quads`.
    */
   private isQuadsOnlyPreferences(preferences: RepresentationPreferences): boolean {
     const keys = Object.keys(preferences);
@@ -246,14 +226,8 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
   }
 
   /**
-   * Reads a representation from the source and materializes its quads, deduplicating concurrent misses on the
-   * same key (single-flight). The per-key generation counter is snapshotted before the source is contacted and
-   * re-checked at commit time, so a write that lands during the read prevents caching of the raced value.
-   *
-   * @param key - Cache key (the identifier path).
-   * @param identifier - Identifier being read.
-   * @param preferences - Preferences of the read.
-   * @param conditions - Conditions of the read.
+   * Reads a representation from the source and materializes its quads,
+   * deduplicating concurrent reads of the same key.
    */
   private async readAndMaterialize(
     key: string,
@@ -277,14 +251,8 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
   }
 
   /**
-   * Fetches the representation from the source, materializes its quads, and stores it if it is not oversized
-   * and no write invalidated the key while the read was in flight.
-   *
-   * @param key - Cache key (the identifier path).
-   * @param identifier - Identifier being read.
-   * @param preferences - Preferences of the read.
-   * @param conditions - Conditions of the read.
-   * @param generation - Generation counter snapshotted before the source was contacted.
+   * Fetches the representation from the source and caches it,
+   * unless it is oversized or a write invalidated the key while the read was in flight.
    */
   private async fetchAndStore(
     key: string,
@@ -304,22 +272,14 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
   }
 
   /**
-   * Builds a fresh representation from cached data: a new stream over the frozen quads and a clone of the
-   * metadata, so callers can never mutate what is stored.
-   *
-   * @param quads - The cached quads.
-   * @param metadata - The cached metadata to clone.
+   * Builds a fresh representation over the cached quads, cloning the metadata so callers cannot mutate the cache.
    */
   private buildRepresentation(quads: readonly Quad[], metadata: RepresentationMetadata): Representation {
     return new BasicRepresentation(guardedStreamFrom(quads), new RepresentationMetadata(metadata, INTERNAL_QUADS));
   }
 
   /**
-   * Stores a representation in the cache, freezing its quads, and enforces the size bounds.
-   *
-   * @param key - Cache key (the identifier path).
-   * @param quads - The materialized quads.
-   * @param metadata - The source metadata.
+   * Stores a representation in the cache and enforces the size bounds.
    */
   private storeRepresentation(key: string, quads: Quad[], metadata: RepresentationMetadata): void {
     this.removeRep(key);
@@ -330,8 +290,6 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
 
   /**
    * Removes a representation from the cache, keeping the total quad count in sync.
-   *
-   * @param key - Cache key (the identifier path).
    */
   private removeRep(key: string): void {
     const entry = this.reps.get(key);
@@ -360,11 +318,8 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
   }
 
   /**
-   * Invalidates every key touched by a write, regardless of its activity metadata, plus the auxiliary
-   * identifier of each key (belt-and-braces cascade so a subject write also drops its ACL document).
-   * This never throws, so a write can never succeed while leaving the cache stale.
-   *
-   * @param changes - The {@link ChangeMap} returned by the write.
+   * Invalidates every identifier of a {@link ChangeMap} and their auxiliary identifiers,
+   * so a write to a subject resource also drops its auxiliary document.
    */
   private invalidate(changes: ChangeMap): void {
     if (this.ttl <= 0) {
@@ -377,10 +332,8 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
   }
 
   /**
-   * Drops the cached representation and existence result for a single key and bumps its generation counter,
-   * closing the window on any read that is currently in flight for that key.
-   *
-   * @param key - Cache key (the identifier path).
+   * Drops the cached values for a single key and bumps its generation counter,
+   * preventing any in-flight read of that key from being cached.
    */
   private invalidateKey(key: string): void {
     this.removeRep(key);
@@ -388,11 +341,6 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
     this.generations.set(key, this.generationOf(key) + 1);
   }
 
-  /**
-   * Returns the current generation counter for a key (`0` if it was never invalidated).
-   *
-   * @param key - Cache key (the identifier path).
-   */
   private generationOf(key: string): number {
     return this.generations.get(key) ?? 0;
   }
