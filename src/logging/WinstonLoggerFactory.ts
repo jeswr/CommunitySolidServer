@@ -39,9 +39,7 @@ export class WinstonLoggerFactory implements LoggerFactory {
    * @param logFormat - The format used to output log messages:
    *                    `pretty` for human-readable colorized lines, or `json` for a line of JSON per message.
    * @param colorize - Whether the level in the `pretty` output is colorized with ANSI escape codes.
-   *                   Defaults to `true` to preserve the historical output. Set to `false` for plain,
-   *                   ANSI-free lines (e.g. when piping the output to a file), which also removes the
-   *                   per-line colorization cost. Has no effect on the `json` format, which is never colorized.
+   *                   Has no effect on the `json` format.
    */
   public constructor(level: string, logFormat = 'pretty', colorize = true) {
     this.level = level;
@@ -109,9 +107,6 @@ export class WinstonLoggerFactory implements LoggerFactory {
         format.json(),
       );
     }
-    // Colorizing the level is purely cosmetic, so it is only added when enabled.
-    // This keeps the default output byte-compatible while letting operators drop the
-    // per-line colorization cost (and produce ANSI-free lines) by disabling it.
     const prettyFormats: Logform.Format[] = [ format.label({ label }) ];
     if (this.colorize) {
       prettyFormats.push(format.colorize());

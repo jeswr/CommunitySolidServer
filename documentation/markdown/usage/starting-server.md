@@ -57,7 +57,7 @@ to some commonly used settings:
 | `--socket`              |                            | The Unix Domain Socket on which the server should listen. `--baseUrl` must be set if this option is provided                                  |
 | `--loggingLevel, -l`    | `info`                     | The detail level of logging; useful for debugging problems. Use `debug` for full information.                                                 |
 | `--loggingFormat`       | `pretty`                   | The format used to output log messages: `pretty` for human-readable colorized lines, or `json` for a line of JSON per message.                |
-| `--loggingColorize`     | `true`                     | Whether the `pretty` format colorizes the log level. Use `--no-loggingColorize` for plain, ANSI-free output (also slightly cheaper per line). |
+| `--loggingColorize`     | `true`                     | Whether the `pretty` format colorizes the log level. Use `--no-loggingColorize` for plain, ANSI-free output.                                  |
 | `--config, -c`          | `@css:config/default.json` | The configuration(s) for the server. The default only stores data in memory; to persist to your filesystem, use `@css:config/file.json`       |
 | `--rootFilePath, -f`    | `./`                       | Root folder where the server stores data, when using a file-based configuration.                                                              |
 | `--sparqlEndpoint, -s`  |                            | URL of the SPARQL endpoint, when using a quadstore-based configuration.                                                                       |

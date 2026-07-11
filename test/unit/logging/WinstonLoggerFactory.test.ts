@@ -119,10 +119,8 @@ describe('WinstonLoggerFactory', (): void => {
 
     expect(transport.write).toHaveBeenCalledTimes(1);
     const line: string = transport.write.mock.calls[0][0][Symbol.for('message')];
-    // No ANSI escape codes are present anywhere in the line.
     // eslint-disable-next-line no-control-regex
     expect(line).not.toMatch(/\u001B/u);
-    // The line is otherwise identical to the colorized output: same fields, plain level.
     expect(line).toBe(`${now.toISOString()} [MyLabel] {W-???} debug: my message`);
   });
 
