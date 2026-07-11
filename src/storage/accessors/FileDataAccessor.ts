@@ -30,12 +30,10 @@ export class FileDataAccessor implements DataAccessor {
 
   /**
    * @param resourceMapper - Maps identifiers to file paths and vice versa.
-   * @param detailedChildMetadata - If true, a `stat` call is performed for every child when generating
-   *   the metadata of all children in a container, adding `posix:mtime`, `posix:size` and `dc:modified`
-   *   metadata for every child. Setting this to false skips those `stat` calls,
-   *   dropping the triples mentioned above from container listings.
-   *   Symbolic links and entries whose type is not reported by the file system
-   *   are still resolved through a `stat` call and keep their detailed metadata.
+   * @param detailedChildMetadata - If true, a `stat` call is performed for every child when listing a container,
+   *   adding its `posix:mtime`, `posix:size` and `dc:modified` metadata.
+   *   If false, those calls only happen for symbolic links and entries whose type the directory listing
+   *   does not report, so all other children lack that metadata.
    */
   public constructor(resourceMapper: FileIdentifierMapper, detailedChildMetadata = true) {
     this.resourceMapper = resourceMapper;
@@ -297,8 +295,7 @@ export class FileDataAccessor implements DataAccessor {
     for await (const entry of dir) {
       const childPath = joinFilePath(link.filePath, entry.name);
 
-      // A `stat` call is needed when detailed metadata is requested,
-      // and to resolve symbolic links or entries whose type is not reported by the file system
+      // Symbolic links and entries whose type the directory listing does not report require a `stat` call
       const requiresStats = this.detailedChildMetadata || entry.isSymbolicLink() ||
         (!entry.isFile() && !entry.isDirectory());
 

@@ -21,8 +21,8 @@ export class AtomicFileDataAccessor extends FileDataAccessor implements AtomicDa
    * @param resourceMapper - Maps identifiers to file paths and vice versa.
    * @param rootFilePath - Root folder of the file system.
    * @param tempFilePath - Folder in which temporary files will be stored, relative to the root folder.
-   * @param detailedChildMetadata - If true, a `stat` call is performed for every child when generating
-   *   the metadata of all children in a container. See {@link FileDataAccessor}.
+   * @param detailedChildMetadata - If true, a `stat` call is performed for every child when listing a container.
+   *   See {@link FileDataAccessor}.
    */
   public constructor(
     resourceMapper: FileIdentifierMapper,

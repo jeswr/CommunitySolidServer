@@ -340,7 +340,7 @@ describe('A FileDataAccessor', (): void => {
       expect(children[2].identifier.value).toBe(`${base}container/symlink`);
       expect(children[3].identifier.value).toBe(`${base}container/symlinkContainer/`);
 
-      // Symlinked children were resolved through a `stat` call so keep their detailed metadata
+      // Symlinked children keep their detailed metadata
       const symlinkTypes = children[2].getAll(RDF.terms.type).map((term): string => term.value);
       expect(symlinkTypes).toContain(LDP.Resource);
       expect(symlinkTypes).toContain('http://www.w3.org/ns/iana/media-types/application/octet-stream#Resource');
@@ -355,7 +355,7 @@ describe('A FileDataAccessor', (): void => {
         .toEqualRdfTerm(toLiteral(Math.floor(now.getTime() / 1000), XSD.terms.integer));
       expect(children[3].get(POSIX.terms.size)).toBeUndefined();
 
-      // Plainly typed children were not statted
+      // Plainly typed children have no detailed metadata
       expect(children[0].get(POSIX.terms.mtime)).toBeUndefined();
       expect(children[1].get(POSIX.terms.mtime)).toBeUndefined();
 
