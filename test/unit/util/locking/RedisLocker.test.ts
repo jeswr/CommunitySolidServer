@@ -514,9 +514,7 @@ describe('A RedisLocker', (): void => {
       it('does not wipe Read-Write locks on shutdown by default, but still quits.', async(): Promise<void> => {
         const promise = locker.withWriteLock(resource1, async(): Promise<any> => {
           await locker.finalize();
-          // Default is multi-instance-safe: the peer-visible lock namespace is left intact on shutdown.
           expect(Object.keys(store.internal)).toHaveLength(1);
-          // The redis client is always disconnected, even when the namespace is not wiped.
           expect(redis.quit).toHaveBeenCalledTimes(1);
         });
         // Auto-release of Read-Write lock should result in an exception, as the Locker has been finalized.
@@ -525,11 +523,10 @@ describe('A RedisLocker', (): void => {
 
       it('wipes Read-Write locks on shutdown when clearLocksOnStart is enabled.', async(): Promise<void> => {
         const clearingLocker = new RedisLocker('6379', {}, { clearLocksOnStart: true });
-        // Leaves a Read-Write key in the store (lock released, but the key persists to be cleaned on shutdown).
+        // The released lock leaves a Read-Write key in the store to be cleaned up on shutdown.
         await clearingLocker.withWriteLock(resource1, (): number => 5);
         expect(Object.keys(store.internal)).toHaveLength(1);
         await clearingLocker.finalize();
-        // Single-instance mode still cleans up the namespace it exclusively owns on shutdown.
         expect(Object.keys(store.internal)).toHaveLength(0);
         expect(redis.quit).toHaveBeenCalledTimes(1);
       });
@@ -541,8 +538,7 @@ describe('A RedisLocker', (): void => {
     const identifier = { path: 'http://test.com/foo' };
 
     beforeEach(async(): Promise<void> => {
-      // Reset the shared store so a lock left behind by a prior test (finalize no longer wipes the
-      // namespace by default) cannot leak into the next test.
+      // Reset the shared store so locks left behind by a prior test cannot leak into this one.
       store.reset();
       jest.clearAllMocks();
       locker = new RedisLocker('6379', { retryCount: 5 });
@@ -662,7 +658,6 @@ describe('A RedisLocker', (): void => {
         await locker.acquire({ path: 'path1' });
         await locker.acquire({ path: 'path2' });
         await locker.initialize();
-        // The default is multi-instance-safe: a restarting instance must not wipe its peers' locks.
         expect(Object.keys(store.internal)).toHaveLength(2);
         // Release the acquired resource locks so their renewal timers do not leak into later tests.
         await locker.release({ path: 'path1' });
@@ -692,9 +687,7 @@ describe('A RedisLocker', (): void => {
         await locker.acquire({ path: 'path1' });
         await locker.acquire({ path: 'path2' });
         await locker.finalize();
-        // Default is multi-instance-safe: a peer's locks must survive this instance's graceful shutdown.
         expect(Object.keys(store.internal)).toHaveLength(2);
-        // The redis client is always disconnected, so no connection leaks even when nothing is wiped.
         expect(redis.quit).toHaveBeenCalledTimes(1);
       });
 
@@ -704,7 +697,6 @@ describe('A RedisLocker', (): void => {
         await clearingLocker.acquire({ path: 'path1' });
         await clearingLocker.acquire({ path: 'path2' });
         await clearingLocker.finalize();
-        // Single-instance mode still cleans up the namespace it exclusively owns on shutdown.
         expect(Object.keys(store.internal)).toHaveLength(0);
         expect(redis.quit).toHaveBeenCalledTimes(1);
       });

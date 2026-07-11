@@ -18,14 +18,7 @@ const attemptDefaults: Required<AttemptSettings> = { retryCount: -1, retryDelay:
 const PREFIX_RW = '__RW__';
 const PREFIX_LOCK = '__L__';
 
-/**
- * Default time-to-live (in ms) for a Redis lock key.
- *
- * A crashed lock holder's key auto-expires after this time so that other instances cannot deadlock
- * on the abandoned resource. It is deliberately several times larger than the in-process lock
- * expiration (see {@link WrappedExpiringReadWriteLocker}, 6000ms by default), and it is actively
- * renewed while a lock is legitimately held, so a normal operation never loses its lock.
- */
+// Default time-to-live (in ms) for a Redis lock key
 const DEFAULT_TTL = 30000;
 
 export interface RedisSettings {
@@ -38,23 +31,16 @@ export interface RedisSettings {
   /* The number of the database to use */
   db?: number;
   /**
-   * Time-to-live (in ms) for the Redis lock keys. A crashed holder's key auto-expires after this
-   * time so peers do not deadlock. While a lock is legitimately held it is renewed at half this
-   * interval, so this value only bounds how long peers wait after a hard crash. Must be larger than
-   * the in-process lock expiration. Defaults to {@link DEFAULT_TTL} (30000ms).
+   * Time-to-live (in ms) for the Redis lock keys, so a crashed holder's lock releases itself
+   * instead of deadlocking peers. Held locks are renewed well before they can expire,
+   * so this only needs to be larger than the in-process lock expiration. Defaults to 30000.
    */
   ttl?: number;
   /**
-   * Whether to delete every lock in this namespace when the locker starts (see {@link RedisLocker.initialize}).
-   *
-   * This is only safe when a single instance exclusively owns the Redis namespace: it lets that
-   * instance recover from locks left behind by a previous crashed run. When multiple instances share
-   * a namespace (the setup required for HA coordination) a restarting instance cannot tell its own
-   * stale locks from the live locks of its peers, so wiping the namespace on boot would corrupt peers
-   * that still hold those locks. Because a crashed holder's lock now auto-expires through its TTL lease
-   * (see {@link RedisSettings.ttl}), boot-time clearing is no longer needed for correctness, so this
-   * defaults to `false` (multi-instance-safe). Set it to `true` for a single-instance deployment that
-   * prefers stale locks cleared immediately on boot rather than waiting for the TTL to elapse.
+   * Whether to delete every lock in this namespace when the locker starts or stops.
+   * This is only safe when a single instance exclusively owns the namespace,
+   * as instances sharing it cannot tell stale locks from those held by live peers.
+   * Defaults to `false`, leaving stale locks to expire through their TTL.
    */
   clearLocksOnStart?: boolean;
 }
@@ -118,9 +104,8 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
     this.attemptSettings = { ...attemptDefaults, ...attemptSettings };
     this.namespacePrefix = namespacePrefix!;
     this.ttl = ttl ?? DEFAULT_TTL;
-    // Default to NOT wiping the namespace on boot so peers sharing it (HA) are never disturbed.
     this.clearLocksOnStart = clearLocksOnStart ?? false;
-    // Renew at half the TTL so a live holder refreshes its lock long before it could expire.
+    // Renewing at half the TTL refreshes a held lock long before it can expire.
     this.renewalInterval = Math.max(1, Math.floor(this.ttl / 2));
 
     // Register lua scripts
@@ -184,15 +169,13 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
   /* Lease renewal */
 
   /**
-   * Creates an interval timer that periodically refreshes the TTL of a held Redis lock (a lease).
-   * As long as the process is alive the lock keeps being renewed, so a legitimate (even long-running)
-   * operation never loses its lock. Once the process crashes the timer dies with it and the Redis key
-   * expires after the TTL, releasing the abandoned lock so peers do not deadlock.
+   * Creates an interval timer that keeps refreshing the TTL of a held Redis lock.
+   * When the process crashes, the timer dies with it and the lock expires on its own.
    *
-   * @param renew - Refreshes the TTL of the relevant Redis key. Rejections are swallowed and logged,
-   *                as a single missed refresh is recovered by the next interval tick.
+   * @param renew - Refreshes the TTL of the relevant Redis key.
+   *                Rejections are only logged since the next interval recovers a missed refresh.
    *
-   * @returns The interval timer, which must be cleared with {@link clearInterval} once the lock is released.
+   * @returns The timer, which needs to be cleared once the lock is released.
    */
   private createRenewalTimer(renew: () => Promise<RedisAnswer>): NodeJS.Timeout {
     const timer = setInterval((): void => {
@@ -200,16 +183,13 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
         this.logger.warn(`Could not renew Redis lock TTL: ${createErrorMessage(error)}`);
       });
     }, this.renewalInterval);
-    // A background renewal timer should never keep the Node.js process alive on its own.
+    // Prevent the timer from keeping the Node.js process alive
     timer.unref();
     return timer;
   }
 
   /**
-   * Starts renewing the TTL of a resource lock and tracks the timer so it can be stopped on release.
-   *
-   * @param key - The Redis key of the acquired resource lock.
-   * @param renew - Refreshes the TTL of the resource lock key.
+   * Starts renewing the TTL of the resource lock with the given key.
    */
   private startRenewal(key: string, renew: () => Promise<RedisAnswer>): void {
     this.stopRenewal(key);
@@ -217,9 +197,7 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
   }
 
   /**
-   * Stops renewing the TTL of a resource lock, if a renewal timer is active for the given key.
-   *
-   * @param key - The Redis key of the resource lock to stop renewing.
+   * Stops renewing the TTL of the resource lock with the given key.
    */
   private stopRenewal(key: string): void {
     const timer = this.renewalTimers.get(key);
@@ -299,8 +277,7 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
       this.swallowFalse(this.redisLock.acquireLock.bind(this.redisLock, key, this.ttl)),
       this.attemptSettings,
     );
-    // A resource lock is held across separate acquire()/release() calls, so keep renewing its TTL
-    // until it is explicitly released (or the process crashes).
+    // A resource lock is held across separate calls, so its renewal timer has to be tracked until release.
     this.startRenewal(key, async(): Promise<RedisAnswer> => this.redisLock.renewLock(key, this.ttl));
   }
 
@@ -317,15 +294,11 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
 
   public async initialize(): Promise<void> {
     if (!this.clearLocksOnStart) {
-      // Multiple instances may share this namespace to coordinate (HA). This instance cannot tell its
-      // own stale locks from the live locks of its peers, so it must NOT wipe the namespace on boot:
-      // deleting a peer's held lock would open a corruption window. A crashed holder's lock instead
-      // self-heals via its TTL lease. Single-instance deployments can opt back in via `clearLocksOnStart`.
+      // Existing locks might be held by peers sharing this namespace; stale ones expire through their TTL.
       this.logger.debug('Skipping boot-time lock cleanup; relying on lock TTLs (clearLocksOnStart is disabled).');
       return;
     }
-    // On server start (single-instance only): remove all existing (dangling) locks left behind by a
-    // previous crashed run, so new requests are not blocked while waiting for those locks' TTLs.
+    // On server start: remove all existing (dangling) locks, so new requests are not blocked.
     return this.clearLocks();
   }
 
@@ -338,18 +311,14 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
     this.renewalTimers.clear();
     try {
       if (this.clearLocksOnStart) {
-        // Single-instance mode (the same mode that wipes on boot): this instance exclusively owns the
-        // namespace, so on a controlled shutdown it cleans up every lock it left behind.
+        // On controlled server shutdown: clean up all existing locks.
         await this.clearLocks();
       } else {
-        // Multiple instances may share this namespace to coordinate (HA). A gracefully stopping instance
-        // cannot tell its own locks from the live locks of its peers, so it must NOT wipe the namespace on
-        // shutdown: deleting a peer's held lock would open the same corruption window as a boot-time wipe.
-        // This instance's own locks self-heal via their TTL leases once it stops renewing them above.
+        // Locks might be held by peers sharing this namespace; those of this instance expire through their TTL.
         this.logger.debug('Skipping shutdown lock cleanup; relying on lock TTLs (clearLocksOnStart is disabled).');
       }
     } finally {
-      // Always quit the redis client, whether or not the namespace was cleared, so no connection leaks.
+      // Always quit the redis client
       await this.redis.quit();
     }
   }
