@@ -33,7 +33,6 @@ describe('A ClientCredentialsAdapterFactory', (): void => {
   let factory: ClientCredentialsAdapterFactory;
 
   beforeEach(async(): Promise<void> => {
-    // Clearing the logger mock
     jest.clearAllMocks();
 
     sourceAdapter = {

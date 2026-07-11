@@ -77,7 +77,6 @@ describe('An IdentityProviderFactory', (): void => {
   });
 
   beforeEach(async(): Promise<void> => {
-    // Clearing the logger mock
     jest.clearAllMocks();
 
     // Disabling devInteractions to prevent warnings when testing the path

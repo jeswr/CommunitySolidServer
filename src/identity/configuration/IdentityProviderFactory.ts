@@ -210,8 +210,7 @@ export class IdentityProviderFactory implements ProviderFactory {
   }
 
   /**
-   * Registers a listener that logs the client and account identifiers of every successful token grant,
-   * so operators can see which identity acquired a token at production log levels.
+   * Registers a listener that logs the client and account identifiers of every successful token grant.
    * Only identifiers are logged, never token values or secrets.
    */
   private configureGrantLogging(provider: Provider): void {
