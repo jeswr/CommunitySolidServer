@@ -15,8 +15,7 @@ export type LogFormat = typeof LOG_FORMATS[number];
 /**
  * Uses the winston library to create loggers for the given logging level.
  * By default, it will print to the console with colorized logging levels.
- * The `json` format can be used instead to output every log entry
- * as a single line of JSON, which is easier to parse for log aggregators.
+ * The `json` format can be used instead to output every log entry as a single line of JSON.
  *
  * This creates instances of {@link WinstonLogger}.
  */
@@ -52,9 +51,6 @@ export class WinstonLoggerFactory implements LoggerFactory {
     }));
   }
 
-  /**
-   * Creates the winston format corresponding to the `logFormat` this factory was created with.
-   */
   protected createFormat(label: string): Logform.Format {
     if (this.logFormat === 'json') {
       return format.combine(
