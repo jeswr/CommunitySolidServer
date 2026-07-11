@@ -35,11 +35,11 @@
       "storage": { "@id": "urn:solid-server:default:SubscriptionStorage" }
     },
     {
-      "comment": "Makes sure the WebSocket2023Storer cleanup and heartbeat timers are stopped when the server stops.",
       "@id": "urn:solid-server:default:Finalizer",
       "@type": "ParallelHandler",
       "handlers": [
         {
+          "comment": "Makes sure the WebSocket2023Storer timers are stopped when the application stops.",
           "@type": "FinalizableHandler",
           "finalizable": { "@id": "urn:solid-server:default:WebSocket2023Storer" }
         }

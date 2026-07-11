@@ -16,17 +16,9 @@ import { WebSocket2023Handler } from './WebSocket2023Handler';
  * Defaults to 60 minutes.
  * Open WebSockets will not receive notifications if their channel expired.
  *
- * `heartbeatInterval` defines in seconds how often a WebSocket ping/pong heartbeat is sent
- * to every tracked WebSocket to detect and reap half-open (dead) connections.
- * A client killed by a NAT/idle timeout, a laptop going to sleep, or a network drop never sends a
- * `close` frame, so without a heartbeat such a socket would linger in the map forever.
- * The heartbeat pings every tracked socket; a socket that has not answered with a `pong`
- * since the previous cycle is assumed dead and gets `terminate()`d
- * (which also removes it from the map through the attached `close` listener).
- * Ping/pong are RFC 6455 control frames handled automatically by conformant WebSocket clients,
- * so a healthy client is never affected: it auto-pongs and is kept.
- * Defaults to `0`, which **disables** the heartbeat entirely, preserving the previous behaviour.
- * A value such as `30` (seconds) is recommended to enable dead-connection reaping.
+ * `heartbeatInterval` defines in seconds how often the stored WebSockets are pinged
+ * to detect and terminate half-open connections that no longer answer with a pong.
+ * Defaults to 0, which disables the heartbeat.
  */
 export class WebSocket2023Storer extends WebSocket2023Handler implements Finalizable {
   protected readonly logger = getLoggerFor(this);
@@ -58,7 +50,6 @@ export class WebSocket2023Storer extends WebSocket2023Handler implements Finaliz
     );
     this.cleanupTimer.unref();
 
-    // A `heartbeatInterval` of `0` (the default) disables the heartbeat, keeping the previous behaviour.
     if (heartbeatInterval > 0) {
       this.heartbeatTimer = setSafeInterval(
         this.logger,
@@ -73,7 +64,7 @@ export class WebSocket2023Storer extends WebSocket2023Handler implements Finaliz
   public async handle({ webSocket, channel }: WebSocket2023HandlerInput): Promise<void> {
     this.socketMap.add(channel.id, webSocket);
     if (this.heartbeatInterval > 0) {
-      // A newly opened socket starts out alive; conformant clients answer every ping with a `pong`.
+      // A new socket counts as alive until it misses a ping
       this.aliveSockets.add(webSocket);
       webSocket.on('pong', (): void => {
         this.aliveSockets.add(webSocket);
@@ -110,30 +101,24 @@ export class WebSocket2023Storer extends WebSocket2023Handler implements Finaliz
   }
 
   /**
-   * Ping every tracked WebSocket and reap the ones that did not answer the previous ping with a `pong`.
-   * A missed pong indicates a half-open (dead) connection, so it is `terminate()`d;
-   * the attached `close` listener then removes it from the `socketMap`.
+   * Ping every stored WebSocket and terminate those that did not answer the previous ping with a pong.
+   * Terminated sockets get removed from the map by their attached `close` listener.
    */
   private sendHeartbeat(): void {
     this.logger.debug('Sending WebSocket heartbeat pings');
-    // Snapshot the sockets first: `terminate()` schedules a `close` event that mutates the `socketMap`.
+    // Iterate over a snapshot as terminating a socket mutates the map through its `close` listener
     for (const socket of new Set(this.socketMap.values())) {
       if (this.aliveSockets.has(socket)) {
-        // Answered the previous ping (or was just opened): mark it pending again and ping.
+        // Removing the socket marks it as pending until its pong re-adds it
         this.aliveSockets.delete(socket);
         socket.ping();
       } else {
-        // No pong since the previous cycle: assume the connection is dead and reap it.
         socket.terminate();
       }
     }
     this.logger.debug('Finished sending WebSocket heartbeat pings');
   }
 
-  /**
-   * Stops the cleanup and heartbeat timers so they no longer keep the event loop alive
-   * or fire during/after a graceful shutdown.
-   */
   public async finalize(): Promise<void> {
     clearInterval(this.cleanupTimer);
     if (this.heartbeatTimer) {

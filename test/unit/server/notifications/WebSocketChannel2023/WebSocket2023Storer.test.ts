@@ -102,12 +102,10 @@ describe('A WebSocket2023Storer', (): void => {
   describe('with the heartbeat disabled (the default)', (): void => {
     it('never pings or terminates tracked sockets.', async(): Promise<void> => {
       jest.useFakeTimers();
-      // The default `heartbeatInterval` of `0` disables the heartbeat.
       storer = new WebSocket2023Storer(storage, socketMap);
 
       await expect(storer.handle({ channel, webSocket })).resolves.toBeUndefined();
 
-      // Advance well past any interval; only the cleanup timer should ever fire.
       jest.advanceTimersByTime(60 * 60 * 1000);
       await flushPromises();
 
@@ -130,7 +128,6 @@ describe('A WebSocket2023Storer', (): void => {
   describe('with the heartbeat enabled', (): void => {
     beforeEach((): void => {
       jest.useFakeTimers();
-      // 60 min cleanup timer, 30 s heartbeat.
       storer = new WebSocket2023Storer(storage, socketMap, 60, 30);
     });
 
@@ -151,15 +148,12 @@ describe('A WebSocket2023Storer', (): void => {
     it('keeps sockets that answer with a pong.', async(): Promise<void> => {
       await expect(storer.handle({ channel, webSocket })).resolves.toBeUndefined();
 
-      // First cycle: socket is pinged.
       jest.advanceTimersByTime(30 * 1000);
       await flushPromises();
       expect(webSocket.ping).toHaveBeenCalledTimes(1);
 
-      // Healthy client answers with a pong.
       webSocket.emit('pong');
 
-      // Second cycle: socket is still alive, so it is pinged again and never terminated.
       jest.advanceTimersByTime(30 * 1000);
       await flushPromises();
       expect(webSocket.ping).toHaveBeenCalledTimes(2);
@@ -169,19 +163,17 @@ describe('A WebSocket2023Storer', (): void => {
     it('terminates sockets that miss a pong.', async(): Promise<void> => {
       await expect(storer.handle({ channel, webSocket })).resolves.toBeUndefined();
 
-      // First cycle: socket is pinged but does not pong.
       jest.advanceTimersByTime(30 * 1000);
       await flushPromises();
       expect(webSocket.ping).toHaveBeenCalledTimes(1);
       expect(webSocket.terminate).toHaveBeenCalledTimes(0);
 
-      // Second cycle: no pong was received, so the socket is terminated.
       jest.advanceTimersByTime(30 * 1000);
       await flushPromises();
       expect(webSocket.ping).toHaveBeenCalledTimes(1);
       expect(webSocket.terminate).toHaveBeenCalledTimes(1);
 
-      // A real terminate() emits `close`, which removes the socket from the map.
+      // The mocked `terminate` does not emit the `close` event a real socket would
       webSocket.emit('close');
       expect(socketMap.has(channel.id)).toBe(false);
     });
@@ -203,7 +195,7 @@ describe('A WebSocket2023Storer', (): void => {
 
       await expect(storer.finalize()).resolves.toBeUndefined();
 
-      // No timer fires after finalization: neither heartbeat nor cleanup runs.
+      // Neither the heartbeat nor the cleanup timer fires after finalization
       jest.advanceTimersByTime(60 * 60 * 1000);
       await flushPromises();
 
