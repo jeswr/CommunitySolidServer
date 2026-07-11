@@ -4,10 +4,10 @@
     "css:config/storage/key-value/storages/storages.json"
   ],
   "comment": [
-    "OPT-IN drop-in replacement for css:config/storage/key-value/resource-store.json that encrypts internal values at rest with AES-256-GCM.",
+    "Opt-in replacement for css:config/storage/key-value/resource-store.json that encrypts internal values at rest with AES-256-GCM.",
     "To enable, replace the import of resource-store.json with this file and provide the secret passphrase through the storageEncryptionKey variable, i.e. the --storageEncryptionKey CLI argument or (preferred) the CSS_STORAGE_ENCRYPTION_KEY environment variable.",
     "Enabling this on an existing deployment is safe: previously written plaintext values are still readable and are re-encrypted on their next write.",
-    "WARNING: losing the passphrase makes all encrypted secrets (including the OIDC signing key) permanently unrecoverable.",
+    "Losing the passphrase makes all encrypted secrets (including the OIDC signing key) permanently unrecoverable.",
     "Locks are stored through BackendKeyValueStorage and are intentionally left unencrypted."
   ],
   "@graph": [

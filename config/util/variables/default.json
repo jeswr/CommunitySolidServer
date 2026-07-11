@@ -58,7 +58,7 @@
       "@type": "Variable"
     },
     {
-      "comment": "Passphrase used to encrypt internal key-value secrets at rest. Empty means encryption-at-rest is disabled.",
+      "comment": "Passphrase used by the opt-in encrypted key-value storage to encrypt internal secrets at rest.",
       "@id": "urn:solid-server:default:variable:storageEncryptionKey",
       "@type": "Variable"
     }
