@@ -94,17 +94,19 @@ export class FileSystemResourceLocker implements ResourceLocker, Initializable, 
    * any other error would fail every future attempt as well, so those are thrown immediately.
    * This wrapper returns undefined because {@link retryFunction} expects that when a retry needs to happen.
    *
+   * @param path - The resource path being locked, used for logging.
    * @param fn - The function reference to swallow `ELOCKED` errors from.
    *
    * @returns Boolean or undefined.
    */
-  private swallowLockedErrors(fn: () => Promise<unknown>): () => Promise<unknown> {
+  private swallowLockedErrors(path: string, fn: () => Promise<unknown>): () => Promise<unknown> {
     return async(): Promise<unknown> => {
       try {
         await fn();
         return true;
       } catch (err: unknown) {
         if (isCodedError(err) && err.code === 'ELOCKED') {
+          this.logger.debug(`Lock for ${path} is already held, retrying`);
           return;
         }
         throw err;
@@ -141,7 +143,7 @@ export class FileSystemResourceLocker implements ResourceLocker, Initializable, 
     try {
       const opt = this.generateOptions(identifier, this.lockOptions);
       await retryFunction(
-        this.swallowLockedErrors(lock.bind(null, path, opt)),
+        this.swallowLockedErrors(path, lock.bind(null, path, opt)),
         this.attemptSettings,
       );
     } catch (err: unknown) {
