@@ -24,10 +24,6 @@ export interface AttemptSettings {
   retryDelay?: number;
   /** Add a fraction of jitter to the original delay each attempt (in ms). */
   retryJitter?: number;
-  /** The factor by which the delay gets multiplied after every attempt. 1 keeps the delay constant. */
-  retryBackoffFactor?: number;
-  /** The upper bound for the delay between attempts (in ms). */
-  retryDelayMax?: number;
 }
 
 /**
@@ -40,21 +36,19 @@ export interface AttemptSettings {
  * @param settings - The options on how to retry the function
  */
 export async function retryFunction<T>(fn: () => Promise<T>, settings: Required<AttemptSettings>): Promise<T> {
-  const { retryCount, retryDelay, retryJitter, retryBackoffFactor, retryDelayMax } = settings;
+  const { retryCount, retryDelay, retryJitter } = settings;
   const maxTries = retryCount === -1 ? Number.POSITIVE_INFINITY : retryCount + 1;
   let tries = 1;
-  let delay = retryDelay;
   let result = await fn();
 
   while (typeof result === 'undefined' && tries < maxTries) {
-    await setJitterTimeout(delay, retryJitter);
-    delay = Math.min(delay * retryBackoffFactor, retryDelayMax);
+    await setJitterTimeout(retryDelay, retryJitter);
     result = await fn();
     tries += 1;
   }
 
-  // Max tries was reached without a result
-  if (typeof result === 'undefined') {
+  // Max tries was reached: throw first!
+  if (tries >= maxTries) {
     const err = `The operation did not succeed after the set maximum of tries (${maxTries}).`;
     logger.warn(err);
     throw new InternalServerError(err);

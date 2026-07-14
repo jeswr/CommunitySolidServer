@@ -29,13 +29,7 @@ const defaultUnlockOptions: UnlockOptions = {
   realpath: false,
 };
 
-const attemptDefaults: Required<AttemptSettings> = {
-  retryCount: -1,
-  retryDelay: 50,
-  retryJitter: 30,
-  retryBackoffFactor: 2,
-  retryDelayMax: 1000,
-};
+const attemptDefaults: Required<AttemptSettings> = { retryCount: -1, retryDelay: 50, retryJitter: 30 };
 
 /**
  * Argument interface of the FileSystemResourceLocker constructor.
