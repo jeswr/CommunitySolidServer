@@ -24,6 +24,13 @@ export interface AttemptSettings {
   retryDelay?: number;
   /** Add a fraction of jitter to the original delay each attempt (in ms). */
   retryJitter?: number;
+  /**
+   * Rate of exponential backoff. 1 keeps the delay constant,
+   * greater than 1 backs off for longer and longer. Should never be less than 1.
+   */
+  retryBackoffFactor?: number;
+  /** The upper bound for the delay between attempts (in ms). */
+  retryDelayMax?: number;
 }
 
 /**
@@ -36,13 +43,15 @@ export interface AttemptSettings {
  * @param settings - The options on how to retry the function
  */
 export async function retryFunction<T>(fn: () => Promise<T>, settings: Required<AttemptSettings>): Promise<T> {
-  const { retryCount, retryDelay, retryJitter } = settings;
+  const { retryCount, retryDelay, retryJitter, retryBackoffFactor, retryDelayMax } = settings;
   const maxTries = retryCount === -1 ? Number.POSITIVE_INFINITY : retryCount + 1;
   let tries = 1;
+  let delay = retryDelay;
   let result = await fn();
 
   while (typeof result === 'undefined' && tries < maxTries) {
-    await setJitterTimeout(retryDelay, retryJitter);
+    await setJitterTimeout(delay, retryJitter);
+    delay = Math.min(delay * retryBackoffFactor, retryDelayMax);
     result = await fn();
     tries += 1;
   }
