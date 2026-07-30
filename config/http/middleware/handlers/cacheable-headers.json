@@ -1,0 +1,43 @@
+{
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@graph": [
+    {
+      "comment": "The OIDC discovery document is static and identical for all agents, so it can be cached publicly.",
+      "@id": "urn:solid-server:default:Middleware_OidcDiscoveryCache",
+      "@type": "PathHeaderHandler",
+      "args_baseUrl": { "@id": "urn:solid-server:default:variable:baseUrl" },
+      "args_targetExtractor": { "@id": "urn:solid-server:default:TargetExtractor" },
+      "args_allowedMethods": [ "GET", "HEAD" ],
+      "args_allowedPathNames": [ "^/\\.well-known/openid-configuration$" ],
+      "args_headers": [
+        {
+          "PathHeaderHandler:_args_headers_key": "Cache-Control",
+          "PathHeaderHandler:_args_headers_value": "public, max-age=3600"
+        },
+        {
+          "PathHeaderHandler:_args_headers_key": "Vary",
+          "PathHeaderHandler:_args_headers_value": "Origin"
+        }
+      ]
+    },
+    {
+      "comment": "The JWKS document is also public, but uses a shorter lifetime as the signing keys can rotate.",
+      "@id": "urn:solid-server:default:Middleware_OidcJwksCache",
+      "@type": "PathHeaderHandler",
+      "args_baseUrl": { "@id": "urn:solid-server:default:variable:baseUrl" },
+      "args_targetExtractor": { "@id": "urn:solid-server:default:TargetExtractor" },
+      "args_allowedMethods": [ "GET", "HEAD" ],
+      "args_allowedPathNames": [ "^/\\.oidc/jwks$" ],
+      "args_headers": [
+        {
+          "PathHeaderHandler:_args_headers_key": "Cache-Control",
+          "PathHeaderHandler:_args_headers_value": "public, max-age=600"
+        },
+        {
+          "PathHeaderHandler:_args_headers_key": "Vary",
+          "PathHeaderHandler:_args_headers_value": "Origin"
+        }
+      ]
+    }
+  ]
+}
