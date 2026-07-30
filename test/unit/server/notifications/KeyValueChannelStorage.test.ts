@@ -12,6 +12,33 @@ jest.mock('../../../../src/logging/LogUtil', (): any => {
   return { getLoggerFor: (): Logger => logger };
 });
 
+/**
+ * A real per-key FIFO write lock, unlike the default test mock which runs the callback immediately
+ * without serialising. Needed to exercise the double-checked expiry logic in `get`.
+ */
+function serialisingLocker(): ReadWriteLocker {
+  const tails = new Map<string, Promise<void>>();
+  return {
+    withReadLock: jest.fn(),
+    withWriteLock: jest.fn(async <T>(rid: ResourceIdentifier, whileLocked: () => T | Promise<T>): Promise<T> => {
+      const key = rid.path;
+      const prev = tails.get(key) ?? Promise.resolve();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve): void => {
+        release = resolve;
+      });
+      // The next waiter on this key blocks on `gate`, which resolves when this holder releases.
+      tails.set(key, gate);
+      await prev;
+      try {
+        return await whileLocked();
+      } finally {
+        release();
+      }
+    }),
+  };
+}
+
 describe('A KeyValueChannelStorage', (): void => {
   const logger = getLoggerFor('mock');
   const topic = 'http://example.com/foo';
@@ -60,6 +87,18 @@ describe('A KeyValueChannelStorage', (): void => {
       channel.endAt = 0;
       await storage.add(channel);
       await expect(storage.get(channel.id)).resolves.toBeUndefined();
+      expect(internalMap.size).toBe(0);
+    });
+
+    it('does not log a consistency error on concurrent expired get.', async(): Promise<void> => {
+      // Serialising lock so the double-checked expiry inside the write lock is actually exercised.
+      const serialStorage = new KeyValueChannelStorage(internalStorage, serialisingLocker());
+      channel.endAt = 0;
+      await serialStorage.add(channel);
+      // Both callers see the channel as expired before either deletes it; only the first should act.
+      await Promise.all([ serialStorage.get(channel.id), serialStorage.get(channel.id) ]);
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(logger.info).toHaveBeenCalledTimes(1);
       expect(internalMap.size).toBe(0);
     });
   });
@@ -146,6 +185,20 @@ describe('A KeyValueChannelStorage', (): void => {
 
     it('does nothing if the target does not exist.', async(): Promise<void> => {
       await expect(storage.delete(channel.id)).resolves.toBe(false);
+    });
+
+    it('deletes an expired channel without reacquiring its lock.', async(): Promise<void> => {
+      channel.endAt = 0;
+      await storage.add(channel);
+      jest.mocked(locker.withWriteLock).mockClear();
+      await expect(storage.delete(channel.id)).resolves.toBe(true);
+      // The previous implementation called `get()` inside `delete()`, re-acquiring this same
+      // write lock for the expired channel; a non-reentrant lock deadlocks until it expires.
+      const idLockKey = `${channel.id}.notification-storage`;
+      const idLockAcquisitions = jest.mocked(locker.withWriteLock).mock.calls
+        .filter((call): boolean => call[0].path === idLockKey).length;
+      expect(idLockAcquisitions).toBe(1);
+      expect(internalMap.size).toBe(0);
     });
 
     it('logs an error if the target can not be found in the list of references.', async(): Promise<void> => {
