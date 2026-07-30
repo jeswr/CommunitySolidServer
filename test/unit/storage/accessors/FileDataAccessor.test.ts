@@ -213,6 +213,19 @@ describe('A FileDataAccessor', (): void => {
       }
     });
 
+    it('counts container children via getChildCount, excluding metadata files.', async(): Promise<void> => {
+      cache.data = {
+        container: {
+          resource1: 'data',
+          'resource1.meta': 'metadata',
+          resource2: 'data',
+          sub: {},
+        },
+      };
+      // Counts resource1, resource2 and sub/; the .meta sidecar is excluded.
+      await expect(accessor.getChildCount({ path: `${base}container/` })).resolves.toBe(3);
+    });
+
     it('does not generate IANA URIs for children with invalid content-types.', async(): Promise<void> => {
       cache.data = {
         container: {

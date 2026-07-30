@@ -78,17 +78,28 @@ export class DataAccessorBasedStore implements ResourceStore {
   private readonly identifierStrategy: IdentifierStrategy;
   private readonly auxiliaryStrategy: AuxiliaryStrategy;
   private readonly metadataStrategy: AuxiliaryStrategy;
+  private readonly maxContainerSize: number;
 
+  /**
+   * @param accessor - Used to interact with the data storage.
+   * @param identifierStrategy - Used to make sure the target URIs are within the configured storage.
+   * @param auxiliaryStrategy - Used to detect and handle auxiliary resources.
+   * @param metadataStrategy - Used to detect and handle metadata resources.
+   * @param maxContainerSize - Maximum number of non-auxiliary resources a container may hold before
+   *   it rejects `POST` requests that would add another. `0` (the default) disables the limit.
+   */
   public constructor(
     accessor: DataAccessor,
     identifierStrategy: IdentifierStrategy,
     auxiliaryStrategy: AuxiliaryStrategy,
     metadataStrategy: AuxiliaryStrategy,
+    maxContainerSize = 0,
   ) {
     this.accessor = accessor;
     this.identifierStrategy = identifierStrategy;
     this.auxiliaryStrategy = auxiliaryStrategy;
     this.metadataStrategy = metadataStrategy;
+    this.maxContainerSize = maxContainerSize;
   }
 
   public async hasResource(identifier: ResourceIdentifier): Promise<boolean> {
@@ -185,6 +196,10 @@ export class DataAccessorBasedStore implements ResourceStore {
     }
 
     this.validateConditions(conditions, parentMetadata);
+
+    // Reject the request if the container is already at its configured maximum size.
+    // Checked before generating the URI so oversized containers fail fast.
+    await this.validateContainerSize(container);
 
     // Solid, §5.1: "Servers MAY allow clients to suggest the URI of a resource created through POST,
     // using the HTTP Slug header as defined in [RFC5023].
@@ -669,6 +684,54 @@ export class DataAccessorBasedStore implements ResourceStore {
       }
     }
     return false;
+  }
+
+  /**
+   * Rejects the request if the given container already holds `maxContainerSize` non-auxiliary resources.
+   *
+   * The count is bounded by the limit: iteration stops as soon as the limit is reached, so this never
+   * triggers a full listing of an already-oversized container (which would be `O(container size)`).
+   * Auxiliary resources (such as ACL or metadata documents) are not counted.
+   *
+   * @param container - Identifier of the container a resource is being added to.
+   */
+  protected async validateContainerSize(container: ResourceIdentifier): Promise<void> {
+    if (this.maxContainerSize <= 0) {
+      return;
+    }
+    if (await this.countChildren(container) >= this.maxContainerSize) {
+      throw new ForbiddenHttpError(
+        `Container ${container.path} has reached its maximum size of ${this.maxContainerSize} resources.`,
+      );
+    }
+  }
+
+  /**
+   * Counts the resources in the given container.
+   *
+   * Prefers the accessor's native count (`getChildCount`) when it exposes one, so a backend that can
+   * answer cheaply (a single directory read for the file backend, a `COUNT` query for the SPARQL backend)
+   * never has to do a full per-child listing of an oversized container. Otherwise it falls back to
+   * iterating {@link DataAccessor.getChildren}, stopping as soon as `maxContainerSize` is reached so the
+   * work is bounded by the limit rather than by the container size.
+   *
+   * @param container - Identifier of the container.
+   */
+  protected async countChildren(container: ResourceIdentifier): Promise<number> {
+    if (this.accessor.getChildCount) {
+      return this.accessor.getChildCount(container);
+    }
+    let count = 0;
+    for await (const child of this.accessor.getChildren(container)) {
+      if (this.auxiliaryStrategy.isAuxiliaryIdentifier({ path: child.identifier.value })) {
+        continue;
+      }
+      count += 1;
+      if (count >= this.maxContainerSize) {
+        break;
+      }
+    }
+    return count;
   }
 
   /**

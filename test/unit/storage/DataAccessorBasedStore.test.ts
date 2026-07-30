@@ -396,6 +396,59 @@ describe('A DataAccessorBasedStore', (): void => {
     });
   });
 
+  describe('adding a Resource with a maximum container size', (): void => {
+    const containerID = { path: `${root}container/` };
+
+    beforeEach(async(): Promise<void> => {
+      // Limit containers to 2 non-auxiliary resources.
+      store = new DataAccessorBasedStore(accessor, identifierStrategy, auxiliaryStrategy, metadataStrategy, 2);
+      const meta = new RepresentationMetadata(containerMetadata);
+      meta.identifier = namedNode(containerID.path);
+      accessor.data[containerID.path] = { metadata: meta } as Representation;
+    });
+
+    it('allows adding a resource while the container is below the limit.', async(): Promise<void> => {
+      accessor.data[`${containerID.path}a`] = { metadata: new RepresentationMetadata() } as Representation;
+      await expect(store.addResource(containerID, representation)).resolves.toBeDefined();
+    });
+
+    it('rejects adding a resource once the container is at the limit.', async(): Promise<void> => {
+      accessor.data[`${containerID.path}a`] = { metadata: new RepresentationMetadata() } as Representation;
+      accessor.data[`${containerID.path}b`] = { metadata: new RepresentationMetadata() } as Representation;
+      const result = store.addResource(containerID, representation);
+      await expect(result).rejects.toThrow(ForbiddenHttpError);
+      await expect(result).rejects
+        .toThrow(`Container ${containerID.path} has reached its maximum size of 2 resources.`);
+    });
+
+    it('does not count auxiliary resources towards the limit.', async(): Promise<void> => {
+      accessor.data[`${containerID.path}a`] = { metadata: new RepresentationMetadata() } as Representation;
+      accessor.data[`${containerID.path}a.dummy`] = { metadata: new RepresentationMetadata() } as Representation;
+      accessor.data[`${containerID.path}b.dummy`] = { metadata: new RepresentationMetadata() } as Representation;
+      // Only 1 proper child, so a POST is still allowed.
+      await expect(store.addResource(containerID, representation)).resolves.toBeDefined();
+    });
+
+    it('does not limit containers when the maximum size is 0.', async(): Promise<void> => {
+      store = new DataAccessorBasedStore(accessor, identifierStrategy, auxiliaryStrategy, metadataStrategy, 0);
+      accessor.data[`${containerID.path}a`] = { metadata: new RepresentationMetadata() } as Representation;
+      accessor.data[`${containerID.path}b`] = { metadata: new RepresentationMetadata() } as Representation;
+      accessor.data[`${containerID.path}c`] = { metadata: new RepresentationMetadata() } as Representation;
+      await expect(store.addResource(containerID, representation)).resolves.toBeDefined();
+    });
+
+    it('uses the accessor `getChildCount` when available, without listing the children.', async(): Promise<void> => {
+      const countedAccessor = accessor as unknown as { getChildCount: jest.Mock };
+      // `getChildCount` is optional and not implemented by SimpleDataAccessor, so it cannot be spied on.
+      // eslint-disable-next-line jest/prefer-spy-on
+      countedAccessor.getChildCount = jest.fn().mockResolvedValue(2);
+      const childrenSpy = jest.spyOn(accessor, 'getChildren');
+      await expect(store.addResource(containerID, representation)).rejects.toThrow(ForbiddenHttpError);
+      expect(countedAccessor.getChildCount).toHaveBeenCalledWith(containerID);
+      expect(childrenSpy).not.toHaveBeenCalled();
+    });
+  });
+
   describe('setting a Representation', (): void => {
     it('will 404 if the identifier does not contain the root.', async(): Promise<void> => {
       await expect(store.setRepresentation({ path: 'verybadpath' }, representation))

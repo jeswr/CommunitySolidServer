@@ -56,6 +56,22 @@ export interface DataAccessor {
   getChildren: (identifier: ResourceIdentifier) => AsyncIterableIterator<RepresentationMetadata>;
 
   /**
+   * Returns the number of resources contained in the given container.
+   *
+   * This is an optional, additive optimization for backends that can determine the count without a full
+   * per-child listing (for example a single directory read, or a `COUNT` query). It is used to enforce
+   * container size limits cheaply. Backends that cannot count efficiently should leave this undefined,
+   * in which case the caller falls back to iterating {@link DataAccessor.getChildren}.
+   *
+   * The count is consistent with what `getChildren` yields (internal metadata resources are not counted).
+   *
+   * It can be safely assumed that the incoming identifier will always correspond to a container.
+   *
+   * @param identifier - Identifier of the parent container.
+   */
+  getChildCount?: (identifier: ResourceIdentifier) => Promise<number>;
+
+  /**
    * Writes data and metadata for a document.
    * If any data and/or metadata exist for the given identifier, it should be overwritten.
    *
