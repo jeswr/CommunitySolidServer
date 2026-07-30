@@ -79,14 +79,21 @@ export class DataAccessorBasedStore implements ResourceStore {
   private readonly auxiliaryStrategy: AuxiliaryStrategy;
   private readonly metadataStrategy: AuxiliaryStrategy;
   private readonly maxContainerSize: number;
+  private readonly maxReadableContainerSize: number;
 
   /**
    * @param accessor - Used to interact with the data storage.
    * @param identifierStrategy - Used to make sure the target URIs are within the configured storage.
    * @param auxiliaryStrategy - Used to detect and handle auxiliary resources.
    * @param metadataStrategy - Used to detect and handle metadata resources.
-   * @param maxContainerSize - Maximum number of non-auxiliary resources a container may hold before
-   *   it rejects `POST` requests that would add another. `0` (the default) disables the limit.
+   * @param maxContainerSize - Soft write cap: once a container holds this many resources, requests that
+   *   would add another resource are rejected. Creating auxiliary resources (such as ACLs) is exempt, so
+   *   access control can always be managed. `0` (the default) disables the cap.
+   * @param maxReadableContainerSize - Hard read cap: a container holding more than this many resources can
+   *   no longer be read/listed, protecting the `O(container size)` listing from stalling the event loop.
+   *   This is a separate, larger scale than `maxContainerSize` (a container may legitimately sit near the
+   *   write cap and carry per-resource ACLs), so it must be set well above it. `0` (the default) disables
+   *   the read cap.
    */
   public constructor(
     accessor: DataAccessor,
@@ -94,11 +101,13 @@ export class DataAccessorBasedStore implements ResourceStore {
     auxiliaryStrategy: AuxiliaryStrategy,
     metadataStrategy: AuxiliaryStrategy,
     maxContainerSize = 0,
+    maxReadableContainerSize = 0,
   ) {
     this.accessor = accessor;
     this.identifierStrategy = identifierStrategy;
     this.auxiliaryStrategy = auxiliaryStrategy;
     this.metadataStrategy = metadataStrategy;
+    this.maxReadableContainerSize = maxReadableContainerSize;
     this.maxContainerSize = maxContainerSize;
   }
 
@@ -141,6 +150,8 @@ export class DataAccessorBasedStore implements ResourceStore {
     let data = metadata.quads();
     if (isContainer || isMetadata) {
       if (isContainer) {
+        // Reject listing a container that is too large before doing the O(n) getChildren scan.
+        await this.validateContainerReadable(identifier);
         // Add containment triples of non-auxiliary resources
         for await (const child of this.accessor.getChildren(identifier)) {
           if (!this.auxiliaryStrategy.isAuxiliaryIdentifier({ path: child.identifier.value })) {
@@ -196,10 +207,6 @@ export class DataAccessorBasedStore implements ResourceStore {
     }
 
     this.validateConditions(conditions, parentMetadata);
-
-    // Reject the request if the container is already at its configured maximum size.
-    // Checked before generating the URI so oversized containers fail fast.
-    await this.validateContainerSize(container);
 
     // Solid, §5.1: "Servers MAY allow clients to suggest the URI of a resource created through POST,
     // using the HTTP Slug header as defined in [RFC5023].
@@ -514,6 +521,15 @@ export class DataAccessorBasedStore implements ResourceStore {
         changes = await this.createRecursiveContainers(parent);
       }
 
+      // Reject the write if it would push the parent container past its maximum size. The parent
+      // exists here (it was verified by the caller or just created above), so this enforces the
+      // limit on every path that adds a new resource — POST, PUT, and intermediate containers.
+      // Auxiliary resources (e.g. ACLs) are exempt so access control can always be managed, even
+      // on a container that is already at or over its maximum size.
+      if (!this.auxiliaryStrategy.isAuxiliaryIdentifier(identifier)) {
+        await this.validateContainerSize(parent);
+      }
+
       // No changes means the parent container exists and will be updated
       if (changes.size === 0) {
         this.addContainerActivity(changes, parent, true, identifier);
@@ -687,11 +703,10 @@ export class DataAccessorBasedStore implements ResourceStore {
   }
 
   /**
-   * Rejects the request if the given container already holds `maxContainerSize` non-auxiliary resources.
+   * Rejects adding a resource when the given container already holds `maxContainerSize` resources.
    *
-   * The count is bounded by the limit: iteration stops as soon as the limit is reached, so this never
-   * triggers a full listing of an already-oversized container (which would be `O(container size)`).
-   * Auxiliary resources (such as ACL or metadata documents) are not counted.
+   * The count is bounded by the cap, so this never triggers a full per-child listing of an
+   * already-oversized container (which would be `O(container size)`).
    *
    * @param container - Identifier of the container a resource is being added to.
    */
@@ -699,7 +714,10 @@ export class DataAccessorBasedStore implements ResourceStore {
     if (this.maxContainerSize <= 0) {
       return;
     }
-    if (await this.countChildren(container) >= this.maxContainerSize) {
+    if (await this.countChildren(container, this.maxContainerSize) >= this.maxContainerSize) {
+      this.logger.warn(
+        `Rejected adding a resource to ${container.path}: it is at its maximum size of ${this.maxContainerSize}.`,
+      );
       throw new ForbiddenHttpError(
         `Container ${container.path} has reached its maximum size of ${this.maxContainerSize} resources.`,
       );
@@ -707,27 +725,54 @@ export class DataAccessorBasedStore implements ResourceStore {
   }
 
   /**
-   * Counts the resources in the given container.
+   * Rejects reading the given container when it holds more than `maxReadableContainerSize` resources.
+   *
+   * This guards the `O(container size)` listing done when generating a container representation, so a
+   * grossly oversized container (one that predates the limit, or a legacy container) cannot stall the
+   * event loop. It is a separate, larger cap than {@link validateContainerSize}: a container may sit at
+   * the write cap and carry per-resource auxiliaries without becoming unreadable.
+   *
+   * @param container - Identifier of the container being read.
+   */
+  protected async validateContainerReadable(container: ResourceIdentifier): Promise<void> {
+    if (this.maxReadableContainerSize <= 0) {
+      return;
+    }
+    // Count one past the cap so a container exactly at the cap can be told apart from one over it.
+    if (await this.countChildren(container, this.maxReadableContainerSize + 1) > this.maxReadableContainerSize) {
+      this.logger.warn(
+        `Rejected listing ${container.path}: it exceeds the maximum readable size of ${this.maxReadableContainerSize}.`,
+      );
+      throw new ForbiddenHttpError(
+        `Container ${container.path} exceeds its maximum readable size of ` +
+        `${this.maxReadableContainerSize} resources and cannot be listed.`,
+      );
+    }
+  }
+
+  /**
+   * Counts the resources contained in the given container, as {@link DataAccessor.getChildren} would
+   * yield them (internal metadata sidecars excluded; auxiliary resources such as ACLs included).
    *
    * Prefers the accessor's native count (`getChildCount`) when it exposes one, so a backend that can
    * answer cheaply (a single directory read for the file backend, a `COUNT` query for the SPARQL backend)
    * never has to do a full per-child listing of an oversized container. Otherwise it falls back to
-   * iterating {@link DataAccessor.getChildren}, stopping as soon as `maxContainerSize` is reached so the
-   * work is bounded by the limit rather than by the container size.
+   * iterating `getChildren`, stopping once `ceiling` children have been seen, so the work is bounded by
+   * the caller's cap rather than by the container size.
    *
    * @param container - Identifier of the container.
+   * @param ceiling - Upper bound for the fallback iteration; counting stops once it is reached.
    */
-  protected async countChildren(container: ResourceIdentifier): Promise<number> {
+  protected async countChildren(container: ResourceIdentifier, ceiling: number): Promise<number> {
     if (this.accessor.getChildCount) {
       return this.accessor.getChildCount(container);
     }
     let count = 0;
     for await (const child of this.accessor.getChildren(container)) {
-      if (this.auxiliaryStrategy.isAuxiliaryIdentifier({ path: child.identifier.value })) {
-        continue;
-      }
+      // Reference the yielded child so the iteration variable is not flagged as unused.
+      void child;
       count += 1;
-      if (count >= this.maxContainerSize) {
+      if (count >= ceiling) {
         break;
       }
     }

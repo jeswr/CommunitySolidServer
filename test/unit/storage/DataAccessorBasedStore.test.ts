@@ -421,12 +421,12 @@ describe('A DataAccessorBasedStore', (): void => {
         .toThrow(`Container ${containerID.path} has reached its maximum size of 2 resources.`);
     });
 
-    it('does not count auxiliary resources towards the limit.', async(): Promise<void> => {
+    it('counts contained resources (including auxiliaries) towards the limit.', async(): Promise<void> => {
+      // 1 regular child + 1 auxiliary child = 2 children, which is the limit, so a POST is rejected.
+      // The count matches what getChildren yields, keeping it consistent with the getChildCount path.
       accessor.data[`${containerID.path}a`] = { metadata: new RepresentationMetadata() } as Representation;
-      accessor.data[`${containerID.path}a.dummy`] = { metadata: new RepresentationMetadata() } as Representation;
       accessor.data[`${containerID.path}b.dummy`] = { metadata: new RepresentationMetadata() } as Representation;
-      // Only 1 proper child, so a POST is still allowed.
-      await expect(store.addResource(containerID, representation)).resolves.toBeDefined();
+      await expect(store.addResource(containerID, representation)).rejects.toThrow(ForbiddenHttpError);
     });
 
     it('does not limit containers when the maximum size is 0.', async(): Promise<void> => {
@@ -446,6 +446,98 @@ describe('A DataAccessorBasedStore', (): void => {
       await expect(store.addResource(containerID, representation)).rejects.toThrow(ForbiddenHttpError);
       expect(countedAccessor.getChildCount).toHaveBeenCalledWith(containerID);
       expect(childrenSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setting a Representation with a maximum container size', (): void => {
+    const containerID = { path: `${root}container/` };
+
+    beforeEach(async(): Promise<void> => {
+      store = new DataAccessorBasedStore(accessor, identifierStrategy, auxiliaryStrategy, metadataStrategy, 2);
+      const meta = new RepresentationMetadata(containerMetadata);
+      meta.identifier = namedNode(containerID.path);
+      accessor.data[containerID.path] = { metadata: meta } as Representation;
+      // Fill the container to its limit, with identifiers set so an overwrite is well-formed.
+      for (const name of [ 'a', 'b' ]) {
+        const childMeta = new RepresentationMetadata();
+        childMeta.identifier = namedNode(`${containerID.path}${name}`);
+        accessor.data[`${containerID.path}${name}`] = { metadata: childMeta } as Representation;
+      }
+    });
+
+    it('rejects a PUT that creates a new resource in a full container.', async(): Promise<void> => {
+      const result = store.setRepresentation({ path: `${containerID.path}c` }, representation);
+      await expect(result).rejects.toThrow(ForbiddenHttpError);
+      await expect(result).rejects
+        .toThrow(`Container ${containerID.path} has reached its maximum size of 2 resources.`);
+    });
+
+    it('allows a PUT that overwrites an existing resource in a full container.', async(): Promise<void> => {
+      // Overwriting an existing child does not grow the container, so it stays allowed.
+      await expect(store.setRepresentation({ path: `${containerID.path}a` }, representation))
+        .resolves.toBeDefined();
+    });
+
+    it('rejects a PUT whose intermediate container would grow a full container.', async(): Promise<void> => {
+      // Creating /container/sub/ (to hold /container/sub/x) would add a child to the full container.
+      await expect(store.setRepresentation({ path: `${containerID.path}sub/x` }, representation))
+        .rejects.toThrow(ForbiddenHttpError);
+    });
+
+    it('allows creating an auxiliary resource in a full container.', async(): Promise<void> => {
+      // The container is full, but writing an auxiliary (e.g. an ACL) must never be blocked.
+      await expect(store.setRepresentation({ path: `${containerID.path}a.dummy` }, representation))
+        .resolves.toBeDefined();
+    });
+  });
+
+  describe('getting a container with a maximum readable container size', (): void => {
+    const containerID = { path: `${root}container/` };
+
+    beforeEach(async(): Promise<void> => {
+      // Write cap off, read cap = 2, so these tests exercise only the read guard.
+      store = new DataAccessorBasedStore(accessor, identifierStrategy, auxiliaryStrategy, metadataStrategy, 0, 2);
+      const meta = new RepresentationMetadata(containerMetadata);
+      meta.identifier = namedNode(containerID.path);
+      accessor.data[containerID.path] = { metadata: meta } as Representation;
+      accessor.data[`${containerID.path}a`] = { metadata: new RepresentationMetadata() } as Representation;
+    });
+
+    it('allows reading a container below the maximum readable size.', async(): Promise<void> => {
+      await expect(store.getRepresentation(containerID)).resolves.toBeDefined();
+    });
+
+    it('allows reading a container that is exactly at the maximum readable size.', async(): Promise<void> => {
+      accessor.data[`${containerID.path}b`] = { metadata: new RepresentationMetadata() } as Representation;
+      await expect(store.getRepresentation(containerID)).resolves.toBeDefined();
+    });
+
+    it('rejects reading a container that exceeds the maximum readable size.', async(): Promise<void> => {
+      accessor.data[`${containerID.path}b`] = { metadata: new RepresentationMetadata() } as Representation;
+      accessor.data[`${containerID.path}c`] = { metadata: new RepresentationMetadata() } as Representation;
+      const result = store.getRepresentation(containerID);
+      await expect(result).rejects.toThrow(ForbiddenHttpError);
+      await expect(result).rejects.toThrow(
+        `Container ${containerID.path} exceeds its maximum readable size of 2 resources and cannot be listed.`,
+      );
+    });
+
+    it('does not limit reads when the maximum readable size is 0.', async(): Promise<void> => {
+      store = new DataAccessorBasedStore(accessor, identifierStrategy, auxiliaryStrategy, metadataStrategy, 0, 0);
+      accessor.data[`${containerID.path}b`] = { metadata: new RepresentationMetadata() } as Representation;
+      accessor.data[`${containerID.path}c`] = { metadata: new RepresentationMetadata() } as Representation;
+      await expect(store.getRepresentation(containerID)).resolves.toBeDefined();
+    });
+
+    it('keeps a full container readable after an exempt auxiliary write (no brick).', async(): Promise<void> => {
+      // Write cap 2, read cap 10 (higher, as it must be). Fill to the write cap, then add an ACL,
+      // which is exempt from the write cap. The container is now over the write cap but still well
+      // under the read cap, so it stays listable — the auxiliary write does not brick it.
+      store = new DataAccessorBasedStore(accessor, identifierStrategy, auxiliaryStrategy, metadataStrategy, 2, 10);
+      accessor.data[`${containerID.path}b`] = { metadata: new RepresentationMetadata() } as Representation;
+      await expect(store.setRepresentation({ path: `${containerID.path}a.dummy` }, representation))
+        .resolves.toBeDefined();
+      await expect(store.getRepresentation(containerID)).resolves.toBeDefined();
     });
   });
 
