@@ -1,9 +1,12 @@
+import { DataFactory } from 'n3';
+import type { Quad } from '@rdfjs/types';
 import { BasicRepresentation } from '../../../../src/http/representation/BasicRepresentation';
 import type { Representation } from '../../../../src/http/representation/Representation';
 import { RepresentationMetadata } from '../../../../src/http/representation/RepresentationMetadata';
 import type { ResourceIdentifier } from '../../../../src/http/representation/ResourceIdentifier';
 import { JsonResourceStorage } from '../../../../src/storage/keyvalue/JsonResourceStorage';
 import type { ResourceStore } from '../../../../src/storage/ResourceStore';
+import { INTERNAL_QUADS } from '../../../../src/util/ContentTypes';
 import { NotFoundHttpError } from '../../../../src/util/errors/NotFoundHttpError';
 import { isContainerIdentifier, joinUrl } from '../../../../src/util/PathUtil';
 import { readableToString } from '../../../../src/util/StreamUtil';
@@ -30,12 +33,13 @@ describe('A JsonResourceStorage', (): void => {
         if (!data.has(id.path)) {
           throw new NotFoundHttpError();
         }
-        // Simulate container metadata
+        // Simulate a container listing: the containment triples are in the (quad) body.
         if (isContainerIdentifier(id)) {
           const keys = [ ...data.keys() ].filter((key): boolean => key.startsWith(id.path) &&
             /^[^/]+\/?$/u.test(key.slice(id.path.length)));
-          const metadata = new RepresentationMetadata({ [LDP.contains]: keys });
-          return new BasicRepresentation('', metadata);
+          const quads = keys.map((key): Quad =>
+            DataFactory.quad(DataFactory.namedNode(id.path), LDP.terms.contains, DataFactory.namedNode(key)));
+          return new BasicRepresentation(quads, new RepresentationMetadata(id), INTERNAL_QUADS);
         }
         return new BasicRepresentation(data.get(id.path)!, id);
       }),

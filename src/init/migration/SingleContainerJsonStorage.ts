@@ -1,3 +1,4 @@
+import type { Quad } from '@rdfjs/types';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
 import { JsonResourceStorage } from '../../storage/keyvalue/JsonResourceStorage';
 import { createErrorMessage } from '../../util/errors/ErrorUtil';
@@ -20,9 +21,14 @@ export class SingleContainerJsonStorage<T> extends JsonResourceStorage<T> {
       return;
     }
 
-    // Only need the metadata
-    container.data.destroy();
-    const members = container.metadata.getAll(LDP.terms.contains).map((term): string => term.value);
+    // The containment list lives in the (streamed) quad body, not the metadata; read the
+    // `ldp:contains` objects from the body. Draining the stream also releases the read lock.
+    const members: string[] = [];
+    for await (const quad of container.data as AsyncIterable<Quad>) {
+      if (quad.predicate.equals(LDP.terms.contains)) {
+        members.push(quad.object.value);
+      }
+    }
 
     for (const path of members) {
       const documentId = { path };
