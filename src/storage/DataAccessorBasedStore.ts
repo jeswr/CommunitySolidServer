@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream';
 import type { NamedNode, Quad, Term } from '@rdfjs/types';
 import arrayifyStream from 'arrayify-stream';
 import { DataFactory } from 'n3';
@@ -127,6 +128,16 @@ export class DataAccessorBasedStore implements ResourceStore {
     await this.auxiliaryStrategy.addMetadata(metadata);
 
     const isContainer = isContainerPath(metadata.identifier.value);
+
+    // Streaming fast-path for container LISTINGS (not description resources): emit the listing as a
+    // lazy quad stream so peak memory is O(1) in the number of children, instead of materialising a
+    // full N3 store of every child before the response starts (which for very large containers is
+    // hundreds of MB to several GB of transient heap per read). The behaviour below is unchanged.
+    if (isContainer && !isMetadata) {
+      const stream = await this.streamContainerRepresentation(identifier, metadata);
+      return new BasicRepresentation(stream, metadata, INTERNAL_QUADS);
+    }
+
     let data = metadata.quads();
     if (isContainer || isMetadata) {
       if (isContainer) {
@@ -161,6 +172,76 @@ export class DataAccessorBasedStore implements ResourceStore {
     }
 
     return representation;
+  }
+
+  /**
+   * Produces the RDF body of a container listing as a lazy quad stream. Peak memory is O(1) in the
+   * number of children: at most one child's metadata is held at a time, rather than folding every
+   * child into one N3 store before the response starts.
+   *
+   * A single `ldp:contains` triple for the first non-auxiliary child is also written to `metadata`
+   * as a non-empty marker, because {@link AllowAcceptHeaderWriter} decides whether a container may
+   * be deleted from `metadata.has(ldp:contains)`. The complete containment list lives only in the
+   * streamed body; consumers that need every member (e.g. `JsonResourceStorage`) read it from there.
+   */
+  protected async streamContainerRepresentation(identifier: ResourceIdentifier, metadata: RepresentationMetadata):
+  Promise<Readable> {
+    // Snapshot the container's own quads for the body BEFORE adding prefixes — O(1). The prefix
+    // declarations belong in the response metadata only (the converter reads them from there), not
+    // in the body, matching the non-streaming path which captured `data` before adding them.
+    const ownQuads = metadata.quads();
+    metadata.addQuad(DC.terms.namespace, PREFERRED_PREFIX_TERM, 'dc', SOLID_META.terms.ResponseMetadata);
+    metadata.addQuad(LDP.terms.namespace, PREFERRED_PREFIX_TERM, 'ldp', SOLID_META.terms.ResponseMetadata);
+    metadata.addQuad(POSIX.terms.namespace, PREFERRED_PREFIX_TERM, 'posix', SOLID_META.terms.ResponseMetadata);
+    metadata.addQuad(XSD.terms.namespace, PREFERRED_PREFIX_TERM, 'xsd', SOLID_META.terms.ResponseMetadata);
+    const containerNode = metadata.identifier as NamedNode;
+    const auxiliaryStrategy = this.auxiliaryStrategy;
+    const isAux = (child: RepresentationMetadata): boolean =>
+      auxiliaryStrategy.isAuxiliaryIdentifier({ path: child.identifier.value });
+    const containsQuad = (child: RepresentationMetadata): Quad => DataFactory.quad(
+      containerNode,
+      LDP.terms.contains,
+      child.identifier as NamedNode,
+      SOLID_META.terms.ResponseMetadata,
+    );
+
+    // Peek the first non-auxiliary child: used both as the non-empty marker and as the head of the
+    // stream. Auxiliary children pulled during the peek are skipped (never part of the listing).
+    const iterator = this.accessor.getChildren(identifier)[Symbol.asyncIterator]();
+    let first: RepresentationMetadata | undefined;
+    try {
+      for (let next = await iterator.next(); !next.done; next = await iterator.next()) {
+        if (!isAux(next.value)) {
+          first = next.value;
+          break;
+        }
+      }
+    } catch (error: unknown) {
+      await iterator.return?.();
+      throw error;
+    }
+    if (first) {
+      metadata.add(LDP.terms.contains, first.identifier as NamedNode, SOLID_META.terms.ResponseMetadata);
+    }
+
+    async function* generate(): AsyncIterableIterator<Quad> {
+      try {
+        yield* ownQuads;
+        if (first) {
+          yield* first.quads();
+          yield containsQuad(first);
+          for (let next = await iterator.next(); !next.done; next = await iterator.next()) {
+            if (!isAux(next.value)) {
+              yield* next.value.quads();
+              yield containsQuad(next.value);
+            }
+          }
+        }
+      } finally {
+        await iterator.return?.();
+      }
+    }
+    return Readable.from(generate(), { objectMode: true });
   }
 
   public async addResource(container: ResourceIdentifier, representation: Representation, conditions?: Conditions):
