@@ -94,10 +94,8 @@ export class WebAclReader extends PermissionReader {
       return cached;
     }
     // Caching the promise lets concurrent passes share one in-flight read instead of racing.
-    const promise = (async(): Promise<Map<Store, ResourceIdentifier[]>> => {
-      const aclMap = await this.getAclMatches(requestedModes.distinctKeys());
-      return this.findAuthorizationStatements(aclMap);
-    })();
+    const promise = this.getAclMatches(requestedModes.distinctKeys()).then(aclMap => 
+      this.findAuthorizationStatements(aclMap));
     this.statementCache.set(requestedModes, promise);
     try {
       return await promise;
