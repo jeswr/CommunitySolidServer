@@ -2,6 +2,7 @@
   "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
   "import": [
     "css:config/http/middleware/handlers/constant-headers.json",
+    "css:config/http/middleware/handlers/cacheable-headers.json",
     "css:config/http/middleware/handlers/cors.json"
   ],
   "@graph": [
@@ -18,6 +19,11 @@
             { "@id": "urn:solid-server:default:Middleware_Header" }
           ]
         },
+        {
+          "comment": "Overrides the constant headers above to make specific static routes cacheable. Runs after them, before CORS.",
+          "@id": "urn:solid-server:default:Middleware_OidcDiscoveryCache"
+        },
+        { "@id": "urn:solid-server:default:Middleware_OidcJwksCache" },
         {
           "comment": "CORS has to be last since it can close the connection.",
           "@id": "urn:solid-server:default:Middleware_Cors"
