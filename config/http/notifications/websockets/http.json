@@ -34,6 +34,17 @@
       "handler": { "@id": "urn:solid-server:default:WebSocket2023NotificationHandler" },
       "storage": { "@id": "urn:solid-server:default:SubscriptionStorage" }
     },
+    {
+      "@id": "urn:solid-server:default:Finalizer",
+      "@type": "ParallelHandler",
+      "handlers": [
+        {
+          "comment": "Makes sure the WebSocket2023Storer timers are stopped when the application stops.",
+          "@type": "FinalizableHandler",
+          "finalizable": { "@id": "urn:solid-server:default:WebSocket2023Storer" }
+        }
+      ]
+    },
 
     {
       "@id": "urn:solid-server:default:WebSocketHandler",
