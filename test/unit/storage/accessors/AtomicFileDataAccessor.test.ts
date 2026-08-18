@@ -6,7 +6,7 @@ import { ExtensionBasedMapper } from '../../../../src/storage/mapping/ExtensionB
 import { APPLICATION_OCTET_STREAM } from '../../../../src/util/ContentTypes';
 import type { Guarded } from '../../../../src/util/GuardedStream';
 import { guardedStreamFrom } from '../../../../src/util/StreamUtil';
-import { CONTENT_TYPE } from '../../../../src/util/Vocabularies';
+import { CONTENT_TYPE, POSIX } from '../../../../src/util/Vocabularies';
 import { mockFileSystem } from '../../../util/Util';
 
 jest.mock('node:fs');
@@ -33,6 +33,29 @@ describe('AtomicFileDataAccessor', (): void => {
     cache.data['.internal'] = { tempFiles: {}};
     metadata = new RepresentationMetadata(APPLICATION_OCTET_STREAM);
     data = guardedStreamFrom([ 'data' ]);
+  });
+
+  describe('getting children', (): void => {
+    it('forwards the detailedChildMetadata flag to the parent FileDataAccessor.', async(): Promise<void> => {
+      accessor = new AtomicFileDataAccessor(
+        new ExtensionBasedMapper(base, rootFilePath),
+        rootFilePath,
+        './.internal/tempFiles/',
+        false,
+      );
+      cache.data.container = { resource: 'data' };
+      const statSpy = jest.spyOn(jest.requireMock('fs-extra'), 'stat');
+
+      const children = [];
+      for await (const child of accessor.getChildren({ path: `${base}container/` })) {
+        children.push(child);
+      }
+
+      expect(children).toHaveLength(1);
+      expect(children[0].identifier.value).toBe(`${base}container/resource`);
+      expect(children[0].get(POSIX.terms.mtime)).toBeUndefined();
+      expect(statSpy).toHaveBeenCalledTimes(0);
+    });
   });
 
   describe('writing a document', (): void => {

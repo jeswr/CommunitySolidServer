@@ -27,9 +27,18 @@ export class FileDataAccessor implements DataAccessor {
   protected readonly logger = getLoggerFor(this);
 
   protected readonly resourceMapper: FileIdentifierMapper;
+  protected readonly detailedChildMetadata: boolean;
 
-  public constructor(resourceMapper: FileIdentifierMapper) {
+  /**
+   * @param resourceMapper - Maps identifiers to file paths and vice versa.
+   * @param detailedChildMetadata - If true, a `stat` call is performed for every child when listing a container,
+   *   adding its `posix:mtime`, `posix:size` and `dc:modified` metadata.
+   *   If false, those calls only happen for symbolic links and entries whose type the directory listing
+   *   does not report, so all other children lack that metadata.
+   */
+  public constructor(resourceMapper: FileIdentifierMapper, detailedChildMetadata = true) {
     this.resourceMapper = resourceMapper;
+    this.detailedChildMetadata = detailedChildMetadata;
   }
 
   /**
@@ -296,23 +305,32 @@ export class FileDataAccessor implements DataAccessor {
 
     // For every child in the container we want to generate specific metadata
     for await (const entry of dir) {
-      // Obtain details of the entry, resolving any symbolic links
       const childPath = joinFilePath(link.filePath, entry.name);
-      let childStats;
-      try {
-        childStats = await this.getStats(childPath);
-      } catch {
-        // Skip this entry if details could not be retrieved (e.g., bad symbolic link)
-        continue;
+
+      // Symbolic links and entries whose type the directory listing does not report require a `stat` call
+      const requiresStats = this.detailedChildMetadata || entry.isSymbolicLink() ||
+        (!entry.isFile() && !entry.isDirectory());
+
+      // Obtain details of the entry, resolving any symbolic links
+      let childStats: Stats | undefined;
+      if (requiresStats) {
+        try {
+          childStats = await this.getStats(childPath);
+        } catch {
+          // Skip this entry if details could not be retrieved (e.g., bad symbolic link)
+          continue;
+        }
+
+        // Ignore non-file/directory entries in the folder
+        if (!childStats.isFile() && !childStats.isDirectory()) {
+          continue;
+        }
       }
 
-      // Ignore non-file/directory entries in the folder
-      if (!childStats.isFile() && !childStats.isDirectory()) {
-        continue;
-      }
+      const isDirectory = childStats ? childStats.isDirectory() : entry.isDirectory();
 
       // Generate the URI corresponding to the child resource
-      const childLink = await this.resourceMapper.mapFilePathToUrl(childPath, childStats.isDirectory());
+      const childLink = await this.resourceMapper.mapFilePathToUrl(childPath, isDirectory);
 
       // Hide metadata files
       if (childLink.isMetadata) {
@@ -322,8 +340,10 @@ export class FileDataAccessor implements DataAccessor {
       // Generate metadata of this specific child as described in
       // https://solidproject.org/TR/2021/protocol-20211217#contained-resource-metadata
       const metadata = new RepresentationMetadata(childLink.identifier);
-      addResourceMetadata(metadata, childStats.isDirectory());
-      this.addPosixMetadata(metadata, childStats);
+      addResourceMetadata(metadata, isDirectory);
+      if (childStats) {
+        this.addPosixMetadata(metadata, childStats);
+      }
       // Containers will not have a content-type
       const { contentType, identifier } = childLink;
       if (contentType) {

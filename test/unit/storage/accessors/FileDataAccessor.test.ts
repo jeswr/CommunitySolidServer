@@ -1,4 +1,5 @@
 import 'jest-rdf';
+import type { Dirent } from 'node:fs';
 import type { Readable } from 'node:stream';
 import { DataFactory } from 'n3';
 import type { Representation } from '../../../../src/http/representation/Representation';
@@ -287,6 +288,154 @@ describe('A FileDataAccessor', (): void => {
       cache.data = { resource: 'data', 'resource.meta': 'invalid metadata!.' };
       await expect(accessor.getMetadata({ path: `${base}resource` }))
         .rejects.toThrow('Unexpected "invalid" on line 1.');
+    });
+  });
+
+  describe('getting children without detailed metadata', (): void => {
+    let statSpy: jest.SpyInstance;
+
+    beforeEach(async(): Promise<void> => {
+      accessor = new FileDataAccessor(mapper, false);
+      statSpy = jest.spyOn(jest.requireMock('fs-extra'), 'stat');
+    });
+
+    it('does not stat children whose type is reported by the directory listing.', async(): Promise<void> => {
+      cache.data = {
+        container: {
+          resource: 'data',
+          'resource.meta': 'metadata',
+          container2: {},
+        },
+      };
+
+      const children = [];
+      for await (const child of accessor.getChildren({ path: `${base}container/` })) {
+        children.push(child);
+      }
+      children.sort((left, right): number => left.identifier.value.localeCompare(right.identifier.value));
+
+      expect(children).toHaveLength(2);
+      expect(children[0].identifier.value).toBe(`${base}container/container2/`);
+      expect(children[1].identifier.value).toBe(`${base}container/resource`);
+
+      const containerTypes = children[0].getAll(RDF.terms.type).map((term): string => term.value);
+      expect(containerTypes).toContain(LDP.Resource);
+      expect(containerTypes).toContain(LDP.Container);
+      expect(containerTypes).toContain(LDP.BasicContainer);
+
+      const documentTypes = children[1].getAll(RDF.terms.type).map((term): string => term.value);
+      expect(documentTypes).toContain(LDP.Resource);
+      expect(documentTypes).toContain('http://www.w3.org/ns/iana/media-types/application/octet-stream#Resource');
+      expect(documentTypes).not.toContain(LDP.Container);
+
+      for (const child of children) {
+        expect(child.get(DC.terms.modified)).toBeUndefined();
+        expect(child.get(POSIX.terms.mtime)).toBeUndefined();
+        expect(child.get(POSIX.terms.size)).toBeUndefined();
+        expect(child.quads(null, null, null, SOLID_META.terms.ResponseMetadata)).toHaveLength(0);
+      }
+
+      expect(statSpy).toHaveBeenCalledTimes(0);
+    });
+
+    it('still stats symlinked children to resolve their type.', async(): Promise<void> => {
+      cache.data = {
+        container: {
+          resource: 'data',
+          container2: {},
+          symlink: Symbol(`${rootFilePath}/container/resource`),
+          symlinkContainer: Symbol(`${rootFilePath}/container/container2`),
+        },
+      };
+
+      const children = [];
+      for await (const child of accessor.getChildren({ path: `${base}container/` })) {
+        children.push(child);
+      }
+      children.sort((left, right): number => left.identifier.value.localeCompare(right.identifier.value));
+
+      expect(children).toHaveLength(4);
+      expect(children[2].identifier.value).toBe(`${base}container/symlink`);
+      expect(children[3].identifier.value).toBe(`${base}container/symlinkContainer/`);
+
+      // Symlinked children keep their detailed metadata
+      const symlinkTypes = children[2].getAll(RDF.terms.type).map((term): string => term.value);
+      expect(symlinkTypes).toContain(LDP.Resource);
+      expect(symlinkTypes).toContain('http://www.w3.org/ns/iana/media-types/application/octet-stream#Resource');
+      expect(children[2].get(DC.terms.modified)).toEqualRdfTerm(toLiteral(now.toISOString(), XSD.terms.dateTime));
+      expect(children[2].get(POSIX.terms.mtime))
+        .toEqualRdfTerm(toLiteral(Math.floor(now.getTime() / 1000), XSD.terms.integer));
+      expect(children[2].get(POSIX.terms.size)).toEqualRdfTerm(toLiteral('data'.length, XSD.terms.integer));
+
+      const symlinkContainerTypes = children[3].getAll(RDF.terms.type).map((term): string => term.value);
+      expect(symlinkContainerTypes).toContain(LDP.Container);
+      expect(children[3].get(POSIX.terms.mtime))
+        .toEqualRdfTerm(toLiteral(Math.floor(now.getTime() / 1000), XSD.terms.integer));
+      expect(children[3].get(POSIX.terms.size)).toBeUndefined();
+
+      // Plainly typed children have no detailed metadata
+      expect(children[0].get(POSIX.terms.mtime)).toBeUndefined();
+      expect(children[1].get(POSIX.terms.mtime)).toBeUndefined();
+
+      expect(statSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('still stats children whose type is not reported by the directory listing.', async(): Promise<void> => {
+      cache.data = { container: { unknown: 'data' }};
+
+      // Simulate a file system that does not report entry types in directory listings (`DT_UNKNOWN`)
+      const fsExtra = jest.requireMock('fs-extra');
+      const sourceOpendir = fsExtra.opendir;
+      fsExtra.opendir = async function* (path: string): AsyncIterableIterator<Dirent> {
+        for await (const entry of sourceOpendir(path)) {
+          yield {
+            ...entry,
+            isFile: (): boolean => false,
+            isDirectory: (): boolean => false,
+            isSymbolicLink: (): boolean => false,
+          } as Dirent;
+        }
+      };
+
+      const children = [];
+      for await (const child of accessor.getChildren({ path: `${base}container/` })) {
+        children.push(child);
+      }
+
+      expect(children).toHaveLength(1);
+      expect(children[0].identifier.value).toBe(`${base}container/unknown`);
+      const types = children[0].getAll(RDF.terms.type).map((term): string => term.value);
+      expect(types).toContain(LDP.Resource);
+      expect(types).toContain('http://www.w3.org/ns/iana/media-types/application/octet-stream#Resource');
+      expect(children[0].get(POSIX.terms.mtime))
+        .toEqualRdfTerm(toLiteral(Math.floor(now.getTime() / 1000), XSD.terms.integer));
+      expect(statSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips children that are neither a file nor a directory.', async(): Promise<void> => {
+      cache.data = { container: { resource: 'data', notAFile: 5 }};
+
+      const children = [];
+      for await (const child of accessor.getChildren({ path: `${base}container/` })) {
+        children.push(child);
+      }
+
+      expect(children).toHaveLength(1);
+      expect(children[0].identifier.value).toBe(`${base}container/resource`);
+      expect(statSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips symlinked children if their details could not be retrieved.', async(): Promise<void> => {
+      cache.data = { container: { resource: 'data', symlinkInvalid: Symbol(`${rootFilePath}/invalid`) }};
+
+      const children = [];
+      for await (const child of accessor.getChildren({ path: `${base}container/` })) {
+        children.push(child);
+      }
+
+      expect(children).toHaveLength(1);
+      expect(children[0].identifier.value).toBe(`${base}container/resource`);
+      expect(statSpy).toHaveBeenCalledTimes(1);
     });
   });
 

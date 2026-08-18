@@ -17,8 +17,20 @@ import { FileDataAccessor } from './FileDataAccessor';
 export class AtomicFileDataAccessor extends FileDataAccessor implements AtomicDataAccessor {
   private readonly tempFilePath: string;
 
-  public constructor(resourceMapper: FileIdentifierMapper, rootFilePath: string, tempFilePath: string) {
-    super(resourceMapper);
+  /**
+   * @param resourceMapper - Maps identifiers to file paths and vice versa.
+   * @param rootFilePath - Root folder of the file system.
+   * @param tempFilePath - Folder in which temporary files will be stored, relative to the root folder.
+   * @param detailedChildMetadata - If true, a `stat` call is performed for every child when listing a container.
+   *   See {@link FileDataAccessor}.
+   */
+  public constructor(
+    resourceMapper: FileIdentifierMapper,
+    rootFilePath: string,
+    tempFilePath: string,
+    detailedChildMetadata = true,
+  ) {
+    super(resourceMapper, detailedChildMetadata);
     this.tempFilePath = joinFilePath(rootFilePath, tempFilePath);
     ensureDirSync(this.tempFilePath);
   }
