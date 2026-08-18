@@ -4,6 +4,7 @@ import type { App } from '../../../src/init/App';
 import { AppRunner } from '../../../src/init/AppRunner';
 import type { CliExtractor } from '../../../src/init/cli/CliExtractor';
 import type { ShorthandResolver } from '../../../src/init/variables/ShorthandResolver';
+import { getLoggerFor } from '../../../src/logging/LogUtil';
 import { joinFilePath } from '../../../src/util/PathUtil';
 import { flushPromises } from '../../util/Util';
 
@@ -95,6 +96,21 @@ jest.mock('componentsjs', (): any => ({
   },
 }));
 
+const precompiledCliResolver = jest.fn((): any => ({ cliExtractor, shorthandResolver }));
+const precompiledApp = jest.fn((): any => app);
+const precompiled = { key: 'key', cliResolver: precompiledCliResolver, app: precompiledApp };
+
+const precompiler = {
+  load: jest.fn(async(): Promise<any> => undefined),
+  precompile: jest.fn(async(): Promise<void> => undefined),
+};
+
+jest.mock('../../../src/init/ConfigPrecompiler', (): any => ({
+  ConfigPrecompiler: jest.fn((): any => precompiler),
+}));
+
+jest.mock('../../../src/logging/LogUtil');
+
 let files: Record<string, any> = {};
 
 const alternateParameters = {
@@ -137,6 +153,8 @@ const exit = jest.spyOn(process, 'exit').mockImplementation(jest.fn() as any);
 
 describe('AppRunner', (): void => {
   beforeEach((): void => {
+    jest.mocked(getLoggerFor).mockReturnValue(mockLogger as any);
+
     files = {};
 
     defaultParameters = {
@@ -303,6 +321,136 @@ describe('AppRunner', (): void => {
     });
   });
 
+  describe('create with a precompiled configuration', (): void => {
+    it('creates an App from a valid artifact without building a ComponentsManager.', async(): Promise<void> => {
+      precompiler.load.mockResolvedValueOnce(precompiled);
+      clusterManager.isSingleThreaded.mockReturnValueOnce(true);
+
+      const createdApp = await new AppRunner().create({
+        config: joinFilePath(__dirname, '../../../config/default.json'),
+        variableBindings: { 'urn:solid-server:default:variable:port': 4000 },
+        shorthand: { logLevel: 'info' },
+        precompiledConfigPath: '/precompiled.js',
+      });
+      expect(createdApp).toBe(app);
+
+      expect(precompiler.load).toHaveBeenCalledTimes(1);
+      expect(precompiler.load).toHaveBeenLastCalledWith({
+        path: '/precompiled.js',
+        mainModulePath: joinFilePath(__dirname, '../../../'),
+        configPaths: [ joinFilePath(__dirname, '../../../config/default.json') ],
+      });
+      expect(ComponentsManager.build).toHaveBeenCalledTimes(0);
+      expect(manager.instantiate).toHaveBeenCalledTimes(0);
+      expect(precompiledCliResolver).toHaveBeenCalledTimes(1);
+      expect(precompiledCliResolver).toHaveBeenLastCalledWith({});
+      expect(cliExtractor.handleSafe).toHaveBeenCalledTimes(0);
+      expect(shorthandResolver.handleSafe).toHaveBeenCalledTimes(1);
+      expect(shorthandResolver.handleSafe).toHaveBeenLastCalledWith({ logLevel: 'info' });
+      expect(precompiledApp).toHaveBeenCalledTimes(1);
+      expect(precompiledApp).toHaveBeenLastCalledWith({
+        'urn:solid-server:default:variable:loggingLevel': 'info',
+        'urn:solid-server:default:variable:port': 4000,
+      });
+      expect(precompiler.precompile).toHaveBeenCalledTimes(0);
+      expect(mockLogger.info).toHaveBeenCalledTimes(1);
+      expect(mockLogger.info)
+        .toHaveBeenLastCalledWith('Created the server from the precompiled configuration /precompiled.js');
+      expect(app.start).toHaveBeenCalledTimes(0);
+    });
+
+    it('builds normally and writes the artifact if there is no valid artifact yet.', async(): Promise<void> => {
+      // The load mock resolving to `undefined` covers both a missing and a stale artifact
+      const createdApp = await new AppRunner().create({ precompiledConfigPath: '/precompiled.js' });
+      expect(createdApp).toBe(app);
+
+      expect(precompiler.load).toHaveBeenCalledTimes(1);
+      expect(ComponentsManager.build).toHaveBeenCalledTimes(1);
+      expect(manager.instantiate).toHaveBeenCalledTimes(2);
+      expect(manager.instantiate).toHaveBeenNthCalledWith(1, 'urn:solid-server-app-setup:default:CliResolver', {});
+      expect(manager.instantiate).toHaveBeenNthCalledWith(2, 'urn:solid-server:default:App', { variables: {}});
+      expect(precompiledCliResolver).toHaveBeenCalledTimes(0);
+      expect(precompiledApp).toHaveBeenCalledTimes(0);
+      expect(precompiler.precompile).toHaveBeenCalledTimes(1);
+      expect(precompiler.precompile).toHaveBeenLastCalledWith({
+        path: '/precompiled.js',
+        mainModulePath: joinFilePath(__dirname, '../../../'),
+        configPaths: [ joinFilePath(__dirname, '/../../../config/default.json') ],
+      });
+      expect(mockLogger.info).toHaveBeenCalledTimes(1);
+      expect(mockLogger.info)
+        .toHaveBeenLastCalledWith('Precompiling the configuration to /precompiled.js to speed up future server starts');
+    });
+
+    it('falls back to building normally in multithreaded setups.', async(): Promise<void> => {
+      precompiler.load.mockResolvedValueOnce(precompiled);
+
+      const createdApp = await new AppRunner().create({ precompiledConfigPath: '/precompiled.js' });
+      expect(createdApp).toBe(app);
+
+      expect(precompiledCliResolver).toHaveBeenCalledTimes(1);
+      expect(precompiledApp).toHaveBeenCalledTimes(1);
+      expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+      expect(mockLogger.warn).toHaveBeenLastCalledWith(
+        'Precompiled configurations can not be used in multithreaded setups. Ignoring /precompiled.js.',
+      );
+      expect(ComponentsManager.build).toHaveBeenCalledTimes(1);
+      expect(manager.instantiate).toHaveBeenCalledTimes(2);
+      expect(shorthandResolver.handleSafe).toHaveBeenCalledTimes(2);
+      expect(precompiler.precompile).toHaveBeenCalledTimes(0);
+    });
+
+    it('does not use the precompiler if no precompiledConfigPath is set.', async(): Promise<void> => {
+      const createdApp = await new AppRunner().create();
+      expect(createdApp).toBe(app);
+
+      expect(precompiler.load).toHaveBeenCalledTimes(0);
+      expect(precompiler.precompile).toHaveBeenCalledTimes(0);
+      expect(ComponentsManager.build).toHaveBeenCalledTimes(1);
+      expect(manager.instantiate).toHaveBeenCalledTimes(2);
+    });
+
+    it('throws an error if the precompiled CLI resolver can not be instantiated.', async(): Promise<void> => {
+      precompiler.load.mockResolvedValueOnce(precompiled);
+      precompiledCliResolver.mockImplementationOnce((): never => {
+        throw new Error('Fatal');
+      });
+
+      let caughtError: Error = new Error('should disappear');
+      try {
+        await new AppRunner().create({ precompiledConfigPath: '/precompiled.js' });
+      } catch (error: unknown) {
+        caughtError = error as Error;
+      }
+      expect(caughtError.message)
+        .toMatch(/^Could not create the CLI resolver from the precompiled configuration \/precompiled\.js/mu);
+      expect(caughtError.message).toMatch(/^Error: Fatal/mu);
+
+      expect(precompiledApp).toHaveBeenCalledTimes(0);
+      expect(ComponentsManager.build).toHaveBeenCalledTimes(0);
+    });
+
+    it('throws an error if the precompiled server can not be instantiated.', async(): Promise<void> => {
+      precompiler.load.mockResolvedValueOnce(precompiled);
+      precompiledApp.mockImplementationOnce((): never => {
+        throw new Error('Fatal');
+      });
+
+      let caughtError: Error = new Error('should disappear');
+      try {
+        await new AppRunner().create({ precompiledConfigPath: '/precompiled.js' });
+      } catch (error: unknown) {
+        caughtError = error as Error;
+      }
+      expect(caughtError.message)
+        .toMatch(/^Could not create the server from the precompiled configuration \/precompiled\.js/mu);
+      expect(caughtError.message).toMatch(/^Error: Fatal/mu);
+
+      expect(precompiledApp).toHaveBeenCalledTimes(1);
+      expect(ComponentsManager.build).toHaveBeenCalledTimes(0);
+    });
+  });
+
   describe('run', (): void => {
     it('starts the server with provided settings.', async(): Promise<void> => {
       const variables = {
@@ -415,6 +563,32 @@ describe('AppRunner', (): void => {
       expect(manager.instantiate)
         .toHaveBeenNthCalledWith(2, 'urn:solid-server:default:App', { variables: defaultVariables });
       expect(app.clusterManager.isSingleThreaded()).toBeFalsy();
+      expect(app.start).toHaveBeenCalledTimes(0);
+    });
+
+    it('supports the precompiledConfigPath parameter.', async(): Promise<void> => {
+      precompiler.load.mockResolvedValueOnce(precompiled);
+      clusterManager.isSingleThreaded.mockReturnValueOnce(true);
+
+      const params = [ 'node', 'script', '--precompiledConfigPath', '/precompiled.js' ];
+      await expect(new AppRunner().createCli(params)).resolves.toBe(app);
+
+      expect(precompiler.load).toHaveBeenCalledTimes(1);
+      expect(precompiler.load).toHaveBeenLastCalledWith({
+        path: '/precompiled.js',
+        mainModulePath: joinFilePath(__dirname, '../../../'),
+        configPaths: [ joinFilePath(__dirname, '/../../../config/default.json') ],
+      });
+      expect(ComponentsManager.build).toHaveBeenCalledTimes(0);
+      expect(precompiledCliResolver).toHaveBeenCalledTimes(1);
+      expect(precompiledCliResolver).toHaveBeenLastCalledWith({});
+      expect(cliExtractor.handleSafe).toHaveBeenCalledTimes(1);
+      expect(cliExtractor.handleSafe).toHaveBeenLastCalledWith(params);
+      expect(shorthandResolver.handleSafe).toHaveBeenCalledTimes(1);
+      expect(shorthandResolver.handleSafe).toHaveBeenLastCalledWith(defaultParameters);
+      expect(precompiledApp).toHaveBeenCalledTimes(1);
+      expect(precompiledApp).toHaveBeenLastCalledWith(defaultVariables);
+      expect(precompiler.precompile).toHaveBeenCalledTimes(0);
       expect(app.start).toHaveBeenCalledTimes(0);
     });
 
