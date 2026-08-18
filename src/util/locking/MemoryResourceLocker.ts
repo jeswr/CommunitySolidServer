@@ -48,7 +48,7 @@ export class MemoryResourceLocker implements ResourceLocker, SingleThreaded {
   /**
    * Counts the number of active locks.
    */
-  private getLockCount(): number {
+  public getLockCount(): number {
     return Object.keys(this.unlockCallbacks).length;
   }
 }

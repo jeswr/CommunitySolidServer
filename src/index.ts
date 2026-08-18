@@ -380,6 +380,12 @@ export * from './server/middleware/HeaderHandler';
 export * from './server/middleware/StaticAssetHandler';
 export * from './server/middleware/WebSocketAdvertiser';
 
+// Server/Metrics
+export * from './server/metrics/MetricsHandler';
+export * from './server/metrics/MetricsSaturationCollector';
+export * from './server/metrics/MetricsServerConfigurator';
+export * from './server/metrics/PrometheusMetrics';
+
 // Server/Notifications/Generate
 export * from './server/notifications/generate/ActivityNotificationGenerator';
 export * from './server/notifications/generate/AddRemoveNotificationGenerator';
