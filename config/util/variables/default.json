@@ -28,6 +28,16 @@
       "@type": "Variable"
     },
     {
+      "comment": "Connection string of the Azure Storage account to use when using an Azure Blob Storage-based config.",
+      "@id": "urn:solid-server:default:variable:azureBlobConnectionString",
+      "@type": "Variable"
+    },
+    {
+      "comment": "Name of the Azure Blob Storage container to use when using an Azure Blob Storage-based config.",
+      "@id": "urn:solid-server:default:variable:azureBlobContainer",
+      "@type": "Variable"
+    },
+    {
       "comment": "The max level of log messages that should be output.",
       "@id": "urn:solid-server:default:variable:loggingLevel",
       "@type": "Variable"

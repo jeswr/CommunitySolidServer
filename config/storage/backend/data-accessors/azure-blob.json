@@ -1,0 +1,13 @@
+{
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@graph": [
+    {
+      "comment": "Stores data in an Azure Blob Storage container. Only supports binary data.",
+      "@id": "urn:solid-server:default:AzureBlobDataAccessor",
+      "@type": "AzureBlobDataAccessor",
+      "connectionString": { "@id": "urn:solid-server:default:variable:azureBlobConnectionString" },
+      "containerName": { "@id": "urn:solid-server:default:variable:azureBlobContainer" },
+      "identifierStrategy": { "@id": "urn:solid-server:default:IdentifierStrategy" }
+    }
+  ]
+}

@@ -72,6 +72,7 @@
     "watch": "nodemon --watch \"dist/**/*.js\" --exec npm start"
   },
   "dependencies": {
+    "@azure/storage-blob": "^12.33.0",
     "@comunica/context-entries": "^2.8.2",
     "@comunica/query-sparql": "^2.9.0",
     "@isaacs/ttlcache": "^1.4.1",
