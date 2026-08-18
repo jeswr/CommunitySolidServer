@@ -1,6 +1,7 @@
 import type { DuplexOptions, ReadableOptions, Writable } from 'node:stream';
 import { Readable, Transform } from 'node:stream';
 import { promisify } from 'node:util';
+import type { Quad } from '@rdfjs/types';
 import arrayifyStream from 'arrayify-stream';
 import eos from 'end-of-stream';
 import { Store } from 'n3';
@@ -17,6 +18,29 @@ export const endOfStream = promisify(eos);
 
 const logger = getLoggerFor('StreamUtil');
 
+const bufferedData = Symbol('bufferedData');
+
+/**
+ * A {@link Readable} that potentially still has access to the in-memory array it was created from.
+ */
+type BufferedReadable = Readable & { [bufferedData]?: unknown[] };
+
+/**
+ * Returns the in-memory array the given stream was created from,
+ * in case it was created with {@link guardedStreamFrom} and has not been consumed or closed in any way yet.
+ * Returns `undefined` otherwise.
+ *
+ * @param stream - Stream to check.
+ */
+function getBufferedData(stream: Readable): unknown[] | undefined {
+  const data = (stream as BufferedReadable)[bufferedData];
+  // A `readableFlowing` of `null` guarantees no consumer (`data` listener, pipe or resume) is or was attached.
+  if (data && stream.readableFlowing === null && !stream.readableDidRead && !stream.destroyed) {
+    return data;
+  }
+  return undefined;
+}
+
 /**
  * Joins all strings of a stream.
  *
@@ -31,14 +55,24 @@ export async function readableToString(stream: Readable): Promise<string> {
 /**
  * Imports quads from a stream into a Store.
  *
+ * In case the stream was created with {@link guardedStreamFrom} from an array of quads
+ * that has not been consumed yet, the quads are added to the Store synchronously
+ * and the stream is destroyed, avoiding the cost of a full stream lifecycle.
+ *
  * @param stream - Stream of quads.
  *
  * @returns A Store containing all the quads.
  */
 export async function readableToQuads(stream: Readable): Promise<Store> {
   const quads = new Store();
-  quads.import(stream);
-  await endOfStream(stream);
+  const buffered = getBufferedData(stream);
+  if (buffered) {
+    stream.destroy();
+    quads.addQuads(buffered as Quad[]);
+  } else {
+    quads.import(stream);
+    await endOfStream(stream);
+  }
   return quads;
 }
 
@@ -183,9 +217,16 @@ export function transformSafely<T = unknown>(
 /**
  * Converts a string or array to a stream and applies an error guard so that it is {@link Guarded}.
  *
+ * In case the contents are an array, a reference to it is stored on the stream,
+ * allowing utility functions such as {@link readableToQuads} to process the data synchronously.
+ *
  * @param contents - Data to stream.
  * @param options - Options to pass to the Readable constructor. See {@link Readable.from}.
  */
 export function guardedStreamFrom(contents: string | Iterable<unknown>, options?: ReadableOptions): Guarded<Readable> {
-  return guardStream(Readable.from(typeof contents === 'string' ? [ contents ] : contents, options));
+  const stream: BufferedReadable = Readable.from(typeof contents === 'string' ? [ contents ] : contents, options);
+  if (Array.isArray(contents)) {
+    stream[bufferedData] = contents;
+  }
+  return guardStream(stream);
 }
