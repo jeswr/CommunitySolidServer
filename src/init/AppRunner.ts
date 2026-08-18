@@ -13,6 +13,7 @@ import type { App } from './App';
 import type { CliExtractor } from './cli/CliExtractor';
 import type { CliResolver } from './CliResolver';
 import { listSingleThreadedComponents } from './cluster/SingleThreaded';
+import { ModuleStateCache } from './ModuleStateCache';
 import type { ShorthandResolver } from './variables/ShorthandResolver';
 import type { CliArgv, Shorthand, VariableBindings } from './variables/Types';
 
@@ -25,6 +26,7 @@ const CORE_CLI_PARAMETERS = {
   config: { type: 'array', alias: 'c', default: [ DEFAULT_CONFIG ], requiresArg: true },
   loggingLevel: { type: 'string', alias: 'l', default: 'info', requiresArg: true, choices: LOG_LEVELS },
   mainModulePath: { type: 'string', alias: 'm', requiresArg: true },
+  moduleStateCachePath: { type: 'string', requiresArg: true },
 } as const;
 
 const ENV_VAR_PREFIX = 'CSS';
@@ -46,6 +48,12 @@ export interface AppRunnerInput {
    * Path to the server config file(s). Defaults to `@css:config/default.json`.
    */
   config?: string | string[];
+  /**
+   * Path to a file in which the Components.js module state gets cached between server starts,
+   * so the expensive scan of all `node_modules` directories can be skipped.
+   * On a cache miss, the newly generated module state gets written to this file.
+   */
+  moduleStateCachePath?: string;
   /**
    * Values to apply to the Components.js variables.
    * These are the variables CLI values will be converted to.
@@ -104,11 +112,32 @@ export class AppRunner {
     let configs = input.config ?? [ '@css:config/default.json' ];
     configs = (Array.isArray(configs) ? configs : [ configs ]).map(resolveAssetPath);
 
+    // An explicitly provided module state takes precedence over the cache
+    let moduleStateCache: ModuleStateCache | undefined;
+    if (input.moduleStateCachePath && !loaderProperties.moduleState) {
+      const cache = new ModuleStateCache(
+        resolveAssetPath(input.moduleStateCachePath),
+        loaderProperties.mainModulePath,
+      );
+      const cachedState = await cache.load();
+      if (cachedState) {
+        loaderProperties.moduleState = cachedState;
+      } else {
+        // Remember the cache so the module state can be stored after it has been generated
+        moduleStateCache = cache;
+      }
+    }
+
     let componentsManager: ComponentsManager<App | CliResolver>;
     try {
       componentsManager = await this.createComponentsManager<App>(loaderProperties, configs);
     } catch (error: unknown) {
       this.resolveError(`Could not build the config files from ${configs.join(',')}`, error);
+    }
+
+    // Store the generated module state so the next server start can reuse it
+    if (moduleStateCache) {
+      await moduleStateCache.save(componentsManager.moduleState);
     }
 
     const cliResolver = await this.createCliResolver(componentsManager as ComponentsManager<CliResolver>);
@@ -195,6 +224,7 @@ export class AppRunner {
     return this.create({
       loaderProperties,
       config: params.config as string[],
+      moduleStateCachePath: params.moduleStateCachePath,
       argv,
       shorthand: settings,
     });
