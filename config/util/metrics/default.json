@@ -1,0 +1,75 @@
+{
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@graph": [
+    {
+      "comment": [
+        "OPT-IN Prometheus metrics. This file is NOT imported by any shipped config: add it next to your main config, e.g. `community-solid-server -c config/file.json -c config/util/metrics/default.json`.",
+        "SECURITY: the /metrics endpoint is UNAUTHENTICATED and exposes internal counters (request rates, latencies, process cpu/memory). Restrict it at your reverse proxy or firewall; never expose it to the public internet.",
+        "This recipe assumes the default handler waterfall (config/http/handler/default.json). If you use a different handler configuration, adjust the Override list below to match its handlers.",
+        "It also assumes notification delivery is enabled (config/http/notifications/all.json, the default) so the WebhookEmitter and ListeningActivityHandler exist. If you use config/http/notifications/disabled.json, remove the two notification-delivery Override blocks below."
+      ]
+    },
+    {
+      "comment": "Prometheus registry holding the default process metrics and the HTTP request instruments.",
+      "@id": "urn:solid-server:metrics:PrometheusMetrics",
+      "@type": "PrometheusMetrics"
+    },
+    {
+      "comment": "Observe-only configurator: records request rate/latency without ever writing to the response.",
+      "@id": "urn:solid-server:metrics:MetricsServerConfigurator",
+      "@type": "MetricsServerConfigurator",
+      "metrics": { "@id": "urn:solid-server:metrics:PrometheusMetrics" }
+    },
+    {
+      "comment": "Adds the observe-only metrics configurator to the existing (parallel) set of server configurators.",
+      "@id": "urn:solid-server:default:ServerConfigurator",
+      "@type": "ParallelHandler",
+      "handlers": [
+        { "@id": "urn:solid-server:metrics:MetricsServerConfigurator" }
+      ]
+    },
+    {
+      "comment": "Serves the Prometheus registry on GET /metrics.",
+      "@id": "urn:solid-server:metrics:MetricsHandler",
+      "@type": "MetricsHandler",
+      "metrics": { "@id": "urn:solid-server:metrics:PrometheusMetrics" },
+      "path": "/metrics"
+    },
+    {
+      "comment": "Records webhook delivery outcomes on the css_notification_deliveries_total counter. Remove this block if webhook notifications are disabled.",
+      "@type": "Override",
+      "overrideInstance": { "@id": "urn:solid-server:default:WebhookEmitter" },
+      "overrideParameters": {
+        "@type": "WebhookEmitter",
+        "metrics": { "@id": "urn:solid-server:metrics:PrometheusMetrics" }
+      }
+    },
+    {
+      "comment": "Records per-channel delivery outcomes on the css_notification_deliveries_total counter. Remove this block if notifications are disabled.",
+      "@type": "Override",
+      "overrideInstance": { "@id": "urn:solid-server:default:ListeningActivityHandler" },
+      "overrideParameters": {
+        "@type": "ListeningActivityHandler",
+        "metrics": { "@id": "urn:solid-server:metrics:PrometheusMetrics" }
+      }
+    },
+    {
+      "comment": "Places the metrics handler first in the waterfall so a scrape is answered immediately and never traverses the LDP stack.",
+      "@type": "Override",
+      "overrideInstance": { "@id": "urn:solid-server:default:BaseHttpHandler" },
+      "overrideParameters": {
+        "@type": "WaterfallHandler",
+        "handlers": [
+          { "@id": "urn:solid-server:metrics:MetricsHandler" },
+          { "@id": "urn:solid-server:default:StaticAssetHandler" },
+          { "@id": "urn:solid-server:default:OidcHandler" },
+          { "@id": "urn:solid-server:default:NotificationHttpHandler" },
+          { "@id": "urn:solid-server:default:StorageDescriptionHandler" },
+          { "@id": "urn:solid-server:default:AuthResourceHttpHandler" },
+          { "@id": "urn:solid-server:default:IdentityProviderHandler" },
+          { "@id": "urn:solid-server:default:LdpHandler" }
+        ]
+      }
+    }
+  ]
+}
