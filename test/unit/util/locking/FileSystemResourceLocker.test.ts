@@ -1,4 +1,4 @@
-import { readdir } from 'fs-extra';
+import { readdir, writeFile } from 'fs-extra';
 import { FileSystemResourceLocker, InternalServerError, joinFilePath } from '../../../../src';
 import { getTestFolder, removeFolder } from '../../../integration/Config';
 
@@ -113,6 +113,19 @@ describe('A FileSystemResourceLocker', (): void => {
   it('throws an error when #tryFn() throws an error.', async(): Promise<void> => {
     await locker.acquire(identifier);
     await expect(locker.acquire(identifier)).rejects.toThrow(InternalServerError);
+  });
+
+  it('fails immediately when acquiring fails for a reason other than the lock being held.', async(): Promise<void> => {
+    // Point the lock folder at a file, so every acquisition attempt fails with a non-`ELOCKED` error.
+    // With indefinite retries, only an immediately thrown error can cause the rejection.
+    await writeFile(joinFilePath(rootFilePath, 'blocker'), '');
+    const brokenLocker = new FileSystemResourceLocker({
+      rootFilePath,
+      lockDirectory: '/blocker',
+      attemptSettings: { retryCount: -1 },
+    });
+    await expect(brokenLocker.acquire(identifier)).rejects.toThrow(InternalServerError);
+    await brokenLocker.finalize();
   });
 
   it('clears the files in de lock directory upon calling initialize.', async(): Promise<void> => {
