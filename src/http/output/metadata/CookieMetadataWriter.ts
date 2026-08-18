@@ -17,8 +17,22 @@ import { MetadataWriter } from './MetadataWriter';
  */
 export class CookieMetadataWriter extends MetadataWriter {
   private readonly cookieMap: Map<NamedNode, { name: string; expirationUri?: NamedNode }>;
+  private readonly secure: boolean;
+  private readonly httpOnly: boolean;
 
-  public constructor(cookieMap: Record<string, { name: string; expirationUri?: string }>) {
+  /**
+   * @param cookieMap - A map linking metadata predicate URIs to cookie definitions.
+   * @param baseUrl - Base URL of the server.
+   * @param secure - Enable/disable the `Secure` cookie flag.
+   *                 Defaults to `true` when the `baseUrl` scheme is `https`.
+   * @param httpOnly - Enable/disable the `HttpOnly` cookie flag. Defaults to `true`.
+   */
+  public constructor(
+    cookieMap: Record<string, { name: string; expirationUri?: string }>,
+    baseUrl?: string,
+    secure?: boolean,
+    httpOnly = true,
+  ) {
     super();
     this.cookieMap = new Map<NamedNode, { name: string; expirationUri?: NamedNode }>(Object.entries(cookieMap)
       .map(([ uri, { name, expirationUri }]): [ NamedNode, { name: string; expirationUri?: NamedNode } ] =>
@@ -29,6 +43,8 @@ export class CookieMetadataWriter extends MetadataWriter {
             expirationUri: expirationUri ? DataFactory.namedNode(expirationUri) : undefined,
           },
         ]));
+    this.secure = secure ?? Boolean(baseUrl?.startsWith('https:'));
+    this.httpOnly = httpOnly;
   }
 
   public async handle(input: { response: HttpResponse; metadata: RepresentationMetadata }): Promise<void> {
@@ -38,12 +54,16 @@ export class CookieMetadataWriter extends MetadataWriter {
       if (value) {
         const expiration = expirationUri && metadata.get(expirationUri)?.value;
         const expires = typeof expiration === 'string' ? new Date(expiration) : undefined;
-        // Not setting secure flag since not all tools realize those cookies are also valid for http://localhost.
-        // Not setting the httpOnly flag as that would prevent JS API access.
         // SameSite: Lax makes it so the cookie gets sent if the origin is the server,
         // or if the browser navigates there from another site.
         // Setting the path to `/` so it applies to the entire server.
-        addHeader(response, 'Set-Cookie', serialize(name, value, { path: '/', sameSite: 'lax', expires }));
+        addHeader(response, 'Set-Cookie', serialize(name, value, {
+          path: '/',
+          sameSite: 'lax',
+          expires,
+          httpOnly: this.httpOnly,
+          secure: this.secure,
+        }));
       }
     }
   }
