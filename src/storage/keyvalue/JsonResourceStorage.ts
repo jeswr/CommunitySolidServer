@@ -84,8 +84,7 @@ export class JsonResourceStorage<T> implements KeyValueStorage<string, T> {
     const representation = await this.safelyGetResource(identifier);
     if (representation) {
       if (isContainerIdentifier(identifier)) {
-        const members = await this.getContainedResourceIdentifiers(identifier, representation);
-        for (const member of members) {
+        for await (const member of this.getContainedResourceIdentifiers(identifier, representation)) {
           yield* this.getResourceEntries(member);
         }
       } else {
@@ -101,19 +100,17 @@ export class JsonResourceStorage<T> implements KeyValueStorage<string, T> {
     }
   }
 
-  /** Reads direct members and drains the stream before recursively locking children. */
-  protected async getContainedResourceIdentifiers(
+  /** Streams direct member identifiers from a container representation. */
+  protected async* getContainedResourceIdentifiers(
     identifier: ResourceIdentifier,
     representation: Representation,
-  ): Promise<ResourceIdentifier[]> {
-    const members: ResourceIdentifier[] = [];
+  ): AsyncIterableIterator<ResourceIdentifier> {
     for await (const entry of representation.data as AsyncIterable<Partial<Quad>>) {
       if (entry.subject?.value === identifier.path && entry.predicate?.equals(LDP.terms.contains) &&
         entry.object?.termType === 'NamedNode') {
-        members.push({ path: entry.object.value });
+        yield { path: entry.object.value };
       }
     }
-    return members;
   }
 
   /**
