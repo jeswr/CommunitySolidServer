@@ -47,18 +47,35 @@ export class ExtensionBasedMapper extends BaseFileIdentifierMapper {
 
     // Existing file
     if (!contentType) {
-      // Find a matching file
-      const [ , folder, documentName ] = /^(.*\/)([^/]*)$/u.exec(filePath)!;
-      let fileName: string | undefined;
-      try {
-        const files = await fsPromises.readdir(folder);
-        fileName = files.find((file): boolean =>
-          file.startsWith(documentName) && /^(?:\$\..+)?$/u.test(file.slice(documentName.length)));
-      } catch {
-        // Parent folder does not exist (or is not a folder)
+      // Metadata is always serialized as turtle, matching the content-type of its `.meta` extension,
+      // so a metadata path never has a `$.{extension}` variant and needs no filesystem check.
+      let resolved = this.isMetadataPath(filePath);
+
+      // A file at the direct translation of the identifier avoids the more expensive folder scan,
+      // as the server never stores both the direct file and a `$.{extension}` variant of a resource
+      // (see `FileDataAccessor.verifyExistingExtension`).
+      if (!resolved) {
+        try {
+          resolved = (await fsPromises.stat(filePath)).isFile();
+        } catch {
+          // No file at the direct translation (or it is inaccessible)
+        }
       }
-      if (fileName) {
-        filePath = joinFilePath(folder, fileName);
+
+      if (!resolved) {
+        // Find a matching file
+        const [ , folder, documentName ] = /^(.*\/)([^/]*)$/u.exec(filePath)!;
+        let fileName: string | undefined;
+        try {
+          const files = await fsPromises.readdir(folder);
+          fileName = files.find((file): boolean =>
+            file.startsWith(documentName) && /^(?:\$\..+)?$/u.test(file.slice(documentName.length)));
+        } catch {
+          // Parent folder does not exist (or is not a folder)
+        }
+        if (fileName) {
+          filePath = joinFilePath(folder, fileName);
+        }
       }
       contentType = await this.getContentTypeFromPath(filePath);
     // If the extension of the identifier matches a different content-type than the one that is given,

@@ -20,6 +20,7 @@ describe('An ExtensionBasedMapper', (): void => {
     jest.clearAllMocks();
     fs.promises = {
       readdir: jest.fn(),
+      stat: jest.fn().mockRejectedValue(new Error('does not exist')),
     } as any;
     fsPromises = fs.promises as any;
   });
@@ -105,6 +106,69 @@ describe('An ExtensionBasedMapper', (): void => {
         contentType: 'text/turtle',
         isMetadata: false,
       });
+      expect(fsPromises.stat).toHaveBeenCalledTimes(1);
+      expect(fsPromises.readdir).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not read the folder if a file exists at the direct file path.', async(): Promise<void> => {
+      fsPromises.stat.mockResolvedValue({ isFile: (): boolean => true });
+      await expect(mapper.mapUrlToFilePath({ path: `${base}test.txt` }, false)).resolves.toEqual({
+        identifier: { path: `${base}test.txt` },
+        filePath: `${rootFilepath}test.txt`,
+        contentType: 'text/plain',
+        isMetadata: false,
+      });
+      expect(fsPromises.stat).toHaveBeenCalledTimes(1);
+      expect(fsPromises.readdir).toHaveBeenCalledTimes(0);
+    });
+
+    it('reads the folder if the direct file path is not a file.', async(): Promise<void> => {
+      fsPromises.stat.mockResolvedValue({ isFile: (): boolean => false });
+      fsPromises.readdir.mockReturnValue([ 'test.txt$.ttl' ]);
+      await expect(mapper.mapUrlToFilePath({ path: `${base}test.txt` }, false)).resolves.toEqual({
+        identifier: { path: `${base}test.txt` },
+        filePath: `${rootFilepath}test.txt$.ttl`,
+        contentType: 'text/turtle',
+        isMetadata: false,
+      });
+      expect(fsPromises.stat).toHaveBeenCalledTimes(1);
+      expect(fsPromises.readdir).toHaveBeenCalledTimes(1);
+    });
+
+    it('reads the folder if the direct file path is inaccessible.', async(): Promise<void> => {
+      fsPromises.stat.mockRejectedValue(new Error('permission denied'));
+      fsPromises.readdir.mockReturnValue([ 'test.txt$.ttl' ]);
+      await expect(mapper.mapUrlToFilePath({ path: `${base}test.txt` }, false)).resolves.toEqual({
+        identifier: { path: `${base}test.txt` },
+        filePath: `${rootFilepath}test.txt$.ttl`,
+        contentType: 'text/turtle',
+        isMetadata: false,
+      });
+      expect(fsPromises.stat).toHaveBeenCalledTimes(1);
+      expect(fsPromises.readdir).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not stat or read the folder for metadata paths without a matching file.', async(): Promise<void> => {
+      await expect(mapper.mapUrlToFilePath({ path: `${base}test` }, true)).resolves.toEqual({
+        identifier: { path: `${base}test` },
+        filePath: `${rootFilepath}test.meta`,
+        contentType: 'text/turtle',
+        isMetadata: true,
+      });
+      expect(fsPromises.stat).toHaveBeenCalledTimes(0);
+      expect(fsPromises.readdir).toHaveBeenCalledTimes(0);
+    });
+
+    it('reads the folder for non-metadata auxiliary paths without a matching file.', async(): Promise<void> => {
+      fsPromises.readdir.mockReturnValue([ 'test.acl$.txt' ]);
+      await expect(mapper.mapUrlToFilePath({ path: `${base}test.acl` }, false)).resolves.toEqual({
+        identifier: { path: `${base}test.acl` },
+        filePath: `${rootFilepath}test.acl$.txt`,
+        contentType: 'text/plain',
+        isMetadata: false,
+      });
+      expect(fsPromises.stat).toHaveBeenCalledTimes(1);
+      expect(fsPromises.readdir).toHaveBeenCalledTimes(1);
     });
 
     it('generates a file path if the content-type was provided.', async(): Promise<void> => {
