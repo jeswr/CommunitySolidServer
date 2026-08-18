@@ -19,9 +19,7 @@ export class SingleContainerJsonStorage<T> extends JsonResourceStorage<T> {
       return;
     }
 
-    const members = await this.getContainedResourceIdentifiers(containerId, container);
-
-    for (const documentId of members) {
+    for await (const documentId of this.getContainedResourceIdentifiers(containerId, container)) {
       if (isContainerIdentifier(documentId)) {
         continue;
       }
