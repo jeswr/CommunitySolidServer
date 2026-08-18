@@ -13,7 +13,10 @@ describe('A FileSystemResourceLocker', (): void => {
   const identifier = { path: 'http://test.com/foo' };
 
   beforeEach(async(): Promise<void> => {
-    locker = new FileSystemResourceLocker({ rootFilePath, attemptSettings: { retryCount: 19, retryDelay: 100 }});
+    locker = new FileSystemResourceLocker({
+      rootFilePath,
+      attemptSettings: { retryCount: 19, retryDelay: 100, retryBackoffFactor: 1 },
+    });
     await locker.initialize();
   });
 
