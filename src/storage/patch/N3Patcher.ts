@@ -20,8 +20,16 @@ import { RepresentationPatcher } from './RepresentationPatcher';
  */
 export class N3Patcher extends RepresentationPatcher<RdfDatasetRepresentation> {
   protected readonly logger = getLoggerFor(this);
-  public constructor() {
+
+  private readonly maxConditionBindings: number;
+
+  /**
+   * @param maxConditionBindings - Maximum number of intermediate bindings allowed when solving
+   * the `solid:where` conditions. Patches exceeding this limit are rejected. Defaults to 1,000,000.
+   */
+  public constructor(maxConditionBindings?: number) {
     super();
+    this.maxConditionBindings = maxConditionBindings ?? 1_000_000;
   }
 
   public async canHandle({ patch }: RepresentationPatcherInput<RdfDatasetRepresentation>): Promise<void> {
@@ -102,7 +110,7 @@ export class N3Patcher extends RepresentationPatcher<RdfDatasetRepresentation> {
     if (conditions.length > 0) {
       // Solid, §5.3.1: "If ?conditions is non-empty, find all (possibly empty) variable mappings
       // such that all of the resulting triples occur in the dataset."
-      const bindings: Record<string, Term>[] = solveBgp(conditions, source);
+      const bindings: Record<string, Term>[] = solveBgp(conditions, source, this.maxConditionBindings);
 
       // Solid, §5.3.1: "If no such mapping exists, or if multiple mappings exist,
       // the server MUST respond with a 409 status code."

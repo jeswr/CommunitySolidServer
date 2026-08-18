@@ -1,5 +1,6 @@
 import 'jest-rdf';
 import { DataFactory, Store } from 'n3';
+import { BadRequestHttpError } from '../../../src/util/errors/BadRequestHttpError';
 import { parseQuads, serializeQuads, solveBgp, termToInt, uniqueQuads } from '../../../src/util/QuadUtil';
 import { guardedStreamFrom, readableToString } from '../../../src/util/StreamUtil';
 import variable = DataFactory.variable;
@@ -91,6 +92,20 @@ describe('QuadUtil', (): void => {
         v2: namedNode('ex:o2'),
         v3: namedNode('ex:p2'),
       });
+    });
+
+    it('throws a BadRequestHttpError when the intermediate bindings exceed the maximum.', async(): Promise<void> => {
+      const bgp = [
+        quad(variable('v'), namedNode('ex:p0'), namedNode('ex:o0')),
+      ];
+      const data = new Store([
+        quad(namedNode('ex:s0'), namedNode('ex:p0'), namedNode('ex:o0')),
+        quad(namedNode('ex:s1'), namedNode('ex:p0'), namedNode('ex:o0')),
+      ]);
+      expect((): unknown => solveBgp(bgp, data, 1)).toThrow(BadRequestHttpError);
+      expect((): unknown => solveBgp(bgp, data, 1)).toThrow(
+        'The patch conditions produced more than the allowed 1 intermediate bindings.',
+      );
     });
   });
 });

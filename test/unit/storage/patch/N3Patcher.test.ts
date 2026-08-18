@@ -6,6 +6,7 @@ import type { RdfDatasetRepresentation } from '../../../../src/http/representati
 import type { SparqlUpdatePatch } from '../../../../src/http/representation/SparqlUpdatePatch';
 import { N3Patcher } from '../../../../src/storage/patch/N3Patcher';
 import type { RepresentationPatcherInput } from '../../../../src/storage/patch/RepresentationPatcher';
+import { BadRequestHttpError } from '../../../../src/util/errors/BadRequestHttpError';
 import { ConflictHttpError } from '../../../../src/util/errors/ConflictHttpError';
 import { InternalServerError } from '../../../../src/util/errors/InternalServerError';
 import { NotImplementedHttpError } from '../../../../src/util/errors/NotImplementedHttpError';
@@ -142,6 +143,49 @@ describe('An N3Patcher', (): void => {
     const result = await patcher.handle(input);
     expect(result.dataset).toBeRdfIsomorphic([
       quad(namedNode('ex:s0'), namedNode('ex:p0'), namedNode('ex:o0')),
+    ]);
+  });
+
+  it('rejects a patch whose conditions exceed the configured binding limit.', async(): Promise<void> => {
+    const boundedPatcher = new N3Patcher(2);
+    patch.conditions = [
+      quad(variable('v'), namedNode('ex:p0'), namedNode('ex:x')),
+      quad(variable('v'), namedNode('ex:tag'), namedNode('ex:target')),
+    ];
+    patch.deletes = [ quad(variable('v'), namedNode('ex:tag'), namedNode('ex:target')) ];
+    input.representation?.dataset.addQuads([
+      quad(namedNode('ex:s0'), namedNode('ex:p0'), namedNode('ex:x')),
+      quad(namedNode('ex:s1'), namedNode('ex:p0'), namedNode('ex:x')),
+      quad(namedNode('ex:s2'), namedNode('ex:p0'), namedNode('ex:x')),
+      quad(namedNode('ex:s1'), namedNode('ex:tag'), namedNode('ex:target')),
+    ]);
+    const prom = boundedPatcher.handle(input);
+    await expect(prom).rejects.toThrow(BadRequestHttpError);
+    await expect(prom).rejects.toThrow(
+      'The patch conditions produced more than the allowed 2 intermediate bindings.',
+    );
+  });
+
+  it('honors a custom binding limit that leaves room for the intermediate bindings.', async(): Promise<void> => {
+    const boundedPatcher = new N3Patcher(10);
+    patch.conditions = [
+      quad(variable('v'), namedNode('ex:p0'), namedNode('ex:x')),
+      quad(variable('v'), namedNode('ex:tag'), namedNode('ex:target')),
+    ];
+    patch.deletes = [ quad(variable('v'), namedNode('ex:tag'), namedNode('ex:target')) ];
+    patch.inserts = [ quad(variable('v'), namedNode('ex:done'), namedNode('ex:yes')) ];
+    input.representation?.dataset.addQuads([
+      quad(namedNode('ex:s0'), namedNode('ex:p0'), namedNode('ex:x')),
+      quad(namedNode('ex:s1'), namedNode('ex:p0'), namedNode('ex:x')),
+      quad(namedNode('ex:s2'), namedNode('ex:p0'), namedNode('ex:x')),
+      quad(namedNode('ex:s1'), namedNode('ex:tag'), namedNode('ex:target')),
+    ]);
+    const result = await boundedPatcher.handle(input);
+    expect(result.dataset).toBeRdfIsomorphic([
+      quad(namedNode('ex:s0'), namedNode('ex:p0'), namedNode('ex:x')),
+      quad(namedNode('ex:s1'), namedNode('ex:p0'), namedNode('ex:x')),
+      quad(namedNode('ex:s2'), namedNode('ex:p0'), namedNode('ex:x')),
+      quad(namedNode('ex:s1'), namedNode('ex:done'), namedNode('ex:yes')),
     ]);
   });
 
