@@ -1,5 +1,4 @@
 import type { IncomingHttpHeaders } from 'node:http';
-import escapeStringRegexp from 'escape-string-regexp';
 import { getLoggerFor } from '../logging/LogUtil';
 import type { HttpResponse } from '../server/HttpResponse';
 import { BadRequestHttpError } from './errors/BadRequestHttpError';
@@ -14,6 +13,7 @@ import type {
   LinkEntryParameters,
 } from './Header';
 import { ContentType, QUOTED_STRING, QVALUE, SIMPLE_MEDIA_RANGE, TOKEN } from './Header';
+import { escapeStringRegexp } from './StringUtil';
 
 const logger = getLoggerFor('HeaderUtil');
 

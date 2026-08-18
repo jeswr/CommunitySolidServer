@@ -1,4 +1,5 @@
 import {
+  escapeStringRegexp,
   isUrl,
   isValidFileName,
   msToDuration,
@@ -62,6 +63,25 @@ describe('HeaderUtil', (): void => {
     it('excludes the T if there is no time segment.', async(): Promise<void> => {
       const ms = ((2 * 24 * 60 * 60)) * 1000;
       expect(msToDuration(ms)).toBe('P2D');
+    });
+  });
+
+  describe('#escapeStringRegexp', (): void => {
+    it('escapes all special regular expression characters.', (): void => {
+      expect(escapeStringRegexp('|\\{}()[]^$+*?.')).toBe('\\|\\\\\\{\\}\\(\\)\\[\\]\\^\\$\\+\\*\\?\\.');
+    });
+
+    it('escapes dashes with their hex code so the result can be used in character classes.', (): void => {
+      expect(escapeStringRegexp('foo-bar-baz')).toBe('foo\\x2dbar\\x2dbaz');
+    });
+
+    it('does not change strings without special characters.', (): void => {
+      expect(escapeStringRegexp('nothing special')).toBe('nothing special');
+    });
+
+    it('generates strings that match the original input when used in a regular expression.', (): void => {
+      const input = 'how much $ for a #unicorn-*|[]?';
+      expect(new RegExp(`^${escapeStringRegexp(input)}$`, 'u').test(input)).toBe(true);
     });
   });
 });

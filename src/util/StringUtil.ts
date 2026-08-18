@@ -83,3 +83,19 @@ export function msToDuration(ms: number): string {
 
   return stringParts.join('');
 }
+
+/**
+ * Escapes all special regular expression characters in a string,
+ * so it can be used as a literal match inside a regular expression.
+ *
+ * @param value - String to escape.
+ *
+ * @returns The escaped string.
+ */
+export function escapeStringRegexp(value: string): string {
+  // Based on https://github.com/sindresorhus/escape-string-regexp
+  // Dashes are escaped as `\x2d` since `\-` is disallowed by the stricter grammar of Unicode patterns.
+  return value
+    .replaceAll(/[|\\{}()[\]^$+*?.]/gu, '\\$&')
+    .replaceAll('-', '\\x2d');
+}
