@@ -53,7 +53,7 @@ describe('A CachingResourceStore', (): void => {
       setRepresentation: jest.fn(async(): Promise<IdentifierMap<RepresentationMetadata>> => new IdentifierMap()),
       modifyResource: jest.fn(async(): Promise<IdentifierMap<RepresentationMetadata>> => new IdentifierMap()),
       deleteResource: jest.fn(async(): Promise<IdentifierMap<RepresentationMetadata>> => new IdentifierMap()),
-    };
+    } as any;
     store = new CachingResourceStore(source, strategy);
   });
 
