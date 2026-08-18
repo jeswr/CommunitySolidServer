@@ -27,9 +27,11 @@ export class MemoryMapStorage<TValue> implements KeyValueStorage<string, TValue>
     return this.data.delete(key);
   }
 
-  public async* entries(): AsyncIterableIterator<[string, TValue]> {
+  public async* entries(matchPrefix?: string): AsyncIterableIterator<[string, TValue]> {
     for (const entry of this.data.entries()) {
-      yield entry;
+      if (entry[0].startsWith(matchPrefix ?? '')) {
+        yield entry;
+      }
     }
   }
 }

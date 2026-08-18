@@ -42,4 +42,14 @@ describe('A MemoryMapStorage', (): void => {
     await expect(storage.set(identifier2, 'pear')).resolves.toBe(storage);
     await expect(storage.get(identifier1)).resolves.toBe('apple');
   });
+
+  it('only returns entries matching the prefix if one is given.', async(): Promise<void> => {
+    await expect(storage.set(identifier1, 'apple')).resolves.toBe(storage);
+    await expect(storage.set(identifier2, 'pear')).resolves.toBe(storage);
+    const results = [];
+    for await (const entry of storage.entries('http://test.com/f')) {
+      results.push(entry);
+    }
+    expect(results).toEqual([[ identifier1, 'apple' ]]);
+  });
 });

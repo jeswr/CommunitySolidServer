@@ -72,8 +72,15 @@ export class JsonResourceStorage<T> implements KeyValueStorage<string, T> {
     }
   }
 
-  public async* entries(): AsyncIterableIterator<[string, T]> {
-    yield* this.getResourceEntries({ path: this.container });
+  public async* entries(matchPrefix = ''): AsyncIterableIterator<[string, T]> {
+    // Only the container matching the directory part of the prefix can contain matches, so the walk starts there.
+    const directory = matchPrefix.slice(0, matchPrefix.lastIndexOf('/') + 1);
+    const identifier = { path: directory.length > 0 ? joinUrl(this.container, directory) : this.container };
+    for await (const entry of this.getResourceEntries(identifier)) {
+      if (entry[0].startsWith(matchPrefix)) {
+        yield entry;
+      }
+    }
   }
 
   /**

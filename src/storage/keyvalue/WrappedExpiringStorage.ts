@@ -55,9 +55,9 @@ export class WrappedExpiringStorage<TKey, TValue> implements ExpiringStorage<TKe
     return this.source.delete(key);
   }
 
-  public async* entries(): AsyncIterableIterator<[TKey, TValue]> {
+  public async* entries(matchPrefix?: string): AsyncIterableIterator<[TKey, TValue]> {
     // Not deleting expired entries here to prevent iterator issues
-    for await (const [ key, value ] of this.source.entries()) {
+    for await (const [ key, value ] of this.source.entries(matchPrefix)) {
       const { expires, payload } = this.toData(value);
       if (!this.isExpired(expires)) {
         yield [ key, payload ];
