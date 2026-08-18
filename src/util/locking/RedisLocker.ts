@@ -3,6 +3,7 @@ import type { ResourceIdentifier } from '../../http/representation/ResourceIdent
 import type { Finalizable } from '../../init/final/Finalizable';
 import type { Initializable } from '../../init/Initializable';
 import { getLoggerFor } from '../../logging/LogUtil';
+import { createErrorMessage } from '../errors/ErrorUtil';
 import type { AttemptSettings } from '../LockUtils';
 import { retryFunction } from '../LockUtils';
 import type { PromiseOrValue } from '../PromiseUtil';
@@ -17,6 +18,9 @@ const attemptDefaults: Required<AttemptSettings> = { retryCount: -1, retryDelay:
 const PREFIX_RW = '__RW__';
 const PREFIX_LOCK = '__L__';
 
+// Default TTL (in ms) of the lock keys
+const DEFAULT_TTL = 30000;
+
 export interface RedisSettings {
   /* Override default namespacePrefixes (used to prefix keys in Redis) */
   namespacePrefix?: string;
@@ -26,6 +30,11 @@ export interface RedisSettings {
   password?: string;
   /* The number of the database to use */
   db?: number;
+  /**
+   * Time-to-live (in ms) of the lock keys, so the locks of a crashed instance expire instead of
+   * blocking peers forever. Held locks are renewed at half this interval. Defaults to 30000.
+   */
+  ttl?: number;
 }
 
 /**
@@ -63,6 +72,9 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
   private readonly redisLock: RedisResourceLock;
   private readonly attemptSettings: Required<AttemptSettings>;
   private readonly namespacePrefix: string;
+  private readonly ttl: number;
+  private readonly renewalInterval: number;
+  private readonly renewalTimers = new Map<string, NodeJS.Timeout>();
   private finalized = false;
 
   /**
@@ -78,10 +90,13 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
     redisSettings?: RedisSettings,
   ) {
     redisSettings = { namespacePrefix: '', ...redisSettings };
-    const { namespacePrefix, ...options } = redisSettings;
+    const { namespacePrefix, ttl, ...options } = redisSettings;
     this.redis = this.createRedisClient(redisClient, options);
     this.attemptSettings = { ...attemptDefaults, ...attemptSettings };
     this.namespacePrefix = namespacePrefix!;
+    this.ttl = ttl ?? DEFAULT_TTL;
+    // Renew at half the TTL so a live holder refreshes its lock long before it could expire.
+    this.renewalInterval = Math.max(1, Math.floor(this.ttl / 2));
 
     // Register lua scripts
     for (const [ name, script ] of Object.entries(REDIS_LUA_SCRIPTS)) {
@@ -98,7 +113,7 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
    * @param redisClientString - A string that contains either a host address and a
    *                            port number like '127.0.0.1:6379' or just a port number like '6379'.
    */
-  private createRedisClient(redisClientString: string, options: Omit<RedisSettings, 'namespacePrefix'>): Redis {
+  private createRedisClient(redisClientString: string, options: Omit<RedisSettings, 'namespacePrefix' | 'ttl'>): Redis {
     if (redisClientString.length > 0) {
       // Check if port number or ip with port number
       // Definitely not perfect, but configuring this is only for experienced users
@@ -138,6 +153,46 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
     return `${this.namespacePrefix}${PREFIX_LOCK}${identifier.path}`;
   }
 
+  /* Lease renewal */
+
+  /**
+   * Creates an interval timer that keeps refreshing the TTL of a held lock,
+   * so only the locks of a crashed process expire.
+   * The caller needs to clear the returned timer once the lock is released.
+   *
+   * @param renew - Refreshes the TTL of the relevant Redis key.
+   *                Rejections are logged, as the next tick can retry a failed refresh.
+   */
+  private createRenewalTimer(renew: () => Promise<RedisAnswer>): NodeJS.Timeout {
+    const timer = setInterval((): void => {
+      renew().catch((error: unknown): void => {
+        this.logger.warn(`Could not renew Redis lock TTL: ${createErrorMessage(error)}`);
+      });
+    }, this.renewalInterval);
+    // The timer should not keep the process alive.
+    timer.unref();
+    return timer;
+  }
+
+  /**
+   * Starts renewing the TTL of the given resource lock, replacing any previous renewal timer for that key.
+   */
+  private startRenewal(key: string, renew: () => Promise<RedisAnswer>): void {
+    this.stopRenewal(key);
+    this.renewalTimers.set(key, this.createRenewalTimer(renew));
+  }
+
+  /**
+   * Stops renewing the TTL of the given resource lock, if it has an active renewal timer.
+   */
+  private stopRenewal(key: string): void {
+    const timer = this.renewalTimers.get(key);
+    if (timer) {
+      clearInterval(timer);
+      this.renewalTimers.delete(key);
+    }
+  }
+
   /* ReadWriteLocker methods */
 
   /**
@@ -163,12 +218,16 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
   public async withReadLock<T>(identifier: ResourceIdentifier, whileLocked: () => PromiseOrValue<T>): Promise<T> {
     const key = this.getReadWriteKey(identifier);
     await retryFunction(
-      this.swallowFalse(this.redisRw.acquireReadLock.bind(this.redisRw, key)),
+      this.swallowFalse(this.redisRw.acquireReadLock.bind(this.redisRw, key, this.ttl)),
       this.attemptSettings,
+    );
+    const renewalTimer = this.createRenewalTimer(
+      async(): Promise<RedisAnswer> => this.redisRw.renewReadLock(key, this.ttl),
     );
     try {
       return await whileLocked();
     } finally {
+      clearInterval(renewalTimer);
       await retryFunction(
         this.swallowFalse(this.redisRw.releaseReadLock.bind(this.redisRw, key)),
         this.attemptSettings,
@@ -179,12 +238,16 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
   public async withWriteLock<T>(identifier: ResourceIdentifier, whileLocked: () => PromiseOrValue<T>): Promise<T> {
     const key = this.getReadWriteKey(identifier);
     await retryFunction(
-      this.swallowFalse(this.redisRw.acquireWriteLock.bind(this.redisRw, key)),
+      this.swallowFalse(this.redisRw.acquireWriteLock.bind(this.redisRw, key, this.ttl)),
       this.attemptSettings,
+    );
+    const renewalTimer = this.createRenewalTimer(
+      async(): Promise<RedisAnswer> => this.redisRw.renewWriteLock(key, this.ttl),
     );
     try {
       return await whileLocked();
     } finally {
+      clearInterval(renewalTimer);
       await retryFunction(
         this.swallowFalse(this.redisRw.releaseWriteLock.bind(this.redisRw, key)),
         this.attemptSettings,
@@ -197,13 +260,16 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
   public async acquire(identifier: ResourceIdentifier): Promise<void> {
     const key = this.getResourceKey(identifier);
     await retryFunction(
-      this.swallowFalse(this.redisLock.acquireLock.bind(this.redisLock, key)),
+      this.swallowFalse(this.redisLock.acquireLock.bind(this.redisLock, key, this.ttl)),
       this.attemptSettings,
     );
+    // A resource lock stays held across calls, so its renewal timer is tracked until release() or finalize()
+    this.startRenewal(key, async(): Promise<RedisAnswer> => this.redisLock.renewLock(key, this.ttl));
   }
 
   public async release(identifier: ResourceIdentifier): Promise<void> {
     const key = this.getResourceKey(identifier);
+    this.stopRenewal(key);
     await retryFunction(
       this.swallowFalse(this.redisLock.releaseLock.bind(this.redisLock, key)),
       this.attemptSettings,
@@ -219,6 +285,11 @@ export class RedisLocker implements ReadWriteLocker, ResourceLocker, Initializab
 
   public async finalize(): Promise<void> {
     this.finalized = true;
+    // Stop any active resource-lock renewals so their timers cannot outlive the locker.
+    for (const timer of this.renewalTimers.values()) {
+      clearInterval(timer);
+    }
+    this.renewalTimers.clear();
     try {
       // On controlled server shutdown: clean up all existing locks.
       await this.clearLocks();
