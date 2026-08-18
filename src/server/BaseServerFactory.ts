@@ -24,6 +24,30 @@ export interface BaseServerFactoryOptions {
 
   pfx?: string;
   passphrase?: string;
+
+  /**
+   * Maximum time, in milliseconds, the server waits for the entire request to arrive.
+   * When undefined, the Node.js default applies.
+   */
+  requestTimeout?: number;
+
+  /**
+   * Maximum time, in milliseconds, the server waits for the complete HTTP headers to arrive.
+   * When undefined, the Node.js default applies.
+   */
+  headersTimeout?: number;
+
+  /**
+   * Time of inactivity, in milliseconds, after which the server closes an idle keep-alive connection.
+   * When undefined, the Node.js default applies.
+   */
+  keepAliveTimeout?: number;
+
+  /**
+   * Maximum number of concurrent connections the server accepts.
+   * When undefined, Node.js does not limit the number of connections.
+   */
+  maxConnections?: number;
 }
 
 /**
@@ -50,6 +74,19 @@ export class BaseServerFactory implements HttpServerFactory {
     const options = this.createServerOptions();
 
     const server = this.options.https ? createHttpsServer(options) : createHttpServer(options);
+
+    if (typeof this.options.requestTimeout === 'number') {
+      server.requestTimeout = this.options.requestTimeout;
+    }
+    if (typeof this.options.headersTimeout === 'number') {
+      server.headersTimeout = this.options.headersTimeout;
+    }
+    if (typeof this.options.keepAliveTimeout === 'number') {
+      server.keepAliveTimeout = this.options.keepAliveTimeout;
+    }
+    if (typeof this.options.maxConnections === 'number') {
+      server.maxConnections = this.options.maxConnections;
+    }
 
     await this.configurator.handleSafe(server);
 
