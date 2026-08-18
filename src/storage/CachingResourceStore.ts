@@ -14,57 +14,39 @@ import type { Conditions } from './conditions/Conditions';
 import { PassthroughStore } from './PassthroughStore';
 import type { ChangeMap, ResourceStore } from './ResourceStore';
 
-/**
- * A cached representation: a frozen array of quads and a snapshot of the metadata.
- */
+/** A frozen quad array with its metadata snapshot. */
 interface RepresentationCacheEntry {
   quads: readonly Quad[];
   metadata: RepresentationMetadata;
   expires: number;
 }
 
-/**
- * A cached existence result.
- */
+/** A cached existence result. */
 interface ExistenceCacheEntry {
   value: boolean;
   expires: number;
 }
 
-/**
- * Tuning parameters for the {@link CachingResourceStore}.
- */
+/** Tuning parameters for the {@link CachingResourceStore}. */
 export interface CachingResourceStoreOptions {
   /**
    * Time in milliseconds an entry remains valid.
    * A value of `0` (or lower) disables all caching, making this store a pure passthrough.
    */
   ttl?: number;
-  /**
-   * Maximum number of cached representations before the least-recently-used one is evicted.
-   */
+  /** Maximum number of cached representations. */
   maxEntries?: number;
-  /**
-   * Maximum total number of cached quads across all representations.
-   */
+  /** Maximum total number of cached quads. */
   maxQuads?: number;
-  /**
-   * Maximum number of quads in a single document; larger documents are served but never stored.
-   */
+  /** Maximum cacheable document size in quads. */
   maxQuadsPerDoc?: number;
-  /**
-   * Maximum number of cached existence results before the least-recently-used one is evicted.
-   */
+  /** Maximum number of cached existence results. */
   maxHasEntries?: number;
 }
 
 /**
- * Caches the quad representations and existence results of auxiliary (by default ACL) documents across requests.
- * The cache is invalidated synchronously from the {@link ChangeMap} of every write, before that write returns,
- * so a subsequent read always sees fresh data. All writes must therefore flow through this store.
- * Failure modes degrade to a cache miss, never to stale data: oversized documents are served but not stored,
- * and a write landing while a read is in flight prevents that read from populating the cache.
- * Since the cache lives in process memory, this store is {@link SingleThreaded}.
+ * Caches auxiliary quad representations and existence results within one process.
+ * Writes synchronously invalidate related entries, so all writes must flow through this store.
  */
 export class CachingResourceStore<T extends ResourceStore = ResourceStore>
   extends PassthroughStore<T> implements SingleThreaded {
@@ -197,10 +179,7 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
     return changes;
   }
 
-  /**
-   * Determines whether a read can be served from and stored in the cache:
-   * only quad reads of an auxiliary document, without conditions or extra preferences.
-   */
+  /** Determines whether an auxiliary quad read can use the cache. */
   private isCacheableRead(
     identifier: ResourceIdentifier,
     preferences: RepresentationPreferences,
@@ -212,9 +191,7 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
     return this.isQuadsOnlyPreferences(preferences);
   }
 
-  /**
-   * Checks that the preferences contain exactly one entry, requesting `internal/quads`.
-   */
+  /** Checks that the preferences only request `internal/quads`. */
   private isQuadsOnlyPreferences(preferences: RepresentationPreferences): boolean {
     const keys = Object.keys(preferences);
     if (keys.length !== 1 || keys[0] !== 'type') {
@@ -225,10 +202,7 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
     return typeKeys.length === 1 && type[INTERNAL_QUADS] === 1;
   }
 
-  /**
-   * Reads a representation from the source and materializes its quads,
-   * deduplicating concurrent reads of the same key.
-   */
+  /** Materializes a representation, deduplicating concurrent reads of the same key. */
   private async readAndMaterialize(
     key: string,
     identifier: ResourceIdentifier,
@@ -250,10 +224,7 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
     }
   }
 
-  /**
-   * Fetches the representation from the source and caches it,
-   * unless it is oversized or a write invalidated the key while the read was in flight.
-   */
+  /** Fetches and caches a representation when it remains eligible. */
   private async fetchAndStore(
     key: string,
     identifier: ResourceIdentifier,
@@ -271,16 +242,12 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
     return { quads, metadata };
   }
 
-  /**
-   * Builds a fresh representation over the cached quads, cloning the metadata so callers cannot mutate the cache.
-   */
+  /** Builds a representation with a fresh metadata copy. */
   private buildRepresentation(quads: readonly Quad[], metadata: RepresentationMetadata): Representation {
     return new BasicRepresentation(guardedStreamFrom(quads), new RepresentationMetadata(metadata, INTERNAL_QUADS));
   }
 
-  /**
-   * Stores a representation in the cache and enforces the size bounds.
-   */
+  /** Stores a representation and enforces the size bounds. */
   private storeRepresentation(key: string, quads: Quad[], metadata: RepresentationMetadata): void {
     this.removeRep(key);
     this.reps.set(key, { quads: Object.freeze(quads), metadata, expires: Date.now() + this.ttl });
@@ -288,9 +255,7 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
     this.enforceRepBounds();
   }
 
-  /**
-   * Removes a representation from the cache, keeping the total quad count in sync.
-   */
+  /** Removes a representation and updates the total quad count. */
   private removeRep(key: string): void {
     const entry = this.reps.get(key);
     if (entry) {
@@ -299,28 +264,21 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
     }
   }
 
-  /**
-   * Evicts least-recently-used representations until the entry and total quad bounds are satisfied.
-   */
+  /** Enforces the representation bounds using least-recently-used eviction. */
   private enforceRepBounds(): void {
     while (this.reps.size > this.maxEntries || this.totalQuads > this.maxQuads) {
       this.removeRep(this.reps.keys().next().value as string);
     }
   }
 
-  /**
-   * Evicts least-recently-used existence results until the bound is satisfied.
-   */
+  /** Enforces the existence-result bound using least-recently-used eviction. */
   private enforceHasBounds(): void {
     while (this.has.size > this.maxHasEntries) {
       this.has.delete(this.has.keys().next().value as string);
     }
   }
 
-  /**
-   * Invalidates every identifier of a {@link ChangeMap} and their auxiliary identifiers,
-   * so a write to a subject resource also drops its auxiliary document.
-   */
+  /** Invalidates changed identifiers and their auxiliary identifiers. */
   private invalidate(changes: ChangeMap): void {
     if (this.ttl <= 0) {
       return;
@@ -331,10 +289,7 @@ export class CachingResourceStore<T extends ResourceStore = ResourceStore>
     }
   }
 
-  /**
-   * Drops the cached values for a single key and bumps its generation counter,
-   * preventing any in-flight read of that key from being cached.
-   */
+  /** Invalidates a key and prevents its in-flight reads from being cached. */
   private invalidateKey(key: string): void {
     this.removeRep(key);
     this.has.delete(key);
