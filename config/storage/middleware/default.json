@@ -1,6 +1,7 @@
 {
   "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
   "import": [
+    "css:config/storage/middleware/stores/caching.json",
     "css:config/storage/middleware/stores/converting.json",
     "css:config/storage/middleware/stores/locking.json",
     "css:config/storage/middleware/stores/patching.json"
@@ -16,7 +17,7 @@
       "comment": "Sets up a stack of utility stores used by most instances.",
       "@id": "urn:solid-server:default:ResourceStore",
       "@type": "MonitoringStore",
-      "source": { "@id": "urn:solid-server:default:ResourceStore_BinarySlice" }
+      "source": { "@id": "urn:solid-server:default:ResourceStore_Cache" }
     },
     {
       "comment": "Slices part of binary streams based on the range preferences.",

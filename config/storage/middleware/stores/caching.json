@@ -1,0 +1,17 @@
+{
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@graph": [
+    {
+      "comment": "Caches quad reads and existence checks of ACL documents across requests, invalidating on every write.",
+      "@id": "urn:solid-server:default:ResourceStore_Cache",
+      "@type": "CachingResourceStore",
+      "source": { "@id": "urn:solid-server:default:ResourceStore_BinarySlice" },
+      "cacheStrategy": { "@id": "urn:solid-server:default:AclStrategy" },
+      "options_ttl": 30000,
+      "options_maxEntries": 500,
+      "options_maxQuads": 20000,
+      "options_maxQuadsPerDoc": 2000,
+      "options_maxHasEntries": 5000
+    }
+  ]
+}

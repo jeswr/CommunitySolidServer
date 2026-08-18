@@ -533,6 +533,7 @@ export * from './storage/AtomicResourceStore';
 export * from './storage/BaseResourceStore';
 export * from './storage/BinarySliceResourceStore';
 export * from './storage/CachedResourceSet';
+export * from './storage/CachingResourceStore';
 export * from './storage/DataAccessorBasedStore';
 export * from './storage/IndexRepresentationStore';
 export * from './storage/LockingResourceStore';
