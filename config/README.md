@@ -127,3 +127,16 @@ A configuration that sets up the server to only function as an Identity Provider
 It does not support creating pods or storing data on the server,
 the only available options are creating accounts and linking them to WebIDs.
 This way the server can be used to identify those WebIDs during an OIDC interaction.
+
+## production-throughput.json
+
+A variant of `file.json` for single-process deployments that need higher throughput.
+Locks are stored in memory instead of on disk,
+which removes the lock file system calls and the lock polling that the file-based locker performs on every request.
+Because those locks are only visible within a single process,
+this configuration can not be used with multiple workers,
+and no other process should write to the same data directory.
+For such deployments, use the file-based or Redis-based resource locker instead.
+
+It also sets the `Access-Control-Max-Age` header,
+so browsers can cache CORS preflight results for an hour instead of sending a new preflight for every request.
