@@ -24,8 +24,16 @@ export class BasicETagHandler implements ETagHandler {
     const date = new Date(modified.value);
     const { contentType } = metadata;
 
+    // RFC 9110, §8.8.3.2: an `If-None-Match` header requires a weak comparison,
+    // meaning an optional `W/` prefix needs to be ignored.
+    const strippedETag = eTag.startsWith('W/') ? eTag.slice(2) : eTag;
+
     // Slicing of the double quotes
-    const [ eTagTimestamp, eTagContentType ] = eTag.slice(1, -1).split('-');
+    const value = strippedETag.slice(1, -1);
+    // Only split on the first `-`, as content types can also contain a `-`, e.g., `application/n-quads`
+    const splitIndex = value.indexOf('-');
+    const eTagTimestamp = splitIndex >= 0 ? value.slice(0, splitIndex) : value;
+    const eTagContentType = splitIndex >= 0 ? value.slice(splitIndex + 1) : undefined;
 
     return eTagTimestamp === `${date.getTime()}` && (!strict || eTagContentType === contentType);
   }
