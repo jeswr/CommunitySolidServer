@@ -70,6 +70,12 @@ describe('A FileDataAccessor', (): void => {
       await expect(readableToString(stream)).resolves.toBe('data');
     });
 
+    it('does not return the data of a leftover temporary file.', async(): Promise<void> => {
+      cache.data = { '.tmp-3d3e58f6-b2d5-40a1-b06e-71b6b16ee286.meta': 'partial', resource: 'data' };
+      const stream = await accessor.getData({ path: `${base}resource` });
+      await expect(readableToString(stream)).resolves.toBe('data');
+    });
+
     it('throws an error if something else went wrong.', async(): Promise<void> => {
       jest.requireMock('fs-extra').stat = (): any => {
         throw new Error('error');
@@ -231,6 +237,23 @@ describe('A FileDataAccessor', (): void => {
       }
     });
 
+    it('does not show leftover temporary files as children of a container.', async(): Promise<void> => {
+      cache.data = {
+        container: {
+          resource: 'data',
+          '.tmp-3d3e58f6-b2d5-40a1-b06e-71b6b16ee286.meta': 'partial',
+        },
+      };
+
+      const children = [];
+      for await (const child of accessor.getChildren({ path: `${base}container/` })) {
+        children.push(child);
+      }
+
+      expect(children).toHaveLength(1);
+      expect(children[0].identifier.value).toBe(`${base}container/resource`);
+    });
+
     it('does not generate IANA URIs for children with invalid content-types.', async(): Promise<void> => {
       cache.data = {
         container: {
@@ -301,6 +324,18 @@ describe('A FileDataAccessor', (): void => {
       expect(cache.data.resource).toBe('data');
     });
 
+    it('writes the data through a temporary file in the same folder.', async(): Promise<void> => {
+      const renameSpy = jest.spyOn(jest.requireMock('fs-extra'), 'rename');
+      await expect(accessor.writeDocument({ path: `${base}resource` }, data, metadata)).resolves.toBeUndefined();
+      expect(cache.data.resource).toBe('data');
+      expect(renameSpy).toHaveBeenCalledTimes(1);
+      expect(renameSpy).toHaveBeenLastCalledWith(
+        expect.stringMatching(/^uploads\/\.tmp-[^/]+\.meta$/u),
+        `${rootFilePath}/resource`,
+      );
+      expect(Object.keys(cache.data).filter((name): boolean => name.startsWith('.tmp-'))).toHaveLength(0);
+    });
+
     it('writes metadata to the corresponding metadata file.', async(): Promise<void> => {
       metadata = new RepresentationMetadata(
         { path: `${base}res.ttl` },
@@ -341,6 +376,50 @@ describe('A FileDataAccessor', (): void => {
       };
       await expect(accessor.writeDocument({ path: `${base}resource` }, data, metadata))
         .rejects.toThrow('error');
+    });
+
+    it('removes the temporary file and keeps the destination if the data stream errors.', async(): Promise<void> => {
+      cache.data = { resource: 'original' };
+      data.read = (): any => {
+        data.emit('error', new Error('data error'));
+        return null;
+      };
+      const renameSpy = jest.spyOn(jest.requireMock('fs-extra'), 'rename');
+      await expect(accessor.writeDocument({ path: `${base}resource` }, data, metadata))
+        .rejects.toThrow('data error');
+      expect(renameSpy).toHaveBeenCalledTimes(0);
+      expect(cache.data.resource).toBe('original');
+      expect(Object.keys(cache.data).filter((name): boolean => name.startsWith('.tmp-'))).toHaveLength(0);
+    });
+
+    it('throws the original error if removing the temporary file fails.', async(): Promise<void> => {
+      data.read = (): any => {
+        data.emit('error', new Error('data error'));
+        return null;
+      };
+      const removeSpy = jest.spyOn(jest.requireMock('fs-extra'), 'remove')
+        .mockImplementation(async(filePath: string): Promise<void> => {
+          if (/\/\.tmp-[^/]+\.meta$/u.test(filePath)) {
+            throw new Error('remove error');
+          }
+        });
+      await expect(accessor.writeDocument({ path: `${base}resource` }, data, metadata))
+        .rejects.toThrow('data error');
+      expect(removeSpy).toHaveBeenCalledTimes(2);
+      expect(Object.keys(cache.data).filter((name): boolean => name.startsWith('.tmp-'))).toHaveLength(1);
+    });
+
+    it('removes the temporary file if renaming it to the destination fails.', async(): Promise<void> => {
+      const renameSpy = jest.spyOn(jest.requireMock('fs-extra'), 'rename').mockImplementation((): any => {
+        throw new Error('rename error');
+      });
+      const removeSpy = jest.spyOn(jest.requireMock('fs-extra'), 'remove');
+      await expect(accessor.writeDocument({ path: `${base}resource` }, data, metadata))
+        .rejects.toThrow('rename error');
+      expect(renameSpy).toHaveBeenCalledTimes(1);
+      expect(removeSpy).toHaveBeenCalledTimes(2);
+      expect(cache.data.resource).toBeUndefined();
+      expect(Object.keys(cache.data).filter((name): boolean => name.startsWith('.tmp-'))).toHaveLength(0);
     });
 
     it('deletes the metadata file if something went wrong writing the file.', async(): Promise<void> => {

@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import type { Stats } from 'fs-extra';
-import { createReadStream, createWriteStream, ensureDir, lstat, opendir, remove, stat } from 'fs-extra';
+import { createReadStream, createWriteStream, ensureDir, lstat, opendir, remove, rename, stat } from 'fs-extra';
 import type { Representation } from '../../http/representation/Representation';
 import { RepresentationMetadata } from '../../http/representation/RepresentationMetadata';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
@@ -379,11 +380,39 @@ export class FileDataAccessor implements DataAccessor {
 
   /**
    * Helper function without extra validation checking to create a data file.
+   * Streams to a temporary file in the same folder and only renames it to the requested path on success,
+   * so an interrupted write can never leave a partial file at the destination.
+   * The temporary name ends with the metadata suffix
+   * so a leftover file is never interpreted as a resource by a {@link FileIdentifierMapper}.
    *
    * @param path - The filepath of the file to be created.
    * @param data - The data to be put in the file.
    */
   protected async writeDataFile(path: string, data: Readable): Promise<void> {
+    // The temporary file needs to be in the same folder to guarantee the rename call does not cross devices
+    const folder = path.slice(0, path.lastIndexOf('/') + 1);
+    const tempFilePath = joinFilePath(folder, `.tmp-${randomUUID()}.meta`);
+    try {
+      await this.streamToFile(tempFilePath, data);
+      await rename(tempFilePath, path);
+    } catch (error: unknown) {
+      // Only log a cleanup failure since the error that interrupted the write is more relevant to the caller
+      try {
+        await remove(tempFilePath);
+      } catch (removeError: unknown) {
+        this.logger.warn(`Unable to remove temporary file ${tempFilePath}: ${createErrorMessage(removeError)}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Helper function that streams the given data directly to the given file location.
+   *
+   * @param path - The filepath of the file to be created.
+   * @param data - The data to be put in the file.
+   */
+  protected async streamToFile(path: string, data: Readable): Promise<void> {
     return new Promise((resolve, reject): void => {
       const writeStream = createWriteStream(path);
       data.pipe(writeStream);

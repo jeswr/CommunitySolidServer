@@ -38,7 +38,8 @@ export class AtomicFileDataAccessor extends FileDataAccessor implements AtomicDa
     const tempFilePath = joinFilePath(this.tempFilePath, `temp-${randomUUID()}.txt`);
 
     try {
-      await this.writeDataFile(tempFilePath, data);
+      // The target is already a temporary file, so the extra temporary file of `writeDataFile` is not needed
+      await this.streamToFile(tempFilePath, data);
 
       // Check if we already have a corresponding file with a different extension
       await this.verifyExistingExtension(link);
