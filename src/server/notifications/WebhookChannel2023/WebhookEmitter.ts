@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import fetch from 'cross-fetch';
 import { calculateJwkThumbprint, importJWK, SignJWT } from 'jose';
-import type { JwkGenerator } from '../../../identity/configuration/JwkGenerator';
+import type { KeyLike } from 'jose';
+import type { AlgJwk, JwkGenerator } from '../../../identity/configuration/JwkGenerator';
 import type { InteractionRoute } from '../../../identity/interaction/routing/InteractionRoute';
 import { getLoggerFor } from '../../../logging/LogUtil';
 import { NotImplementedHttpError } from '../../../util/errors/NotImplementedHttpError';
@@ -11,6 +12,16 @@ import type { NotificationEmitterInput } from '../NotificationEmitter';
 import { NotificationEmitter } from '../NotificationEmitter';
 import type { WebhookChannel2023 } from './WebhookChannel2023Type';
 import { isWebhook2023Channel } from './WebhookChannel2023Type';
+
+/**
+ * The cryptographic material needed to sign the DPoP token and proof of a webhook notification.
+ */
+interface WebhookSigningMaterial {
+  alg: AlgJwk['alg'];
+  publicKey: AlgJwk;
+  privateKeyObject: KeyLike | Uint8Array;
+  thumbprint: string;
+}
 
 /**
  * Emits a notification representation using the WebhookChannel2023 specification.
@@ -31,12 +42,32 @@ export class WebhookEmitter extends NotificationEmitter {
   private readonly jwkGenerator: JwkGenerator;
   private readonly expiration: number;
 
+  private signingMaterial?: WebhookSigningMaterial;
+
   public constructor(baseUrl: string, webIdRoute: InteractionRoute, jwkGenerator: JwkGenerator, expiration = 20) {
     super();
     this.issuer = trimTrailingSlashes(baseUrl);
     this.webId = webIdRoute.getPath();
     this.jwkGenerator = jwkGenerator;
     this.expiration = expiration * 60;
+  }
+
+  /**
+   * Imports the signing key and calculates its thumbprint.
+   * The {@link JwkGenerator} keys never change, so the result is cached after the first call.
+   */
+  private async getSigningMaterial(): Promise<WebhookSigningMaterial> {
+    if (!this.signingMaterial) {
+      const privateKey = await this.jwkGenerator.getPrivateKey();
+      const publicKey = await this.jwkGenerator.getPublicKey();
+      this.signingMaterial = {
+        alg: privateKey.alg,
+        publicKey,
+        privateKeyObject: await importJWK(privateKey),
+        thumbprint: await calculateJwkThumbprint(publicKey, 'sha256'),
+      };
+    }
+    return this.signingMaterial;
   }
 
   public async canHandle({ channel }: NotificationEmitterInput): Promise<void> {
@@ -50,11 +81,7 @@ export class WebhookEmitter extends NotificationEmitter {
     const webhookChannel = channel as WebhookChannel2023;
     this.logger.debug(`Emitting Webhook notification with target ${webhookChannel.sendTo}`);
 
-    const privateKey = await this.jwkGenerator.getPrivateKey();
-    const publicKey = await this.jwkGenerator.getPublicKey();
-
-    const privateKeyObject = await importJWK(privateKey);
-    const keyThumbprint = await calculateJwkThumbprint(publicKey, 'sha256');
+    const { alg, publicKey, privateKeyObject, thumbprint: keyThumbprint } = await this.getSigningMaterial();
 
     // Make sure both header and proof have the same timestamp
     const time = Math.floor(Date.now() / 1000);
@@ -69,7 +96,7 @@ export class WebhookEmitter extends NotificationEmitter {
       cnf: {
         jkt: keyThumbprint,
       },
-    }).setProtectedHeader({ alg: privateKey.alg, kid: keyThumbprint })
+    }).setProtectedHeader({ alg, kid: keyThumbprint })
       .setIssuedAt(time)
       .setExpirationTime(time + this.expiration)
       .setAudience([ this.webId, 'solid' ])
@@ -81,7 +108,7 @@ export class WebhookEmitter extends NotificationEmitter {
     const dpopProof = await new SignJWT({
       htu: webhookChannel.sendTo,
       htm: 'POST',
-    }).setProtectedHeader({ alg: privateKey.alg, jwk: publicKey, typ: 'dpop+jwt' })
+    }).setProtectedHeader({ alg, jwk: publicKey, typ: 'dpop+jwt' })
       .setIssuedAt(time)
       .setJti(randomUUID())
       .sign(privateKeyObject);
