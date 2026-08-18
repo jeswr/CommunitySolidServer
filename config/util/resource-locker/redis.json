@@ -16,7 +16,7 @@
       "@type": "SequenceHandler",
       "handlers": [
         {
-          "comment": "Makes sure the RedisLocker starts with a clean slate when the application is started.",
+          "comment": "Makes sure the RedisLocker starts with a clean slate when the application is started, if clearLocksOnStart is enabled.",
           "@type": "InitializableHandler",
           "initializable": { "@id": "urn:solid-server:default:RedisLocker" }
         }
