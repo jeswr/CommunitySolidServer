@@ -141,6 +141,14 @@ export class V6MigrationInitializer extends Initializer {
 
     // Ask the user for confirmation
     if (!this.skipConfirmation) {
+      // Without a TTY the prompt below would wait forever for input that can never arrive.
+      if (!process.stdin.isTTY) {
+        throw new Error([
+          'A v6 data migration is required, but no TTY is available to ask for confirmation.',
+          'Either start the server interactively to confirm the migration,',
+          'or start it with the --confirmMigration flag to migrate without confirmation.',
+        ].join(' '));
+      }
       const readline = createInterface({ input: process.stdin, output: process.stdout });
       const answer = await new Promise<string>((resolve): void => {
         readline.question([
