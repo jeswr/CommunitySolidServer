@@ -1,10 +1,9 @@
 import type { DuplexOptions, ReadableOptions, Writable } from 'node:stream';
-import { Readable, Transform } from 'node:stream';
+import { finished, Readable, Transform } from 'node:stream';
 import { promisify } from 'node:util';
 import arrayifyStream from 'arrayify-stream';
 import eos from 'end-of-stream';
 import { Store } from 'n3';
-import pump from 'pump';
 import { getLoggerFor } from '../logging/LogUtil';
 import { isHttpRequest } from '../server/HttpRequest';
 import { InternalServerError } from './errors/InternalServerError';
@@ -96,7 +95,7 @@ export function pipeSafely<T extends Writable>(
 ): Guarded<T> {
   // We never want to closes the incoming HttpRequest if there is an error
   // since that also closes the outgoing HttpResponse.
-  // Since `pump` sends stream errors both up and down the pipe chain,
+  // Bidirectional piping (see below) would send stream errors both up and down the pipe chain,
   // in this case we need to make sure the error only goes down the chain.
   if (isHttpRequest(readable)) {
     readable.pipe(destination);
@@ -109,9 +108,30 @@ export function pipeSafely<T extends Writable>(
       destination.destroy(mapError ? mapError(error) : error);
     });
   } else {
-    // In case the input readable is guarded, it will no longer log errors since `pump` attaches a new error listener
-    pump(readable, destination, (error): void => {
+    // Pipe the streams and, when either one finishes or errors, destroy the other one as well.
+    // The streams are deliberately destroyed without an error: `stream.pipeline` would destroy
+    // the destination with the original error, emitting it before it can be mapped with `mapError` below.
+    let error: Error | undefined;
+
+    // The readable is the source: only its readable side matters.
+    // `finished` also attaches an error listener, so a guarded input readable no longer logs errors itself.
+    finished(readable, { readable: true, writable: false }, (err): void => {
+      if (err) {
+        error = err;
+        // Destroy the destination without an error; the error is (re-)emitted below instead.
+        destination.destroy();
+      }
+    });
+
+    // The destination is the final stream, so it determines when the piping is done.
+    finished(destination, { readable: false, writable: true }, (err): void => {
+      if (err && !error) {
+        error = err;
+      }
       if (error) {
+        // Destroy the source so it stops producing data now that the destination is gone.
+        (readable as Readable).destroy();
+
         const msg = `Piped stream errored with ${error.message}`;
         logger.log(safeErrors.has(error.message) ? 'debug' : 'warn', msg);
 
@@ -119,8 +139,10 @@ export function pipeSafely<T extends Writable>(
         destination.emit('error', mapError ? mapError(error) : error);
       }
     });
+
+    readable.pipe(destination);
   }
-  // Guarding the stream now means the internal error listeners of pump will be ignored
+  // Guarding the stream now means the internal error listeners attached above will be ignored
   // when checking if there is a valid error listener.
   return guardStream(destination);
 }

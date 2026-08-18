@@ -1,6 +1,5 @@
 import { posix, win32 } from 'node:path';
 import { readJson } from 'fs-extra';
-import urljoin from 'url-join';
 import type { TargetExtractor } from '../http/input/identifier/TargetExtractor';
 import type { ResourceIdentifier } from '../http/representation/ResourceIdentifier';
 import type { HttpRequest } from '../server/HttpRequest';
@@ -334,5 +333,70 @@ export async function readPackageJson(): Promise<Record<string, Json>> {
 /**
  * Concatenates all the given strings into a normalized URL.
  * Will place slashes between input strings if necessary.
+ *
+ * @param parts - The strings to concatenate into a URL.
+ *
+ * @returns The normalized URL.
  */
-export const joinUrl = urljoin;
+export function joinUrl(...parts: string[]): string {
+  if (parts.length === 0) {
+    return '';
+  }
+
+  // Copy the input since the entries below are potentially modified.
+  const segments = [ ...parts ];
+
+  // Some call sites pass values that are typed as `string` but can be `undefined` at runtime,
+  // such as the URL of a request that has none.
+  if (typeof (segments[0] as unknown) !== 'string') {
+    throw new TypeError(`Url must be a string. Received ${segments[0]}`);
+  }
+
+  // If the first part is a plain protocol (such as `http://`), combine it with the next part.
+  if (/^[^/:]+:\/*$/u.test(segments[0]) && segments.length > 1) {
+    const first = segments.shift()!;
+    segments[0] = first + segments[0];
+  }
+
+  // There must be three slashes in the file protocol, two slashes in anything else.
+  if (segments[0].startsWith('file:///')) {
+    segments[0] = segments[0].replace(/^([^/:]+):\/*/u, '$1:///');
+  } else {
+    segments[0] = segments[0].replace(/^([^/:]+):\/*/u, '$1://');
+  }
+
+  const result: string[] = [];
+  for (const [ i, part ] of segments.entries()) {
+    if (typeof (part as unknown) !== 'string') {
+      throw new TypeError(`Url must be a string. Received ${part}`);
+    }
+    // Empty components do not contribute to the result.
+    if (part === '') {
+      continue;
+    }
+    let component = part;
+    if (i > 0) {
+      // Remove the leading slashes of every component but the first.
+      component = component.replace(/^\/+/u, '');
+    }
+    if (i < segments.length - 1) {
+      // Remove the trailing slashes of every component but the last.
+      component = component.replace(/\/+$/u, '');
+    } else {
+      // For the last component, collapse multiple trailing slashes into a single one.
+      component = component.replace(/\/+$/u, '/');
+    }
+    result.push(component);
+  }
+
+  // Each component is now separated by a single slash, except the possible leading plain protocol.
+  let str = result.join('/');
+  // Remove a trailing slash before the query/hash separators.
+  str = str.replaceAll(/\/(\?|&|#[^!])/gu, '$1');
+
+  // Replace any additional `?` in the parameters with `&`.
+  const queryParts = str.split('?');
+  str = queryParts.shift()! + (queryParts.length > 0 ? '?' : '') + queryParts.join('&');
+
+  return str;
+}

@@ -1,7 +1,7 @@
 #!/usr/bin/env ts-node
 /* eslint-disable no-console */
 import fetch from 'cross-fetch';
-import urljoin from 'url-join';
+import { joinUrl } from '../../src/util/PathUtil';
 
 if (process.argv.length !== 3) {
   throw new Error('Exactly 1 parameter is needed: the server URL.');
@@ -34,7 +34,7 @@ const bob: User = {
  */
 async function register(user: User): Promise<{ webId: string; authorization: string }> {
   // Get controls
-  let res = await fetch(urljoin(baseUrl, '.account/'));
+  let res = await fetch(joinUrl(baseUrl, '.account/'));
   let { controls } = await res.json();
 
   // Create account
@@ -86,7 +86,7 @@ async function register(user: User): Promise<{ webId: string; authorization: str
  * @returns The id/secret for the client credentials request.
  */
 async function createCredentials(webId: string, authorization: string): Promise<{ id: string; secret: string }> {
-  let res = await fetch(urljoin(baseUrl, '.account/'), {
+  let res = await fetch(joinUrl(baseUrl, '.account/'), {
     headers: { authorization },
   });
   const { controls } = await res.json();
