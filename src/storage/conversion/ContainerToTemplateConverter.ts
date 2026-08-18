@@ -1,5 +1,4 @@
 import type { Readable } from 'node:stream';
-import orderBy from 'lodash.orderby';
 import type { Quad } from '@rdfjs/types';
 import { BasicRepresentation } from '../../http/representation/BasicRepresentation';
 import type { Representation } from '../../http/representation/Representation';
@@ -74,7 +73,13 @@ export class ContainerToTemplateConverter extends BaseTypedRepresentationConvert
     }));
 
     // Sort the resulting list
-    return orderBy(children, [ 'container', 'identifier' ], [ 'desc', 'asc' ]);
+    return children.sort((left, right): number => {
+      if (left.container !== right.container) {
+        return left.container ? -1 : 1;
+      }
+      // Identifiers are unique so no two entries can be equal.
+      return left.identifier < right.identifier ? -1 : 1;
+    });
   }
 
   /**
