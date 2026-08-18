@@ -11,13 +11,21 @@ import type {
 import type { Interaction } from '../../../../src/identity/interaction/InteractionHandler';
 import type { InteractionRoute } from '../../../../src/identity/interaction/routing/InteractionRoute';
 import type { AdapterFactory } from '../../../../src/identity/storage/AdapterFactory';
+import type { Logger } from '../../../../src/logging/Logger';
+import { getLoggerFor } from '../../../../src/logging/LogUtil';
 import type { KeyValueStorage } from '../../../../src/storage/keyvalue/KeyValueStorage';
 import { extractErrorTerms } from '../../../../src/util/errors/HttpErrorUtil';
 import { OAuthHttpError } from '../../../../src/util/errors/OAuthHttpError';
 import type { Configuration, errors, KoaContextWithOIDC } from '../../../../templates/types/oidc-provider';
 
+jest.mock('../../../../src/logging/LogUtil', (): any => {
+  const logger: Logger = { debug: jest.fn(), error: jest.fn(), info: jest.fn(), warn: jest.fn() } as any;
+  return { getLoggerFor: (): Logger => logger };
+});
+
 jest.mock('oidc-provider', (): any => {
-  const fn = jest.fn((issuer: string, config: Configuration): any => ({ issuer, config, use: jest.fn() }));
+  const fn = jest.fn((issuer: string, config: Configuration): any =>
+    ({ issuer, config, use: jest.fn(), on: jest.fn() }));
   // The base export is the Provider class, but we also need some of the deeper exports like interactionPolicy
   (fn as any).interactionPolicy = jest.requireActual('oidc-provider').interactionPolicy;
   return fn;
@@ -39,6 +47,7 @@ const routes = {
 };
 
 describe('An IdentityProviderFactory', (): void => {
+  const logger: jest.Mocked<Logger> = getLoggerFor('mock') as any;
   let jestWorkerId: string | undefined;
   let nodeEnv: string | undefined;
   let baseConfig: Configuration;
@@ -68,6 +77,8 @@ describe('An IdentityProviderFactory', (): void => {
   });
 
   beforeEach(async(): Promise<void> => {
+    jest.clearAllMocks();
+
     // Disabling devInteractions to prevent warnings when testing the path
     // where we use the actual library instead of a mock.
     baseConfig = { claims: { webid: [ 'webid', 'client_webid' ]}, features: { devInteractions: { enabled: false }}};
@@ -332,6 +343,66 @@ describe('An IdentityProviderFactory', (): void => {
     expect(ctx.accepts('something')).toBe('type');
     expect(oldAccept).toHaveBeenCalledTimes(1);
     expect(oldAccept).toHaveBeenLastCalledWith('something');
+  });
+
+  it('logs the client and account of a successful token grant.', async(): Promise<void> => {
+    const provider = await factory.getProvider();
+    expect(provider.on).toHaveBeenCalledTimes(1);
+    expect(provider.on).toHaveBeenLastCalledWith('grant.success', expect.any(Function));
+    // eslint-disable-next-line jest/unbound-method
+    const listener = jest.mocked(provider.on).mock.calls[0][1] as (ctx: KoaContextWithOIDC) => void;
+
+    const grantCtx = {
+      oidc: {
+        params: { grant_type: 'authorization_code' },
+        entities: {
+          Client: { clientId: 'clientId' },
+          Account: { accountId: webId },
+        },
+      },
+    } as any;
+    listener(grantCtx);
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenLastCalledWith(
+      `Issued authorization_code token for client clientId and account ${webId}`,
+    );
+  });
+
+  it('logs successful token grants without an account entity.', async(): Promise<void> => {
+    const provider = await factory.getProvider();
+    expect(provider.on).toHaveBeenCalledTimes(1);
+    // eslint-disable-next-line jest/unbound-method
+    const listener = jest.mocked(provider.on).mock.calls[0][1] as (ctx: KoaContextWithOIDC) => void;
+
+    const grantCtx = {
+      oidc: {
+        params: { grant_type: 'client_credentials' },
+        entities: {
+          Client: { clientId: 'token_123' },
+        },
+      },
+    } as any;
+    listener(grantCtx);
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenLastCalledWith('Issued client_credentials token for client token_123');
+  });
+
+  it('falls back to the access token account when logging grants with missing entities.', async(): Promise<void> => {
+    const provider = await factory.getProvider();
+    expect(provider.on).toHaveBeenCalledTimes(1);
+    // eslint-disable-next-line jest/unbound-method
+    const listener = jest.mocked(provider.on).mock.calls[0][1] as (ctx: KoaContextWithOIDC) => void;
+
+    const grantCtx = {
+      oidc: {
+        entities: {
+          AccessToken: { accountId: webId },
+        },
+      },
+    } as any;
+    listener(grantCtx);
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenLastCalledWith(`Issued unknown token for client unknown and account ${webId}`);
   });
 
   it('avoids dynamic imports when testing with Jest.', async(): Promise<void> => {
