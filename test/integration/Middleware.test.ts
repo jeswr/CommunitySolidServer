@@ -61,6 +61,15 @@ describe('An http server with middleware', (): void => {
     }));
   });
 
+  it('sets hardening headers against sniffing, framing and referrer leakage.', async(): Promise<void> => {
+    const res = await request(server).get('/');
+    expect(res.header).toEqual(expect.objectContaining({
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer',
+      'x-frame-options': 'DENY',
+    }));
+  });
+
   it('returns all relevant headers for an OPTIONS request.', async(): Promise<void> => {
     const res = await request(server)
       .options('/')
