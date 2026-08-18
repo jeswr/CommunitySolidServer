@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const { RepresentationMetadata } = require('../../dist/http/representation/RepresentationMetadata');
 const { DataAccessorBasedStore } = require('../../dist/storage/DataAccessorBasedStore');
-const { DC, LDP, POSIX, RDF } = require('../../dist/util/Vocabularies');
+const { DC, LDP, POSIX, RDF, SOLID_META, XSD } = require('../../dist/util/Vocabularies');
 
 const container = { path: 'http://example.com/large/' };
 const childCount = 15_000;
@@ -43,7 +43,9 @@ let peakHeap = process.memoryUsage().heapUsed;
 
 async function drainListing() {
   const representation = await store.getRepresentation(container);
-  assert.equal(representation.metadata.getAll(LDP.terms.contains).length, 1);
+  const empty = representation.metadata.get(SOLID_META.terms.containerEmpty, SOLID_META.terms.ResponseMetadata);
+  assert.equal(empty.value, 'false');
+  assert.equal(empty.datatype.value, XSD.boolean);
   let quadCount = 0;
   for await (const quad of representation.data) {
     assert.equal(quad.termType, 'Quad');
