@@ -82,6 +82,7 @@ nav:
       - Tests: features/test.md
   - Usage:
       - Starting the server: usage/starting-server.md
+      - Production deployment: usage/production-deployment.md
       - Example request: usage/example-requests.md
       - Metadata: usage/metadata.md
       - Identity provider:
