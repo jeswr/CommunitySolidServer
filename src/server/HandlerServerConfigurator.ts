@@ -1,6 +1,7 @@
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { getLoggerFor } from '../logging/LogUtil';
 import { isError } from '../util/errors/ErrorUtil';
+import { HttpError } from '../util/errors/HttpError';
 import { guardStream } from '../util/GuardedStream';
 import type { HttpHandler } from './HttpHandler';
 import { ServerConfigurator } from './ServerConfigurator';
@@ -26,6 +27,10 @@ export class HandlerServerConfigurator extends ServerConfigurator {
     super();
     this.handler = handler;
     this.showStackTrace = showStackTrace;
+    if (showStackTrace) {
+      // Stack traces need to be captured if they are going to be shown
+      HttpError.captureStackTraces = true;
+    }
   }
 
   public async handle(server: Server): Promise<void> {
