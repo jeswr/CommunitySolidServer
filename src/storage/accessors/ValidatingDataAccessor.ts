@@ -4,6 +4,8 @@ import { BasicRepresentation } from '../../http/representation/BasicRepresentati
 import type { RepresentationMetadata } from '../../http/representation/RepresentationMetadata';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
 import type { Guarded } from '../../util/GuardedStream';
+import { serializeQuads } from '../../util/QuadUtil';
+import { readableToString } from '../../util/StreamUtil';
 import type { DataAccessor } from './DataAccessor';
 import { PassthroughDataAccessor } from './PassthroughDataAccessor';
 
@@ -36,5 +38,15 @@ export class ValidatingDataAccessor extends PassthroughDataAccessor {
     // of which we can't calculate the disk size of at this point in the code.
     // Extra info can be found here: https://github.com/CommunitySolidServer/CommunitySolidServer/pull/973#discussion_r723376888
     return this.accessor.writeContainer(identifier, metadata);
+  }
+
+  public async writeMetadata(identifier: ResourceIdentifier, metadata: RepresentationMetadata): Promise<void> {
+    const pipedRep = await this.validator.handleSafe({
+      representation: new BasicRepresentation(serializeQuads(metadata.quads()), metadata),
+      identifier,
+    });
+    // Validation only happens while the stream is being consumed, so it has to be drained fully.
+    await readableToString(pipedRep.data);
+    return this.accessor.writeMetadata(identifier, metadata);
   }
 }
