@@ -47,8 +47,8 @@ export async function retryFunction<T>(fn: () => Promise<T>, settings: Required<
     tries += 1;
   }
 
-  // Max tries was reached: throw first!
-  if (tries >= maxTries) {
+  // Max tries was reached without a result
+  if (typeof result === 'undefined') {
     const err = `The operation did not succeed after the set maximum of tries (${maxTries}).`;
     logger.warn(err);
     throw new InternalServerError(err);
