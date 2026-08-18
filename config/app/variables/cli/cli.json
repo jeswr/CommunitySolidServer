@@ -129,6 +129,23 @@
             "type": "boolean",
             "describe": "Skips the confirmation prompts during migration from older versions."
           }
+        },
+        {
+          "@type": "YargsParameter",
+          "name": "redisUrl",
+          "options": {
+            "requiresArg": true,
+            "type": "string",
+            "describe": "Redis connection (host:port or redis:// URL). Only applies when using a Redis-based locker config."
+          }
+        },
+        {
+          "@type": "YargsParameter",
+          "name": "redisNamespace",
+          "options": {
+            "type": "string",
+            "describe": "Key namespace prefix for this deployment's locks. Only applies when using a Redis-based locker config."
+          }
         }
       ],
       "options": {
