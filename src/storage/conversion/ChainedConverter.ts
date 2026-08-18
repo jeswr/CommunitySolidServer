@@ -3,8 +3,10 @@ import type { Representation } from '../../http/representation/Representation';
 import { RepresentationMetadata } from '../../http/representation/RepresentationMetadata';
 import type { ValuePreferences } from '../../http/representation/RepresentationPreferences';
 import { getLoggerFor } from '../../logging/LogUtil';
+import { APPLICATION_JSON } from '../../util/ContentTypes';
 import { BadRequestHttpError } from '../../util/errors/BadRequestHttpError';
 import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpError';
+import { isContainerPath } from '../../util/PathUtil';
 import { POSIX } from '../../util/Vocabularies';
 import { cleanPreferences, getBestPreference, getTypeWeight, preferencesToString } from './ConversionUtil';
 import type { RepresentationConverterArgs } from './RepresentationConverter';
@@ -49,6 +51,12 @@ type ConversionPath = {
 };
 
 /**
+ * The maximum number of conversion paths that are cached by a {@link ChainedConverter},
+ * preventing clients from growing the cache unbounded by sending many distinct `Accept` headers.
+ */
+const MAX_PATH_CACHE_SIZE = 1000;
+
+/**
  * A meta converter that takes an array of other converters as input.
  * It chains these converters by finding a path of converters
  * that can go from the given content-type to the given type preferences.
@@ -75,12 +83,18 @@ export class ChainedConverter extends RepresentationConverter {
 
   private readonly converters: TypedRepresentationConverter[];
 
+  /**
+   * Caches computed conversion paths, keyed by the inputs that determine which path gets selected.
+   */
+  private readonly pathCache: Map<string, ConversionPath>;
+
   public constructor(converters: TypedRepresentationConverter[]) {
     super();
     if (converters.length === 0) {
       throw new Error('At least 1 converter is required.');
     }
     this.converters = [ ...converters ];
+    this.pathCache = new Map<string, ConversionPath>();
   }
 
   public async canHandle(input: RepresentationConverterArgs): Promise<void> {
@@ -115,10 +129,41 @@ export class ChainedConverter extends RepresentationConverter {
    * Finds a conversion path that can handle the given input.
    */
   private async findPath(input: RepresentationConverterArgs): Promise<ConversionPath> {
-    const type = input.representation.metadata.contentType!;
+    const { metadata } = input.representation;
+    const type = metadata.contentType!;
     const preferences = cleanPreferences(input.preferences.type);
 
-    return this.generatePath(type, preferences, input.representation.metadata);
+    // The path for `application/json` input can depend on metadata not covered by the cache key.
+    if (type === APPLICATION_JSON) {
+      return this.generatePath(type, preferences, metadata);
+    }
+
+    const key = this.getPathCacheKey(type, preferences, metadata);
+    const cached = this.pathCache.get(key);
+    if (cached) {
+      return cached;
+    }
+
+    const path = await this.generatePath(type, preferences, metadata);
+
+    if (this.pathCache.size >= MAX_PATH_CACHE_SIZE) {
+      this.pathCache.clear();
+    }
+    this.pathCache.set(key, path);
+    return path;
+  }
+
+  /**
+   * Generates the cache key for the given inputs.
+   * Every input that can influence which path the search selects has to be part of the key.
+   */
+  private getPathCacheKey(inType: string, outPreferences: ValuePreferences, metadata: RepresentationMetadata): string {
+    const isContainer = isContainerPath(metadata.identifier.value);
+    // Sort the preference entries so the key is independent of object key order.
+    const prefKey = Object.keys(outPreferences).sort()
+      .map((preference): string => `${preference}=${outPreferences[preference]}`)
+      .join(';');
+    return `${inType} ${isContainer} ${prefKey}`;
   }
 
   /**

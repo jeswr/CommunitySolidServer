@@ -241,4 +241,95 @@ describe('A ChainedConverter', (): void => {
     await expect(converter.handle(args)).rejects
       .toThrow('No conversion path could be made from a/a to x/x:1,x/*:0.8,internal/*:0.');
   });
+
+  it('computes the path once for identical inputs and reuses it.', async(): Promise<void> => {
+    const converters = [ new DummyConverter({ 'a/a': 1 }, { 'x/x': 1 }) ];
+    const converter = new ChainedConverter(converters);
+    // `getOutputTypes` is only called during the path search, so its call count shows whether the search ran.
+    const searchSpy = jest.spyOn(converters[0], 'getOutputTypes');
+
+    const first = await converter.handle(args);
+    expect(first.metadata.contentType).toBe('x/x');
+    const callsAfterFirst = searchSpy.mock.calls.length;
+    expect(callsAfterFirst).toBeGreaterThan(0);
+
+    const second = await converter.handle(args);
+    expect(second.metadata.contentType).toBe('x/x');
+    expect(searchSpy.mock.calls).toHaveLength(callsAfterFirst);
+  });
+
+  it('computes distinct paths for different inputs.', async(): Promise<void> => {
+    const converters = [ new DummyConverter({ 'a/a': 1 }, { 'x/x': 1, 'y/y': 1 }) ];
+    const converter = new ChainedConverter(converters);
+    const searchSpy = jest.spyOn(converters[0], 'getOutputTypes');
+
+    args.preferences.type = { 'x/x': 1 };
+    const first = await converter.handle(args);
+    expect(first.metadata.contentType).toBe('x/x');
+    const callsAfterFirst = searchSpy.mock.calls.length;
+
+    args.preferences.type = { 'y/y': 1 };
+    const second = await converter.handle(args);
+    expect(second.metadata.contentType).toBe('y/y');
+    expect(searchSpy.mock.calls.length).toBeGreaterThan(callsAfterFirst);
+  });
+
+  it('uses distinct cache entries for containers and documents.', async(): Promise<void> => {
+    const converters = [ new DummyConverter({ 'a/a': 1 }, { 'x/x': 1 }) ];
+    const converter = new ChainedConverter(converters);
+    const searchSpy = jest.spyOn(converters[0], 'getOutputTypes');
+
+    const documentMetadata = new RepresentationMetadata({ path: 'http://example.com/foo' }, 'a/a');
+    args.representation = { metadata: documentMetadata } as Representation;
+    await converter.handle(args);
+    const callsAfterDocument = searchSpy.mock.calls.length;
+    expect(callsAfterDocument).toBeGreaterThan(0);
+
+    const containerMetadata = new RepresentationMetadata({ path: 'http://example.com/foo/' }, 'a/a');
+    args.representation = { metadata: containerMetadata } as Representation;
+    await converter.handle(args);
+    expect(searchSpy.mock.calls.length).toBeGreaterThan(callsAfterDocument);
+  });
+
+  it('never caches the path for metadata-dependent application/json inputs.', async(): Promise<void> => {
+    const converters = [ new DummyConverter({ 'application/json': 1 }, { 'x/x': 1 }) ];
+    const converter = new ChainedConverter(converters);
+    const searchSpy = jest.spyOn(converters[0], 'getOutputTypes');
+
+    args.representation.metadata.contentType = 'application/json';
+    args.preferences.type = { 'x/x': 1 };
+
+    const first = await converter.handle(args);
+    expect(first.metadata.contentType).toBe('x/x');
+    const callsAfterFirst = searchSpy.mock.calls.length;
+
+    const second = await converter.handle(args);
+    expect(second.metadata.contentType).toBe('x/x');
+    expect(searchSpy.mock.calls.length).toBeGreaterThan(callsAfterFirst);
+  });
+
+  it('resets the bounded cache once the maximum number of entries is reached.', async(): Promise<void> => {
+    // Keep in sync with `MAX_PATH_CACHE_SIZE` in ChainedConverter.
+    const maxCacheSize = 1000;
+    const converters = [ new DummyConverter({ 'a/a': 1 }, { 'x/x': 1 }) ];
+    const converter = new ChainedConverter(converters);
+    const searchSpy = jest.spyOn(converters[0], 'getOutputTypes');
+
+    // Cache a specific path.
+    args.representation.metadata.contentType = 'a/a';
+    args.preferences.type = { 'x/x': 1 };
+    await converter.handle(args);
+
+    // Fill the cache with distinct (still resolvable) preference sets until it overflows and resets.
+    for (let i = 0; i < maxCacheSize; ++i) {
+      args.preferences.type = { 'x/x': 1, [`z${i}/z`]: 0.1 };
+      await converter.handle(args);
+    }
+
+    // The original entry was evicted by the reset, so the same request recomputes its path.
+    args.preferences.type = { 'x/x': 1 };
+    const callsBeforeRecompute = searchSpy.mock.calls.length;
+    await converter.handle(args);
+    expect(searchSpy.mock.calls.length).toBeGreaterThan(callsBeforeRecompute);
+  });
 });
