@@ -72,6 +72,7 @@ describe('An http server with middleware', (): void => {
     expect(res.header).toEqual(expect.objectContaining({
       'access-control-allow-origin': '*',
       'access-control-allow-headers': 'content-type',
+      'access-control-max-age': '3600',
       'x-powered-by': 'Community Solid Server',
     }));
     const { vary } = res.header;
