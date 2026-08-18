@@ -8,6 +8,7 @@ import { BaseTypedRepresentationConverter } from '../../../../src/storage/conver
 import { ChainedConverter } from '../../../../src/storage/conversion/ChainedConverter';
 import { matchesMediaType } from '../../../../src/storage/conversion/ConversionUtil';
 import type { RepresentationConverterArgs } from '../../../../src/storage/conversion/RepresentationConverter';
+import { isContainerIdentifier } from '../../../../src/util/PathUtil';
 import { CONTENT_TYPE, POSIX } from '../../../../src/util/Vocabularies';
 
 class DummyConverter extends BaseTypedRepresentationConverter {
@@ -39,6 +40,16 @@ class DummyConverter extends BaseTypedRepresentationConverter {
       { [CONTENT_TYPE]: outType },
     );
     return { ...input.representation, metadata };
+  }
+}
+
+// Simulates a converter such as `ContainerToTemplateConverter` whose `canHandle` depends on the identifier.
+class ContainerOnlyConverter extends DummyConverter {
+  public async canHandle(input: RepresentationConverterArgs): Promise<void> {
+    if (!isContainerIdentifier(input.identifier)) {
+      throw new Error('Only container identifiers are supported.');
+    }
+    await super.canHandle(input);
   }
 }
 
@@ -240,5 +251,102 @@ describe('A ChainedConverter', (): void => {
 
     await expect(converter.handle(args)).rejects
       .toThrow('No conversion path could be made from a/a to x/x:1,x/*:0.8,internal/*:0.');
+  });
+
+  it('computes the conversion path on a cold call and reuses it on identical calls.', async(): Promise<void> => {
+    const converters = [ new DummyConverter({ 'a/a': 1 }, { 'x/x': 1 }) ];
+    const converter = new ChainedConverter(converters);
+    const searchSpy = jest.spyOn(converters[0], 'getOutputTypes');
+
+    const first = await converter.handle(args);
+    expect(first.metadata.contentType).toBe('x/x');
+    const coldCalls = searchSpy.mock.calls.length;
+    expect(coldCalls).toBeGreaterThan(0);
+
+    const second = await converter.handle(args);
+    expect(second.metadata.contentType).toBe('x/x');
+    // The warm call reuses the cached path, so no additional path search happens.
+    expect(searchSpy).toHaveBeenCalledTimes(coldCalls);
+  });
+
+  it('searches again and returns the correct path when the input content type differs.', async(): Promise<void> => {
+    const converters = [
+      new DummyConverter({ 'a/a': 1 }, { 'x/x': 1 }),
+      new DummyConverter({ 'b/b': 1 }, { 'y/y': 1 }),
+    ];
+    const converter = new ChainedConverter(converters);
+    args.preferences.type = { 'x/x': 1, 'y/y': 1 };
+
+    args.representation.metadata.contentType = 'a/a';
+    expect((await converter.handle(args)).metadata.contentType).toBe('x/x');
+
+    args.representation.metadata.contentType = 'b/b';
+    expect((await converter.handle(args)).metadata.contentType).toBe('y/y');
+  });
+
+  it('searches again and returns the correct path when the output preferences differ.', async(): Promise<void> => {
+    const converters = [ new DummyConverter({ 'a/a': 1 }, { 'x/x': 1, 'y/y': 1 }) ];
+    const converter = new ChainedConverter(converters);
+    args.representation.metadata.contentType = 'a/a';
+
+    args.preferences.type = { 'x/x': 1, 'y/y': 0.5 };
+    expect((await converter.handle(args)).metadata.contentType).toBe('x/x');
+
+    // Same input type but different preferences must not reuse the cached x/x path.
+    args.preferences.type = { 'x/x': 0.5, 'y/y': 1 };
+    expect((await converter.handle(args)).metadata.contentType).toBe('y/y');
+  });
+
+  it('caches container and non-container identifiers as separate paths.', async(): Promise<void> => {
+    const converters = [
+      new DummyConverter({ 'a/a': 1 }, { 'x/x': 1 }),
+      new ContainerOnlyConverter({ 'a/a': 1 }, { 'y/y': 1 }),
+    ];
+    const converter = new ChainedConverter(converters);
+    args.preferences.type = { 'x/x': 0.5, 'y/y': 1 };
+
+    // A non-container identifier can not use the container-only converter, so only x/x is reachable.
+    args.representation = { metadata: new RepresentationMetadata('a/a') } as Representation;
+    expect((await converter.handle(args)).metadata.contentType).toBe('x/x');
+
+    // A container identifier unlocks the higher-weighted y/y path and must not reuse the cached x/x path.
+    const containerMetadata = new RepresentationMetadata({ path: 'http://example.com/c/' }, 'a/a');
+    args.representation = { metadata: containerMetadata } as Representation;
+    expect((await converter.handle(args)).metadata.contentType).toBe('y/y');
+  });
+
+  it('evicts the least recently used path once the cache is full.', async(): Promise<void> => {
+    const converters = [ new DummyConverter({ 'a/a': 1, 'b/b': 1 }, { 'x/x': 1 }) ];
+    const converter = new ChainedConverter(converters, 1);
+    const searchSpy = jest.spyOn(converters[0], 'getOutputTypes');
+
+    args.representation.metadata.contentType = 'a/a';
+    await converter.handle(args);
+
+    // Caching a second, different key evicts the a/a path since the cache only holds 1 entry.
+    args.representation.metadata.contentType = 'b/b';
+    await converter.handle(args);
+    const callsBeforeReuse = searchSpy.mock.calls.length;
+
+    // The a/a path was evicted, so it must be searched again instead of served from the cache.
+    args.representation.metadata.contentType = 'a/a';
+    expect((await converter.handle(args)).metadata.contentType).toBe('x/x');
+    expect(searchSpy.mock.calls.length).toBeGreaterThan(callsBeforeReuse);
+  });
+
+  it('does not cache impossible conversions.', async(): Promise<void> => {
+    const converters = [ new DummyConverter({ 'a/a': 1 }, { 'x/x': 1 }) ];
+    const converter = new ChainedConverter(converters);
+    const searchSpy = jest.spyOn(converters[0], 'getOutputTypes');
+    args.representation.metadata.contentType = 'b/b';
+
+    await expect(converter.handle(args)).rejects
+      .toThrow('No conversion path could be made from b/b to x/x:1,x/*:0.8,internal/*:0.');
+    const callsAfterFirst = searchSpy.mock.calls.length;
+
+    // The failure is not cached, so a second identical request searches again and still errors.
+    await expect(converter.handle(args)).rejects
+      .toThrow('No conversion path could be made from b/b to x/x:1,x/*:0.8,internal/*:0.');
+    expect(searchSpy.mock.calls.length).toBeGreaterThan(callsAfterFirst);
   });
 });
