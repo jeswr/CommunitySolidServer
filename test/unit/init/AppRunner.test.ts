@@ -67,6 +67,7 @@ const clusterManager: jest.Mocked<ClusterManager> = {
 
 const app: jest.Mocked<App> = {
   start: jest.fn(),
+  stop: jest.fn(),
   clusterManager,
 } as any;
 
@@ -134,6 +135,7 @@ jest.mock(
 jest.spyOn(process, 'cwd').mockReturnValue('/var/cwd');
 const write = jest.spyOn(process.stderr, 'write').mockImplementation(jest.fn());
 const exit = jest.spyOn(process, 'exit').mockImplementation(jest.fn() as any);
+const processOnce = jest.spyOn(process, 'once').mockImplementation(jest.fn() as any);
 
 describe('AppRunner', (): void => {
   beforeEach((): void => {
@@ -773,6 +775,55 @@ describe('AppRunner', (): void => {
       expect(write).toHaveBeenCalledTimes(0);
 
       expect(exit).toHaveBeenCalledTimes(0);
+    });
+
+    it('registers handlers that stop the server when receiving a stop signal.', async(): Promise<void> => {
+      app.stop.mockResolvedValueOnce(undefined);
+      await new AppRunner().runCli([ 'node', 'script' ]);
+
+      expect(processOnce).toHaveBeenCalledTimes(2);
+      expect(processOnce).toHaveBeenNthCalledWith(1, 'SIGINT', expect.any(Function));
+      expect(processOnce).toHaveBeenNthCalledWith(2, 'SIGTERM', expect.any(Function));
+
+      const handler = processOnce.mock.calls[1][1] as () => void;
+      handler();
+      await flushPromises();
+
+      expect(app.stop).toHaveBeenCalledTimes(1);
+      expect(exit).toHaveBeenCalledTimes(1);
+      expect(exit).toHaveBeenLastCalledWith(0);
+    });
+
+    it('exits the process with code 1 if stopping the server errors.', async(): Promise<void> => {
+      app.stop.mockRejectedValueOnce(new Error('halting failure'));
+      await new AppRunner().runCli([ 'node', 'script' ]);
+
+      const handler = processOnce.mock.calls[0][1] as () => void;
+      handler();
+      await flushPromises();
+
+      expect(app.stop).toHaveBeenCalledTimes(1);
+      expect(exit).toHaveBeenCalledTimes(1);
+      expect(exit).toHaveBeenLastCalledWith(1);
+    });
+
+    it('exits the process forcefully if stopping the server times out.', async(): Promise<void> => {
+      // This promise never resolves, simulating a stop call that hangs
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      app.stop.mockReturnValueOnce(new Promise((): void => {}));
+      await new AppRunner().runCli([ 'node', 'script' ]);
+      jest.useFakeTimers();
+
+      const handler = processOnce.mock.calls[1][1] as () => void;
+      handler();
+      expect(app.stop).toHaveBeenCalledTimes(1);
+      expect(exit).toHaveBeenCalledTimes(0);
+
+      jest.advanceTimersByTime(30_000);
+
+      expect(exit).toHaveBeenCalledTimes(1);
+      expect(exit).toHaveBeenLastCalledWith(1);
+      jest.useRealTimers();
     });
   });
 
