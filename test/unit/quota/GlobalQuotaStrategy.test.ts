@@ -34,4 +34,10 @@ describe('GlobalQuotaStrategy', (): void => {
       );
     });
   });
+
+  describe('getQuotaScope()', (): void => {
+    it('should return the server base since quota is shared globally.', async(): Promise<void> => {
+      await expect(strategy.getQuotaScope({ path: 'any/path' })).resolves.toBe(mockBase);
+    });
+  });
 });

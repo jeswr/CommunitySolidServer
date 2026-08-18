@@ -54,6 +54,18 @@ export abstract class QuotaStrategy {
   }
 
   /**
+   * Get the scope within which quota is shared for the given identifier.
+   * Concurrent writes to the same scope compete for the same available space,
+   * so this is used as the key under which space is reserved during a write.
+   *
+   * @param identifier - the identifier of the resource that is being written
+   *
+   * @returns a stable string key identifying the shared-quota scope.
+   * If quota is not relevant for this identifier, an empty string should be returned
+   */
+  public abstract getQuotaScope(identifier: ResourceIdentifier): Promise<string>;
+
+  /**
    * Get the currently used/occupied space.
    *
    * @param identifier - the identifier that should be used to calculate the total

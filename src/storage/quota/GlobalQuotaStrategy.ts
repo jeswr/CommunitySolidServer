@@ -13,6 +13,10 @@ export class GlobalQuotaStrategy extends QuotaStrategy {
     this.base = base;
   }
 
+  public async getQuotaScope(): Promise<string> {
+    return this.base;
+  }
+
   protected async getTotalSpaceUsed(): Promise<Size> {
     return this.reporter.getSize({ path: this.base });
   }
