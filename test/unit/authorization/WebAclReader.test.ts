@@ -217,7 +217,7 @@ describe('A WebAclReader', (): void => {
     ], INTERNAL_QUADS));
 
     compareMaps(await reader.handle(input), new IdentifierMap([[ identifier, { read: true }]]));
-    // Simulates the public permission read of a WAC-Allow header check reusing the same requested modes
+    // Reuse the requested modes as a WAC-Allow permission read would.
     compareMaps(
       await reader.handle({ credentials: {}, requestedModes: accessMap }),
       new IdentifierMap([[ identifier, { read: true }]]),
@@ -234,7 +234,7 @@ describe('A WebAclReader', (): void => {
       quad(nn('auth'), nn(`${rdf}type`), nn(`${acl}Authorization`)),
     ], INTERNAL_QUADS));
     const copy = { path: identifier.path };
-    const copyModes: AccessMap = new IdentifierSetMultiMap([[ copy, AccessMode.read ]]);
+    const copyModes: AccessMap = new IdentifierSetMultiMap<AccessMode>([[ copy, AccessMode.read ]]);
 
     compareMaps(await reader.handle(input), new IdentifierMap([[ identifier, {}]]));
     compareMaps(await reader.handle({ credentials, requestedModes: copyModes }), new IdentifierMap([[ copy, {}]]));
