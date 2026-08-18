@@ -5,6 +5,7 @@ import type { Logger } from '../../../src/logging/Logger';
 import { getLoggerFor } from '../../../src/logging/LogUtil';
 import { isHttpRequest } from '../../../src/server/HttpRequest';
 import {
+  endOfStream,
   getSingleItem,
   guardedStreamFrom,
   pipeSafely,
@@ -26,6 +27,29 @@ jest.mock('../../../src/server/HttpRequest', (): any => ({
 }));
 
 describe('StreamUtil', (): void => {
+  describe('#endOfStream', (): void => {
+    it('resolves when a stream ends.', async(): Promise<void> => {
+      const stream = Readable.from([ 'data' ]);
+      const promise = endOfStream(stream);
+      stream.resume();
+      await expect(promise).resolves.toBeUndefined();
+    });
+
+    it('rejects when a stream errors.', async(): Promise<void> => {
+      const stream = new PassThrough();
+      const promise = endOfStream(stream);
+      stream.destroy(new Error('stream error'));
+      await expect(promise).rejects.toThrow('stream error');
+    });
+
+    it('rejects when a stream is destroyed before ending.', async(): Promise<void> => {
+      const stream = new PassThrough();
+      const promise = endOfStream(stream);
+      stream.destroy();
+      await expect(promise).rejects.toThrow('Premature close');
+    });
+  });
+
   describe('#readableToString', (): void => {
     it('concatenates all elements of a Readable.', async(): Promise<void> => {
       const stream = Readable.from([ 'a', 'b', 'c' ]);
@@ -124,6 +148,21 @@ describe('StreamUtil', (): void => {
         'debug',
         'Piped stream errored with Cannot call write after a stream was destroyed',
       );
+    });
+
+    it('logs Node.js premature close errors as debug.', async(): Promise<void> => {
+      const input = Readable.from([ 'data' ]);
+      input.read = (): any => {
+        const error = new Error('Premature close') as NodeJS.ErrnoException;
+        error.code = 'ERR_STREAM_PREMATURE_CLOSE';
+        input.emit('error', error);
+        return null;
+      };
+      const output = new PassThrough();
+      const piped = pipeSafely(input, output);
+      await expect(readableToString(piped)).rejects.toThrow('Premature close');
+      expect(logger.log).toHaveBeenCalledTimes(1);
+      expect(logger.log).toHaveBeenLastCalledWith('debug', 'Piped stream errored with Premature close');
     });
 
     it('destroys the source stream in case the destinations becomes unpiped.', async(): Promise<void> => {
