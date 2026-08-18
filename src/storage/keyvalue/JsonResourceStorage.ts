@@ -84,17 +84,9 @@ export class JsonResourceStorage<T> implements KeyValueStorage<string, T> {
     const representation = await this.safelyGetResource(identifier);
     if (representation) {
       if (isContainerIdentifier(identifier)) {
-        // The containment list lives in the (streamed) quad body, not the metadata, so read the
-        // `ldp:contains` objects from the body. O(children) time and O(children) memory (member list only).
-        // Draining the stream also releases the container read lock before we recurse into the members.
-        const members: string[] = [];
-        for await (const quad of representation.data as AsyncIterable<Quad>) {
-          if (quad.predicate.equals(LDP.terms.contains)) {
-            members.push(quad.object.value);
-          }
-        }
-        for (const path of members) {
-          yield* this.getResourceEntries({ path });
+        const members = await this.getContainedResourceIdentifiers(identifier, representation);
+        for (const member of members) {
+          yield* this.getResourceEntries(member);
         }
       } else {
         try {
@@ -107,6 +99,24 @@ export class JsonResourceStorage<T> implements KeyValueStorage<string, T> {
         }
       }
     }
+  }
+
+  /**
+   * Reads direct members from a streamed container representation. The stream is fully drained so
+   * its read lock is released before callers acquire locks for the contained resources.
+   */
+  protected async getContainedResourceIdentifiers(
+    identifier: ResourceIdentifier,
+    representation: Representation,
+  ): Promise<ResourceIdentifier[]> {
+    const members: ResourceIdentifier[] = [];
+    for await (const entry of representation.data as AsyncIterable<Partial<Quad>>) {
+      if (entry.subject?.value === identifier.path && entry.predicate?.equals(LDP.terms.contains) &&
+        entry.object?.termType === 'NamedNode') {
+        members.push({ path: entry.object.value });
+      }
+    }
+    return members;
   }
 
   /**

@@ -47,6 +47,9 @@ jobs:
         run: npm run test:ts
       - name: Run unit tests
         run: npm run test:unit
+      - name: Run container-listing memory regression test
+        if: matrix.operating-system == 'ubuntu-latest' && matrix.node-version == '20.x'
+        run: npm run test:memory
       - name: Submit unit test coverage
         uses: coverallsapp/github-action@master
         with:
