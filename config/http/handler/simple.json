@@ -1,6 +1,7 @@
 {
   "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
   "import": [
+    "css:config/http/handler/handlers/health.json",
     "css:config/http/handler/handlers/storage-description.json"
   ],
   "@graph": [
@@ -14,6 +15,7 @@
           "@id": "urn:solid-server:default:BaseHttpHandler",
           "@type": "WaterfallHandler",
           "handlers": [
+            { "@id": "urn:solid-server:default:HealthHandler" },
             { "@id": "urn:solid-server:default:StaticAssetHandler" },
             { "@id": "urn:solid-server:default:StorageDescriptionHandler" },
             { "@id": "urn:solid-server:default:LdpHandler" }

@@ -73,6 +73,19 @@ They are prefixed with `CSS_` and converted from `camelCase` to `CAMEL_CASE`
 
 Command-line arguments will always override environment variables.
 
+## Verifying that the server is running
+
+The default configurations expose a health endpoint at `/.well-known/css/health`.
+A `GET` request to it returns a `200` response with body `{"status":"ok"}` once the server is up:
+
+```shell
+curl http://localhost:3000/.well-known/css/health
+```
+
+This is a liveness check only:
+it indicates that the server process is accepting HTTP requests,
+but does not verify the state of the backend storage.
+
 ## Alternative ways to run the server
 
 ### From source
