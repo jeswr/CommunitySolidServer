@@ -1,5 +1,19 @@
 # Community Solid Server release notes
 
+## Unreleased
+
+### Configuration changes
+
+- The file-based configurations (`file.json`, `file-acp.json`, `file-root.json`, `file-root-pod.json`,
+  `example-https-file.json`, `https-file-cli.json`, `oidc.json`, `quota-file.json`, `restrict-idp.json`,
+  and `sparql-file-storage.json`) now import `css:config/util/resource-locker/in-memory.json`
+  instead of `css:config/util/resource-locker/file.json`,
+  so locks are kept in memory instead of being written to the file system.
+  Deployments that run more than 1 worker thread, or multiple server instances on the same file backend,
+  need to import `css:config/util/resource-locker/file.json` or `css:config/util/resource-locker/redis.json`
+  instead, as the in-memory locker does not coordinate locks across processes.
+  The server refuses to start when the in-memory locker is used with more than 1 worker.
+
 ## v7.0.0
 
 ### New features
