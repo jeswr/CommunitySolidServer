@@ -380,6 +380,12 @@ export * from './server/middleware/HeaderHandler';
 export * from './server/middleware/StaticAssetHandler';
 export * from './server/middleware/WebSocketAdvertiser';
 
+// Server/Notifications/Cluster
+export * from './server/notifications/cluster/ClusterActivityBus';
+export * from './server/notifications/cluster/ClusterActivityEmitter';
+export * from './server/notifications/cluster/ClusterActivityUtil';
+export * from './server/notifications/cluster/InMemoryActivityBus';
+
 // Server/Notifications/Generate
 export * from './server/notifications/generate/ActivityNotificationGenerator';
 export * from './server/notifications/generate/AddRemoveNotificationGenerator';
