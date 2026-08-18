@@ -33,7 +33,7 @@ describe('A JsonResourceStorage', (): void => {
         if (!data.has(id.path)) {
           throw new NotFoundHttpError();
         }
-        // Simulate a container listing: the containment triples are in the (quad) body.
+        // Container members are listed in the body.
         if (isContainerIdentifier(id)) {
           const keys = [ ...data.keys() ].filter((key): boolean => key.startsWith(id.path) &&
             /^[^/]+\/?$/u.test(key.slice(id.path.length)));

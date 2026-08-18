@@ -20,7 +20,7 @@ describe('A SingleContainerJsonStorage', (): void => {
     store = {
       getRepresentation: jest.fn(async(id): Promise<Representation> => {
         if (isContainerIdentifier(id)) {
-          // New contract: the containment triples are in the (quad) body, not the metadata.
+          // Container members are listed in the body.
           const members = [
             'http://example.com/.internal/accounts/foo',
             'http://example.com/.internal/accounts/bad',
@@ -30,7 +30,7 @@ describe('A SingleContainerJsonStorage', (): void => {
           ];
           const quads = members.map((member): Quad =>
             DataFactory.quad(DataFactory.namedNode(id.path), LDP.terms.contains, DataFactory.namedNode(member)));
-          // Containment metadata from a child resource must not be interpreted as a direct member.
+          // Ignore containment statements from child resources.
           quads.push(DataFactory.quad(
             DataFactory.namedNode(`${id.path}nested/`),
             LDP.terms.contains,

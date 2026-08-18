@@ -101,10 +101,7 @@ export class JsonResourceStorage<T> implements KeyValueStorage<string, T> {
     }
   }
 
-  /**
-   * Reads direct members from a streamed container representation. The stream is fully drained so
-   * its read lock is released before callers acquire locks for the contained resources.
-   */
+  /** Reads direct members and drains the stream before recursively locking children. */
   protected async getContainedResourceIdentifiers(
     identifier: ResourceIdentifier,
     representation: Representation,
