@@ -66,6 +66,7 @@
     "test:deploy": "test/deploy/validate-configs.sh",
     "test:ts": "tsc -p test --noEmit",
     "test:integration": "jest test/integration",
+    "test:memory": "node --expose-gc --max-old-space-size=128 test/memory/container-listing.js",
     "test:unit": "jest --config=./jest.coverage.config.js test/unit",
     "test:watch": "jest --coverageReporters none --watch test/unit",
     "validate": "componentsjs-compile-config urn:solid-server:default:Initializer -c config/default.json -f > /dev/null",

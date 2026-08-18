@@ -169,6 +169,45 @@ describe('A DataAccessorBasedStore', (): void => {
         .toBe(auxiliaryStrategy.getAuxiliaryIdentifier(resourceID).path);
     });
 
+    it('keeps large container listings lazy and releases their child iterator on cancellation.', async():
+    Promise<void> => {
+      const resourceID = { path: `${root}container/` };
+      containerMetadata.identifier = namedNode(resourceID.path);
+      accessor.data[resourceID.path] = { metadata: containerMetadata } as Representation;
+
+      const childCount = 100_000;
+      let generatedChildren = 0;
+      let iteratorClosed = false;
+      accessor.getChildren = async function* (): AsyncIterableIterator<RepresentationMetadata> {
+        try {
+          for (let i = 0; i < childCount; ++i) {
+            generatedChildren += 1;
+            const child = new RepresentationMetadata({ path: `${resourceID.path}${i}` });
+            child.add(RDF.terms.type, LDP.terms.Resource);
+            yield child;
+          }
+        } finally {
+          iteratorClosed = true;
+        }
+      };
+
+      const result = await store.getRepresentation(resourceID);
+
+      // Only the one-child non-empty marker may be loaded before a consumer reads the body.
+      expect(generatedChildren).toBe(1);
+      expect(result.metadata.getAll(LDP.terms.contains)).toHaveLength(1);
+
+      const iterator = result.data[Symbol.asyncIterator]();
+      for (let i = 0; i < 20; ++i) {
+        expect((await iterator.next()).done).toBe(false);
+      }
+      expect(generatedChildren).toBeLessThan(20);
+
+      await iterator.return?.();
+      expect(iteratorClosed).toBe(true);
+      expect(generatedChildren).toBeLessThan(childCount);
+    });
+
     it('will remove containment triples referencing auxiliary resources.', async(): Promise<void> => {
       const resourceID = { path: `${root}container/` };
       containerMetadata.identifier = namedNode(resourceID.path);

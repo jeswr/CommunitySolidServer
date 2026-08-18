@@ -144,9 +144,6 @@ export class DataAccessorBasedStore implements ResourceStore {
         // Add containment triples of non-auxiliary resources
         for await (const child of this.accessor.getChildren(identifier)) {
           if (!this.auxiliaryStrategy.isAuxiliaryIdentifier({ path: child.identifier.value })) {
-            if (!isMetadata) {
-              metadata.addQuads(child.quads());
-            }
             metadata.add(LDP.terms.contains, child.identifier as NamedNode, SOLID_META.terms.ResponseMetadata);
           }
         }
@@ -194,54 +191,41 @@ export class DataAccessorBasedStore implements ResourceStore {
     metadata.addQuad(LDP.terms.namespace, PREFERRED_PREFIX_TERM, 'ldp', SOLID_META.terms.ResponseMetadata);
     metadata.addQuad(POSIX.terms.namespace, PREFERRED_PREFIX_TERM, 'posix', SOLID_META.terms.ResponseMetadata);
     metadata.addQuad(XSD.terms.namespace, PREFERRED_PREFIX_TERM, 'xsd', SOLID_META.terms.ResponseMetadata);
-    const containerNode = metadata.identifier as NamedNode;
-    const auxiliaryStrategy = this.auxiliaryStrategy;
-    const isAux = (child: RepresentationMetadata): boolean =>
-      auxiliaryStrategy.isAuxiliaryIdentifier({ path: child.identifier.value });
-    const containsQuad = (child: RepresentationMetadata): Quad => DataFactory.quad(
-      containerNode,
-      LDP.terms.contains,
-      child.identifier as NamedNode,
-      SOLID_META.terms.ResponseMetadata,
-    );
-
-    // Peek the first non-auxiliary child: used both as the non-empty marker and as the head of the
-    // stream. Auxiliary children pulled during the peek are skipped (never part of the listing).
-    const iterator = this.accessor.getChildren(identifier)[Symbol.asyncIterator]();
-    let first: RepresentationMetadata | undefined;
-    try {
-      for (let next = await iterator.next(); !next.done; next = await iterator.next()) {
-        if (!isAux(next.value)) {
-          first = next.value;
-          break;
-        }
-      }
-    } catch (error: unknown) {
-      await iterator.return?.();
-      throw error;
-    }
-    if (first) {
-      metadata.add(LDP.terms.contains, first.identifier as NamedNode, SOLID_META.terms.ResponseMetadata);
+    // The first generated quad is always an `ldp:contains` quad. Peek it to determine whether the
+    // container is empty without materialising the remaining children.
+    const childQuads = this.getContainerListingQuads(identifier, metadata.identifier as NamedNode);
+    const first = await childQuads.next();
+    if (!first.done) {
+      metadata.addQuads([ first.value ]);
     }
 
     async function* generate(): AsyncIterableIterator<Quad> {
-      try {
-        yield* ownQuads;
-        if (first) {
-          yield* first.quads();
-          yield containsQuad(first);
-          for (let next = await iterator.next(); !next.done; next = await iterator.next()) {
-            if (!isAux(next.value)) {
-              yield* next.value.quads();
-              yield containsQuad(next.value);
-            }
-          }
-        }
-      } finally {
-        await iterator.return?.();
+      yield* ownQuads;
+      if (!first.done) {
+        yield first.value;
+        yield* childQuads;
       }
     }
     return Readable.from(generate(), { objectMode: true });
+  }
+
+  /**
+   * Lazily yields the containment and metadata quads for every non-auxiliary child.
+   * The containment quad is yielded first so callers can peek it as a non-empty marker.
+   */
+  private async* getContainerListingQuads(identifier: ResourceIdentifier, containerNode: NamedNode):
+  AsyncIterableIterator<Quad> {
+    for await (const child of this.accessor.getChildren(identifier)) {
+      if (!this.auxiliaryStrategy.isAuxiliaryIdentifier({ path: child.identifier.value })) {
+        yield DataFactory.quad(
+          containerNode,
+          LDP.terms.contains,
+          child.identifier as NamedNode,
+          SOLID_META.terms.ResponseMetadata,
+        );
+        yield* child.quads();
+      }
+    }
   }
 
   public async addResource(container: ResourceIdentifier, representation: Representation, conditions?: Conditions):

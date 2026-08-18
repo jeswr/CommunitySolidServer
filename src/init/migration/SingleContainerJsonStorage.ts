@@ -1,10 +1,8 @@
-import type { Quad } from '@rdfjs/types';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
 import { JsonResourceStorage } from '../../storage/keyvalue/JsonResourceStorage';
 import { createErrorMessage } from '../../util/errors/ErrorUtil';
 import { isContainerIdentifier } from '../../util/PathUtil';
 import { readableToString } from '../../util/StreamUtil';
-import { LDP } from '../../util/Vocabularies';
 
 /**
  * A variant of a {@link JsonResourceStorage} where the `entries()` call
@@ -21,17 +19,9 @@ export class SingleContainerJsonStorage<T> extends JsonResourceStorage<T> {
       return;
     }
 
-    // The containment list lives in the (streamed) quad body, not the metadata; read the
-    // `ldp:contains` objects from the body. Draining the stream also releases the read lock.
-    const members: string[] = [];
-    for await (const quad of container.data as AsyncIterable<Quad>) {
-      if (quad.predicate.equals(LDP.terms.contains)) {
-        members.push(quad.object.value);
-      }
-    }
+    const members = await this.getContainedResourceIdentifiers(containerId, container);
 
-    for (const path of members) {
-      const documentId = { path };
+    for (const documentId of members) {
       if (isContainerIdentifier(documentId)) {
         continue;
       }
@@ -46,8 +36,8 @@ export class SingleContainerJsonStorage<T> extends JsonResourceStorage<T> {
         const json = JSON.parse(await readableToString(document.data)) as T;
         yield [ key, json ];
       } catch (error: unknown) {
-        this.logger.error(`Unable to parse ${path}. You should probably delete this resource manually. Error: ${
-          createErrorMessage(error)}`);
+        this.logger.error(`Unable to parse ${documentId.path}. You should probably delete this resource manually. ` +
+          `Error: ${createErrorMessage(error)}`);
       }
     }
   }

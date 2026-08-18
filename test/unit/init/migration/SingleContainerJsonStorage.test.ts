@@ -30,6 +30,20 @@ describe('A SingleContainerJsonStorage', (): void => {
           ];
           const quads = members.map((member): Quad =>
             DataFactory.quad(DataFactory.namedNode(id.path), LDP.terms.contains, DataFactory.namedNode(member)));
+          // Containment metadata from a child resource must not be interpreted as a direct member.
+          quads.push(DataFactory.quad(
+            DataFactory.namedNode(`${id.path}nested/`),
+            LDP.terms.contains,
+            DataFactory.namedNode(`${id.path}not-a-direct-member`),
+          ));
+          const containerNode = DataFactory.namedNode(id.path);
+          quads.push(
+            {} as unknown as Quad,
+            { subject: containerNode } as unknown as Quad,
+            { subject: containerNode, predicate: LDP.terms.contains } as unknown as Quad,
+            DataFactory.quad(containerNode, DataFactory.namedNode('urn:other'), DataFactory.namedNode('urn:ignored')),
+            DataFactory.quad(containerNode, LDP.terms.contains, DataFactory.literal('not-an-identifier')),
+          );
           return new BasicRepresentation(quads, new RepresentationMetadata(id), INTERNAL_QUADS);
         }
         if (id.path.endsWith('unknown')) {
