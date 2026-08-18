@@ -1,0 +1,56 @@
+{
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@graph": [
+    {
+      "comment": [
+        "Opt-in Prometheus metrics. This file is not imported by any shipped config: add it next to your main config, e.g. `community-solid-server -c config/file.json -c config/util/metrics/default.json`.",
+        "The /metrics endpoint is unauthenticated and exposes internal counters (request rates, latencies, process CPU/memory), so restrict it at your reverse proxy or firewall.",
+        "This recipe assumes the default handler waterfall (config/http/handler/default.json). If you use a different handler configuration, adjust the Override list below to match its handlers."
+      ]
+    },
+    {
+      "comment": "Prometheus registry holding the default process metrics and the HTTP request instruments.",
+      "@id": "urn:solid-server:metrics:PrometheusMetrics",
+      "@type": "PrometheusMetrics"
+    },
+    {
+      "comment": "Observe-only configurator: records request rate/latency without ever writing to the response.",
+      "@id": "urn:solid-server:metrics:MetricsServerConfigurator",
+      "@type": "MetricsServerConfigurator",
+      "metrics": { "@id": "urn:solid-server:metrics:PrometheusMetrics" }
+    },
+    {
+      "comment": "Adds the observe-only metrics configurator to the existing (parallel) set of server configurators.",
+      "@id": "urn:solid-server:default:ServerConfigurator",
+      "@type": "ParallelHandler",
+      "handlers": [
+        { "@id": "urn:solid-server:metrics:MetricsServerConfigurator" }
+      ]
+    },
+    {
+      "comment": "Serves the Prometheus registry on GET /metrics.",
+      "@id": "urn:solid-server:metrics:MetricsHandler",
+      "@type": "MetricsHandler",
+      "metrics": { "@id": "urn:solid-server:metrics:PrometheusMetrics" },
+      "path": "/metrics"
+    },
+    {
+      "comment": "Places the metrics handler first in the waterfall so a scrape is answered immediately and never traverses the LDP stack.",
+      "@type": "Override",
+      "overrideInstance": { "@id": "urn:solid-server:default:BaseHttpHandler" },
+      "overrideParameters": {
+        "@type": "WaterfallHandler",
+        "handlers": [
+          { "@id": "urn:solid-server:metrics:MetricsHandler" },
+          { "@id": "urn:solid-server:default:StaticAssetHandler" },
+          { "@id": "urn:solid-server:default:OidcHandler" },
+          { "@id": "urn:solid-server:default:NotificationHttpHandler" },
+          { "@id": "urn:solid-server:default:StorageDescriptionHandler" },
+          { "@id": "urn:solid-server:default:AuthResourceHttpHandler" },
+          { "@id": "urn:solid-server:default:IdentityProviderHandler" },
+          { "@id": "urn:solid-server:default:LdpHandler" }
+        ]
+      }
+    }
+  ]
+}
