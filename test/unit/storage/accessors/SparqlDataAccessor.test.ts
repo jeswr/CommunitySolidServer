@@ -37,7 +37,9 @@ describe('A SparqlDataAccessor', (): void => {
   let data: Guarded<Readable>;
   let fetchTriples: jest.Mock<Promise<Readable>>;
   let fetchUpdate: jest.Mock<Promise<void>>;
+  let fetchBindings: jest.Mock<Promise<Readable>>;
   let triples: Quad[];
+  let count: number;
   let fetchError: any;
   let updateError: any;
 
@@ -60,9 +62,17 @@ describe('A SparqlDataAccessor', (): void => {
         throw updateError;
       }
     });
+    count = 5;
+    fetchBindings = jest.fn(async(): Promise<Readable> => {
+      if (fetchError) {
+        throw fetchError;
+      }
+      return Readable.from([{ count: literal(`${count}`) }]);
+    });
     (SparqlEndpointFetcher as any).mockImplementation((): any => ({
       fetchTriples,
       fetchUpdate,
+      fetchBindings,
     }));
 
     // This needs to be last so the fetcher can be mocked first
@@ -133,6 +143,17 @@ describe('A SparqlDataAccessor', (): void => {
     expect(simplifyQuery(fetchTriples.mock.calls[0][1])).toBe(simplifyQuery(
       'CONSTRUCT { ?s ?p ?o. } WHERE { GRAPH <http://container/> { ?s ?p ?o. } }',
     ));
+  });
+
+  it('counts the children of a container with a COUNT query.', async(): Promise<void> => {
+    count = 7;
+    await expect(accessor.getChildCount({ path: 'http://container/' })).resolves.toBe(7);
+
+    expect(fetchBindings).toHaveBeenCalledTimes(1);
+    expect(fetchBindings.mock.calls[0][0]).toBe(endpoint);
+    const query = simplifyQuery(fetchBindings.mock.calls[0][1]);
+    expect(query).toContain('COUNT(?o)');
+    expect(query).toContain('GRAPH <http://container/>');
   });
 
   it('throws 404 if no metadata was found.', async(): Promise<void> => {

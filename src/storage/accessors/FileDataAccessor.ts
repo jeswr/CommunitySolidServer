@@ -89,6 +89,29 @@ export class FileDataAccessor implements DataAccessor {
   }
 
   /**
+   * Counts the children of a container by reading the directory entries only.
+   * Unlike {@link getChildMetadata}, this does not `stat` each entry or build per-child metadata,
+   * so it stays cheap even for very large containers. Internal metadata files are excluded via a
+   * path-only check, keeping the count consistent with {@link getChildren}.
+   */
+  public async getChildCount(identifier: ResourceIdentifier): Promise<number> {
+    const link = await this.resourceMapper.mapUrlToFilePath(identifier, false);
+    const dir = await opendir(link.filePath);
+    let count = 0;
+    for await (const entry of dir) {
+      // Path-only check (no `stat`): hide internal metadata files, matching getChildMetadata.
+      const childLink = await this.resourceMapper.mapFilePathToUrl(
+        joinFilePath(link.filePath, entry.name),
+        entry.isDirectory(),
+      );
+      if (!childLink.isMetadata) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  /**
    * Writes the given data as a file (and potential metadata as additional file).
    * The metadata file will be written first and will be deleted if something goes wrong writing the actual data.
    */

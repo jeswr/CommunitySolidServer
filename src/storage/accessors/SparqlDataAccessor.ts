@@ -8,6 +8,7 @@ import type {
   GraphPattern,
   GraphQuads,
   InsertDeleteOperation,
+  SelectQuery,
   SparqlGenerator,
   Update,
   UpdateOperation,
@@ -105,6 +106,12 @@ export class SparqlDataAccessor implements DataAccessor {
     for await (const entry of stream) {
       yield new RepresentationMetadata((entry as Quad).object as NamedNode);
     }
+  }
+
+  public async getChildCount(identifier: ResourceIdentifier): Promise<number> {
+    // Counts the containment triples in the container's graph server-side (one per child),
+    // avoiding streaming every child back like getChildren does.
+    return this.sendSparqlSelectCount(this.sparqlCount(namedNode(identifier.path)));
   }
 
   /**
@@ -209,6 +216,31 @@ export class SparqlDataAccessor implements DataAccessor {
       type: 'graph',
       name,
       patterns: [{ type: 'bgp', triples }],
+    };
+  }
+
+  /**
+   * Creates a SELECT query that counts the containment triples in a container's graph,
+   * i.e. the number of resources it contains.
+   *
+   * @param name - Name of the container to query.
+   */
+  private sparqlCount(name: NamedNode): SelectQuery {
+    const pattern = quad(variable('s'), variable('p'), variable('o'));
+    return {
+      queryType: 'SELECT',
+      variables: [{
+        expression: {
+          expression: variable('o'),
+          type: 'aggregate',
+          aggregation: 'count',
+          distinct: false,
+        },
+        variable: variable('count'),
+      }],
+      where: [ this.sparqlSelectGraph(name, [ pattern ]) ],
+      type: 'query',
+      prefixes: {},
     };
   }
 
@@ -342,6 +374,24 @@ export class SparqlDataAccessor implements DataAccessor {
     this.logger.info(`Sending SPARQL CONSTRUCT query to ${this.endpoint}: ${query}`);
     try {
       return guardStream(await this.fetcher.fetchTriples(this.endpoint, query));
+    } catch (error: unknown) {
+      this.logger.error(`SPARQL endpoint ${this.endpoint} error: ${createErrorMessage(error)}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Sends a SPARQL SELECT query that returns a single `?count` binding and returns its integer value.
+   *
+   * @param sparqlQuery - Query to execute.
+   */
+  private async sendSparqlSelectCount(sparqlQuery: SelectQuery): Promise<number> {
+    const query = this.generator.stringify(sparqlQuery);
+    this.logger.info(`Sending SPARQL SELECT query to ${this.endpoint}: ${query}`);
+    try {
+      const stream = await this.fetcher.fetchBindings(this.endpoint, query);
+      const bindings = await arrayifyStream<Record<string, NamedNode>>(stream);
+      return Number.parseInt(bindings[0]?.count?.value ?? '0', 10);
     } catch (error: unknown) {
       this.logger.error(`SPARQL endpoint ${this.endpoint} error: ${createErrorMessage(error)}`);
       throw error;
