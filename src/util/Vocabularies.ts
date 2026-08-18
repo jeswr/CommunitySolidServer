@@ -302,6 +302,8 @@ export const SOLID_HTTP = createVocabulary(
   'accountCookie',
   // When the above cookie expires, expects an ISO date string
   'accountCookieExpiration',
+  // The IP address of the client that sent the request
+  'clientIp',
   // Unit, start, and end are used for range headers
   'end',
   'location',

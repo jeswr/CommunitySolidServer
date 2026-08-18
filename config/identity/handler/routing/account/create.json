@@ -14,10 +14,23 @@
       "source": {
         "@type": "ViewInteractionHandler",
         "source": {
-          "@id": "urn:solid-server:default:CreateAccountHandler",
-          "@type": "CreateAccountHandler",
-          "accountStore": { "@id": "urn:solid-server:default:AccountStore" },
-          "cookieStore": { "@id": "urn:solid-server:default:CookieStore" }
+          "comment": "Rate-limits account creation per IP to prevent spam.",
+          "@id": "urn:solid-server:default:CreateAccountRateLimitHandler",
+          "@type": "RateLimitHandler",
+          "enabled": true,
+          "resetOnSuccess": false,
+          "limiter": {
+            "@id": "urn:solid-server:default:CreateAccountRateLimiter",
+            "@type": "RateLimiter",
+            "maxCount": 10,
+            "windowMs": 3600000
+          },
+          "source": {
+            "@id": "urn:solid-server:default:CreateAccountHandler",
+            "@type": "CreateAccountHandler",
+            "accountStore": { "@id": "urn:solid-server:default:AccountStore" },
+            "cookieStore": { "@id": "urn:solid-server:default:CookieStore" }
+          }
         }
       }
     },
