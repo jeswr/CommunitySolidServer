@@ -38,6 +38,23 @@
         },
         {
           "@type": "YargsParameter",
+          "name": "loggingFormat",
+          "options": {
+            "requiresArg": true,
+            "type": "string",
+            "describe": "The format used to output log messages: 'pretty' or 'json'."
+          }
+        },
+        {
+          "@type": "YargsParameter",
+          "name": "loggingColorize",
+          "options": {
+            "type": "boolean",
+            "describe": "Whether the 'pretty' log format colorizes the level. Use --no-loggingColorize for plain output."
+          }
+        },
+        {
+          "@type": "YargsParameter",
           "name": "baseUrl",
           "options": {
             "alias": "b",

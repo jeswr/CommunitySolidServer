@@ -74,4 +74,161 @@ describe('WinstonLoggerFactory', (): void => {
       [Symbol.for('message')]: `${now.toISOString()} [MyLabel] {Primary} ${level}: my message`,
     }));
   });
+
+  it('errors on unknown log formats.', async(): Promise<void> => {
+    expect((): WinstonLoggerFactory => new WinstonLoggerFactory('debug', 'unknown'))
+      .toThrow('Unknown log format unknown, expected one of pretty/json');
+  });
+
+  it('can be created with an explicit pretty format.', async(): Promise<void> => {
+    factory = new WinstonLoggerFactory('debug', 'pretty');
+    (factory as any).createTransports = (): any => [ transport ];
+
+    // Create logger, and log
+    const logger = factory.createLogger('MyLabel');
+    logger.log('debug', 'my message');
+
+    expect(transport.write).toHaveBeenCalledTimes(1);
+    // Need to check level like this as it has color tags
+    const { level } = transport.write.mock.calls[0][0];
+    expect(transport.write.mock.calls[0][0][Symbol.for('message')])
+      .toBe(`${now.toISOString()} [MyLabel] {W-???} ${level}: my message`);
+  });
+
+  it('colorizes the level in the pretty output by default.', async(): Promise<void> => {
+    (factory as any).createTransports = (): any => [ transport ];
+
+    // Create logger, and log
+    const logger = factory.createLogger('MyLabel');
+    logger.log('debug', 'my message');
+
+    expect(transport.write).toHaveBeenCalledTimes(1);
+    const line: string = transport.write.mock.calls[0][0][Symbol.for('message')];
+    // The default output wraps the level in ANSI color codes.
+    // eslint-disable-next-line no-control-regex
+    expect(line).toMatch(/\u001B\[\d+m/u);
+  });
+
+  it('omits ANSI colors from the pretty output when colorization is disabled.', async(): Promise<void> => {
+    factory = new WinstonLoggerFactory('debug', 'pretty', false);
+    (factory as any).createTransports = (): any => [ transport ];
+
+    // Create logger, and log
+    const logger = factory.createLogger('MyLabel');
+    logger.log('debug', 'my message');
+
+    expect(transport.write).toHaveBeenCalledTimes(1);
+    const line: string = transport.write.mock.calls[0][0][Symbol.for('message')];
+    // eslint-disable-next-line no-control-regex
+    expect(line).not.toMatch(/\u001B/u);
+    expect(line).toBe(`${now.toISOString()} [MyLabel] {W-???} debug: my message`);
+  });
+
+  it('adds the request identifier to the output when there is one.', async(): Promise<void> => {
+    (factory as any).createTransports = (): any => [ transport ];
+
+    // Create logger, and log
+    const logger = factory.createLogger('MyLabel');
+    logger.log('debug', 'my message', { isPrimary: true, pid: 0, requestId: '4c079dca' });
+
+    expect(transport.write).toHaveBeenCalledTimes(1);
+    // Need to check level like this as it has color tags
+    const { level } = transport.write.mock.calls[0][0];
+    expect(transport.write.mock.calls[0][0][Symbol.for('message')])
+      .toBe(`${now.toISOString()} [MyLabel] {Primary} [4c079dca] ${level}: my message`);
+  });
+
+  it('outputs a line of JSON per message when using the json format.', async(): Promise<void> => {
+    factory = new WinstonLoggerFactory('debug', 'json');
+    (factory as any).createTransports = (): any => [ transport ];
+
+    // Create logger, and log
+    const logger = factory.createLogger('MyLabel');
+    logger.log('debug', 'my message');
+
+    expect(transport.write).toHaveBeenCalledTimes(1);
+    const line: string = transport.write.mock.calls[0][0][Symbol.for('message')];
+    // The JSON format does not apply any color tags
+    // eslint-disable-next-line no-control-regex
+    expect(line).not.toMatch(/\u001B/u);
+    expect(JSON.parse(line)).toEqual({
+      label: 'MyLabel',
+      level: 'debug',
+      message: 'my message',
+      timestamp: now.toISOString(),
+    });
+  });
+
+  it('includes the extra metadata in the JSON output.', async(): Promise<void> => {
+    factory = new WinstonLoggerFactory('debug', 'json');
+    (factory as any).createTransports = (): any => [ transport ];
+
+    // Create logger, and log
+    const logger = factory.createLogger('MyLabel');
+    logger.log('debug', 'my message', { isPrimary: true, pid: 0, requestId: '4c079dca' });
+
+    expect(transport.write).toHaveBeenCalledTimes(1);
+    const line: string = transport.write.mock.calls[0][0][Symbol.for('message')];
+    expect(JSON.parse(line)).toEqual({
+      label: 'MyLabel',
+      level: 'debug',
+      message: 'my message',
+      timestamp: now.toISOString(),
+      isPrimary: true,
+      pid: 0,
+      requestId: '4c079dca',
+    });
+  });
+
+  it('escapes control characters in the pretty message so extra lines cannot be forged.', async(): Promise<void> => {
+    (factory as any).createTransports = (): any => [ transport ];
+
+    // Create logger, and log a message with newline, carriage return, ESC, NUL and a C1 control
+    // character: all of these are attacker-influenceable (e.g. via a WebID or request URL).
+    const logger = factory.createLogger('MyLabel');
+    logger.log('debug', 'a\nb\rc\u001Bd\u0000e\u0085f');
+
+    expect(transport.write).toHaveBeenCalledTimes(1);
+    const line: string = transport.write.mock.calls[0][0][Symbol.for('message')];
+    // No raw newline/CR/NUL survive in the output to forge a new line.
+    expect(line).not.toContain('\n');
+    expect(line).not.toContain('\r');
+    expect(line).not.toContain('\u0000');
+    // The message renders on a single line with every control character escaped.
+    expect(line).toContain('a\\nb\\rc\\u001bd\\u0000e\\u0085f');
+    // The message's own ESC is neutralised (the raw injected sequence no longer appears)...
+    expect(line).not.toContain('c\u001Bd');
+    // ...yet the level's legitimate ANSI color codes (also ESC-based) are still present.
+    // eslint-disable-next-line no-control-regex
+    expect(line).toMatch(/\u001B\[\d+m/u);
+  });
+
+  it('leaves printable Unicode, backslashes and tabs in the pretty message unchanged.', async(): Promise<void> => {
+    (factory as any).createTransports = (): any => [ transport ];
+
+    // Create logger, and log a message with backslashes, a tab and multi-byte printable Unicode.
+    const logger = factory.createLogger('MyLabel');
+    logger.log('debug', 'C:\\Users\trésumé 你好');
+
+    expect(transport.write).toHaveBeenCalledTimes(1);
+    // Need to check level like this as it has color tags
+    const { level } = transport.write.mock.calls[0][0];
+    expect(transport.write.mock.calls[0][0][Symbol.for('message')])
+      .toBe(`${now.toISOString()} [MyLabel] {W-???} ${level}: C:\\Users\trésumé 你好`);
+  });
+
+  it('does not double-escape control characters in the json format.', async(): Promise<void> => {
+    factory = new WinstonLoggerFactory('debug', 'json');
+    (factory as any).createTransports = (): any => [ transport ];
+
+    // Create logger, and log a message containing a newline and an ESC character
+    const logger = factory.createLogger('MyLabel');
+    logger.log('debug', 'a\nb\u001Bc');
+
+    expect(transport.write).toHaveBeenCalledTimes(1);
+    const line: string = transport.write.mock.calls[0][0][Symbol.for('message')];
+    // JSON.stringify already escapes these safely, so the message round-trips to the raw input:
+    // this proves the json branch was left untouched and no extra backslash-escaping was applied.
+    expect(JSON.parse(line).message).toBe('a\nb\u001Bc');
+  });
 });
