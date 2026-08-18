@@ -18,7 +18,7 @@ interface DataEntry {
   metadata: RepresentationMetadata;
 }
 interface ContainerEntry {
-  entries: Record<string, CacheEntry>;
+  entries: Map<string, CacheEntry>;
   metadata: RepresentationMetadata;
 }
 type CacheEntry = DataEntry | ContainerEntry;
@@ -26,12 +26,12 @@ type CacheEntry = DataEntry | ContainerEntry;
 export class InMemoryDataAccessor implements DataAccessor, SingleThreaded {
   private readonly identifierStrategy: IdentifierStrategy;
   // A dummy container where every entry corresponds to a root container
-  private readonly store: { entries: Record<string, ContainerEntry> };
+  private readonly store: { entries: Map<string, CacheEntry> };
 
   public constructor(identifierStrategy: IdentifierStrategy) {
     this.identifierStrategy = identifierStrategy;
 
-    this.store = { entries: {}};
+    this.store = { entries: new Map() };
   }
 
   public async canHandle(): Promise<void> {
@@ -54,11 +54,11 @@ export class InMemoryDataAccessor implements DataAccessor, SingleThreaded {
   public async* getChildren(identifier: ResourceIdentifier): AsyncIterableIterator<RepresentationMetadata> {
     const entry = this.getEntry(identifier);
     if (!this.isDataEntry(entry)) {
-      yield* Object.entries(entry.entries).map(([ path, child ]): RepresentationMetadata => {
+      for (const [ path, child ] of entry.entries) {
         const metadata = new RepresentationMetadata(DataFactory.namedNode(path));
         metadata.addQuads(child.metadata.quads());
-        return metadata;
-      });
+        yield metadata;
+      }
     }
   }
 
@@ -74,10 +74,10 @@ export class InMemoryDataAccessor implements DataAccessor, SingleThreaded {
       metadata.set(POSIX.terms.size, `${size}`);
     }
 
-    parent.entries[identifier.path] = {
+    parent.entries.set(identifier.path, {
       data: dataArray,
       metadata,
-    };
+    });
   }
 
   public async writeContainer(identifier: ResourceIdentifier, metadata: RepresentationMetadata): Promise<void> {
@@ -89,10 +89,10 @@ export class InMemoryDataAccessor implements DataAccessor, SingleThreaded {
       // Create new entry if it didn't exist yet
       if (NotFoundHttpError.isInstance(error)) {
         const parent = this.getParentEntry(identifier);
-        parent.entries[identifier.path] = {
-          entries: {},
+        parent.entries.set(identifier.path, {
+          entries: new Map(),
           metadata,
-        };
+        });
       } else {
         throw error;
       }
@@ -106,10 +106,9 @@ export class InMemoryDataAccessor implements DataAccessor, SingleThreaded {
 
   public async deleteResource(identifier: ResourceIdentifier): Promise<void> {
     const parent = this.getParentEntry(identifier);
-    if (!parent.entries[identifier.path]) {
+    if (!parent.entries.delete(identifier.path)) {
       throw new NotFoundHttpError();
     }
-    delete parent.entries[identifier.path];
   }
 
   private isDataEntry(entry: CacheEntry): entry is DataEntry {
@@ -142,10 +141,11 @@ export class InMemoryDataAccessor implements DataAccessor, SingleThreaded {
 
     const hierarchy = this.getHierarchy(this.identifierStrategy.getParentContainer(identifier));
     for (const entry of hierarchy) {
-      parent = parent.entries[entry.path];
-      if (!parent) {
+      const child: CacheEntry | undefined = parent.entries.get(entry.path);
+      if (!child) {
         throw new NotFoundHttpError();
       }
+      parent = child;
       if (this.isDataEntry(parent)) {
         throw new InternalServerError('Invalid path.');
       }
@@ -160,7 +160,7 @@ export class InMemoryDataAccessor implements DataAccessor, SingleThreaded {
    */
   private getEntry(identifier: ResourceIdentifier): CacheEntry {
     const parent = this.getParentEntry(identifier);
-    const entry = parent.entries[identifier.path];
+    const entry = parent.entries.get(identifier.path);
     if (!entry) {
       throw new NotFoundHttpError();
     }

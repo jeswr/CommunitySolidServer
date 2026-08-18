@@ -127,6 +127,22 @@ describe('An InMemoryDataAccessor', (): void => {
       expect(children[0].get(RDF.terms.type)).toEqual(LDP.terms.Resource);
     });
 
+    it('generates child metadata lazily.', async(): Promise<void> => {
+      const firstMetadata = new RepresentationMetadata();
+      const secondMetadata = new RepresentationMetadata();
+      const firstQuads = jest.spyOn(firstMetadata, 'quads');
+      const secondQuads = jest.spyOn(secondMetadata, 'quads');
+      await accessor.writeDocument({ path: `${base}first` }, guardedStreamFrom([]), firstMetadata);
+      await accessor.writeDocument({ path: `${base}second` }, guardedStreamFrom([]), secondMetadata);
+
+      const children = accessor.getChildren({ path: base });
+      expect((await children.next()).done).toBe(false);
+      await children.return?.();
+
+      expect(firstQuads).toHaveBeenCalledTimes(1);
+      expect(secondQuads).not.toHaveBeenCalled();
+    });
+
     it('adds stored metadata when requesting document metadata.', async(): Promise<void> => {
       const identifier = { path: `${base}resource` };
       const inputMetadata = new RepresentationMetadata(identifier, {
