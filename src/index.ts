@@ -311,10 +311,12 @@ export * from './init/ServerInitializer';
 
 // Logging
 export * from './logging/LazyLoggerFactory';
+export * from './logging/LogContext';
 export * from './logging/Logger';
 export * from './logging/LoggerFactory';
 export * from './logging/LogLevel';
 export * from './logging/LogUtil';
+export * from './logging/TraceParent';
 export * from './logging/VoidLogger';
 export * from './logging/VoidLoggerFactory';
 export * from './logging/WinstonLogger';

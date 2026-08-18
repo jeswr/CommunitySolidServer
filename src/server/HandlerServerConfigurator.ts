@@ -1,5 +1,7 @@
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
+import { bindToCurrentRequestId, runWithRequestId } from '../logging/LogContext';
 import { getLoggerFor } from '../logging/LogUtil';
+import { extractTraceId } from '../logging/TraceParent';
 import { isError } from '../util/errors/ErrorUtil';
 import { guardStream } from '../util/GuardedStream';
 import type { HttpHandler } from './HttpHandler';
@@ -32,27 +34,28 @@ export class HandlerServerConfigurator extends ServerConfigurator {
     server.on(
       'request',
       // eslint-disable-next-line @typescript-eslint/no-misused-promises
-      async(request: IncomingMessage, response: ServerResponse): Promise<void> => {
-        try {
-          this.logger.info(`Received ${request.method} request for ${request.url}`);
-          const guardedRequest = guardStream(request);
-          guardedRequest.on('error', this.errorLogger);
-          await this.handler.handleSafe({ request: guardedRequest, response });
-        } catch (error: unknown) {
-          const errMsg = this.createErrorMessage(error);
-          this.logger.error(errMsg);
-          if (response.headersSent) {
-            response.end();
-          } else {
-            response.setHeader('Content-Type', 'text/plain; charset=utf-8');
-            response.writeHead(500).end(errMsg);
+      async(request: IncomingMessage, response: ServerResponse): Promise<void> =>
+        runWithRequestId(async(): Promise<void> => {
+          try {
+            this.logger.info(`Received ${request.method} request for ${request.url}`);
+            const guardedRequest = guardStream(request);
+            guardedRequest.on('error', bindToCurrentRequestId(this.errorLogger));
+            await this.handler.handleSafe({ request: guardedRequest, response });
+          } catch (error: unknown) {
+            const errMsg = this.createErrorMessage(error);
+            this.logger.error(errMsg);
+            if (response.headersSent) {
+              response.end();
+            } else {
+              response.setHeader('Content-Type', 'text/plain; charset=utf-8');
+              response.writeHead(500).end(errMsg);
+            }
+          } finally {
+            if (!response.headersSent) {
+              response.writeHead(404).end();
+            }
           }
-        } finally {
-          if (!response.headersSent) {
-            response.writeHead(404).end();
-          }
-        }
-      },
+        }, extractTraceId(request.headers.traceparent)),
     );
   }
 

@@ -21,6 +21,14 @@
           }
         },
         {
+          "CombinedShorthandResolver:_resolvers_key": "urn:solid-server:default:variable:loggingFormat",
+          "CombinedShorthandResolver:_resolvers_value": {
+            "@type": "KeyExtractor",
+            "key": "loggingFormat",
+            "defaultValue": "pretty"
+          }
+        },
+        {
           "CombinedShorthandResolver:_resolvers_key": "urn:solid-server:default:variable:port",
           "CombinedShorthandResolver:_resolvers_value": {
             "@type": "KeyExtractor",
