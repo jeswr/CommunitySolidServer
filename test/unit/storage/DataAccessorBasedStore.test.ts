@@ -193,7 +193,7 @@ describe('A DataAccessorBasedStore', (): void => {
 
       const result = await store.getRepresentation(resourceID);
 
-      // Only the one-child non-empty marker may be loaded before a consumer reads the body.
+      // The first child is peeked before the body is consumed.
       expect(generatedChildren).toBe(1);
       expect(result.metadata.getAll(LDP.terms.contains)).toHaveLength(1);
 
