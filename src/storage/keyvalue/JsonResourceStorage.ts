@@ -85,8 +85,8 @@ export class JsonResourceStorage<T> implements KeyValueStorage<string, T> {
     if (representation) {
       if (isContainerIdentifier(identifier)) {
         // The containment list lives in the (streamed) quad body, not the metadata, so read the
-        // `ldp:contains` objects from the body. O(children) time, O(1) memory. Draining the stream
-        // also releases the container read lock before we recurse into the members.
+        // `ldp:contains` objects from the body. O(children) time and O(children) memory (member list only).
+        // Draining the stream also releases the container read lock before we recurse into the members.
         const members: string[] = [];
         for await (const quad of representation.data as AsyncIterable<Quad>) {
           if (quad.predicate.equals(LDP.terms.contains)) {
