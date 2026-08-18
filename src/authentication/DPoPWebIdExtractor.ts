@@ -45,7 +45,7 @@ export class DPoPWebIdExtractor extends CredentialsExtractor {
     // Validate the Authorization and DPoP header headers
     // and extract the WebID provided by the client
     try {
-      const { webid: webId, client_id: clientId, iss: issuer } = await this.verify(
+      const payload = await this.verify(
         authorization!,
         {
           header: dpop as string,
@@ -53,8 +53,11 @@ export class DPoPWebIdExtractor extends CredentialsExtractor {
           url: originalUrl.path,
         },
       );
+      const { webid: webId, client_id: clientId, iss: issuer } = payload;
+      // The payload type omits `jti`, but JWT access tokens issued by the server always contain one.
+      const tokenId = (payload as { jti?: string }).jti;
       this.logger.info(`Verified WebID via DPoP-bound access token. WebID: ${webId
-      }, client ID: ${clientId}, issuer: ${issuer}`);
+      }, client ID: ${clientId ?? 'none'}, issuer: ${issuer}, token ID: ${tokenId ?? 'none'}`);
       const credentials: Credentials = { agent: { webId }, issuer: { url: issuer }};
       if (clientId) {
         credentials.client = { clientId };
