@@ -56,6 +56,11 @@
       "comment": "If true, skips the confirmation prompts during migration.",
       "@id": "urn:solid-server:default:variable:confirmMigration",
       "@type": "Variable"
+    },
+    {
+      "comment": "Passphrase used by the opt-in encrypted key-value storage to encrypt internal secrets at rest.",
+      "@id": "urn:solid-server:default:variable:storageEncryptionKey",
+      "@type": "Variable"
     }
   ]
 }

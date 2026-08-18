@@ -89,6 +89,14 @@
             "key": "confirmMigration",
             "defaultValue": false
           }
+        },
+        {
+          "CombinedShorthandResolver:_resolvers_key": "urn:solid-server:default:variable:storageEncryptionKey",
+          "CombinedShorthandResolver:_resolvers_value": {
+            "@type": "KeyExtractor",
+            "key": "storageEncryptionKey",
+            "defaultValue": ""
+          }
         }
       ]
     }
