@@ -6,6 +6,7 @@ import { N3PatchBodyParser } from '../../../../../src/http/input/body/N3PatchBod
 import { RepresentationMetadata } from '../../../../../src/http/representation/RepresentationMetadata';
 import type { HttpRequest } from '../../../../../src/server/HttpRequest';
 import { BadRequestHttpError } from '../../../../../src/util/errors/BadRequestHttpError';
+import { PayloadHttpError } from '../../../../../src/util/errors/PayloadHttpError';
 import { UnsupportedMediaTypeHttpError } from '../../../../../src/util/errors/UnsupportedMediaTypeHttpError';
 import { guardedStreamFrom } from '../../../../../src/util/StreamUtil';
 
@@ -14,6 +15,13 @@ const { defaultGraph, literal, namedNode, quad, variable } = DataFactory;
 describe('An N3PatchBodyParser', (): void => {
   let input: BodyParserArgs;
   const parser = new N3PatchBodyParser();
+  const validPatch = `@prefix solid: <http://www.w3.org/ns/solid/terms#>.
+@prefix ex: <http://www.example.org/terms#>.
+
+_:rename a solid:InsertDeletePatch;
+  solid:where   { ?person ex:familyName "Garcia"; ex:nickName "Garry". };
+  solid:inserts { ?person ex:givenName "Alex". };
+  solid:deletes { ?person ex:givenName "Claudia". }.`;
 
   beforeEach(async(): Promise<void> => {
     input = {
@@ -201,5 +209,29 @@ _:rename a solid:InsertDeletePatch;
     input.request = guardedStreamFrom([ n3 ]) as HttpRequest;
     await expect(parser.handle(input)).rejects
       .toThrow('An N3 Patch delete/insert formula can only contain variables found in the conditions formula.');
+  });
+
+  it('errors immediately if the Content-Length header exceeds the maximum allowed size.', async(): Promise<void> => {
+    const limitedParser = new N3PatchBodyParser(10);
+    input.request = guardedStreamFrom([ validPatch ]) as HttpRequest;
+    input.request.headers = { 'content-length': `${validPatch.length}` };
+    await expect(limitedParser.handle(input)).rejects.toThrow(PayloadHttpError);
+  });
+
+  it('errors if the body exceeds the maximum allowed size.', async(): Promise<void> => {
+    const limitedParser = new N3PatchBodyParser(10);
+    input.request = guardedStreamFrom([ validPatch ]) as HttpRequest;
+    input.request.headers = {};
+    await expect(limitedParser.handle(input)).rejects.toThrow(PayloadHttpError);
+  });
+
+  it('supports bodies that do not exceed the maximum allowed size.', async(): Promise<void> => {
+    const limitedParser = new N3PatchBodyParser(validPatch.length);
+    input.request = guardedStreamFrom([ validPatch ]) as HttpRequest;
+    input.request.headers = { 'content-length': `${validPatch.length}` };
+    const patch = await limitedParser.handle(input);
+    expect(patch.deletes).toHaveLength(1);
+    expect(patch.inserts).toHaveLength(1);
+    expect(patch.conditions).toHaveLength(2);
   });
 });

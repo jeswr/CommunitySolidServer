@@ -8,6 +8,7 @@ import { SparqlUpdateBodyParser } from '../../../../../src/http/input/body/Sparq
 import { RepresentationMetadata } from '../../../../../src/http/representation/RepresentationMetadata';
 import type { HttpRequest } from '../../../../../src/server/HttpRequest';
 import { BadRequestHttpError } from '../../../../../src/util/errors/BadRequestHttpError';
+import { PayloadHttpError } from '../../../../../src/util/errors/PayloadHttpError';
 import { UnsupportedMediaTypeHttpError } from '../../../../../src/util/errors/UnsupportedMediaTypeHttpError';
 import { ContentType } from '../../../../../src/util/Header';
 import { guardedStreamFrom } from '../../../../../src/util/StreamUtil';
@@ -87,5 +88,31 @@ describe('A SparqlUpdateBodyParser', (): void => {
     await expect(arrayifyStream(result.data)).resolves.toEqual(
       [ 'INSERT DATA { <#it> <http://test.com/p> <http://test.com/o> }' ],
     );
+  });
+
+  it('errors immediately if the Content-Length header exceeds the maximum allowed size.', async(): Promise<void> => {
+    const query = 'DELETE DATA { <http://test.com/s> <http://test.com/p> <http://test.com/o> }';
+    const limitedParser = new SparqlUpdateBodyParser(10);
+    input.request = guardedStreamFrom([ query ]) as HttpRequest;
+    input.request.headers = { 'content-length': `${query.length}` };
+    await expect(limitedParser.handle(input)).rejects.toThrow(PayloadHttpError);
+  });
+
+  it('errors if the body exceeds the maximum allowed size.', async(): Promise<void> => {
+    const query = 'DELETE DATA { <http://test.com/s> <http://test.com/p> <http://test.com/o> }';
+    const limitedParser = new SparqlUpdateBodyParser(10);
+    input.request = guardedStreamFrom([ query ]) as HttpRequest;
+    input.request.headers = {};
+    await expect(limitedParser.handle(input)).rejects.toThrow(PayloadHttpError);
+  });
+
+  it('supports bodies that do not exceed the maximum allowed size.', async(): Promise<void> => {
+    const query = 'DELETE DATA { <http://test.com/s> <http://test.com/p> <http://test.com/o> }';
+    const limitedParser = new SparqlUpdateBodyParser(query.length);
+    input.request = guardedStreamFrom([ query ]) as HttpRequest;
+    input.request.headers = { 'content-length': `${query.length}` };
+    const result = await limitedParser.handle(input);
+    expect(result.algebra.type).toBe(Algebra.types.DELETE_INSERT);
+    await expect(arrayifyStream(result.data)).resolves.toEqual([ query ]);
   });
 });

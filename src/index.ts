@@ -620,6 +620,7 @@ export * from './util/templates/TemplateEngine';
 export * from './util/templates/TemplateUtil';
 
 // Util
+export * from './util/BodySizeUtil';
 export * from './util/ContentTypes';
 export * from './util/FetchUtil';
 export * from './util/GenericEventEmitter';
