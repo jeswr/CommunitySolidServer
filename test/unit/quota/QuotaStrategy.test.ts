@@ -3,7 +3,7 @@ import { QuotaStrategy } from '../../../src/storage/quota/QuotaStrategy';
 import { UNIT_BYTES } from '../../../src/storage/size-reporter/Size';
 import type { Size } from '../../../src/storage/size-reporter/Size';
 import type { SizeReporter } from '../../../src/storage/size-reporter/SizeReporter';
-import { guardedStreamFrom, pipeSafely } from '../../../src/util/StreamUtil';
+import { guardedStreamFrom, pipeSafely, readableToString } from '../../../src/util/StreamUtil';
 import { mockFileSystem } from '../../util/Util';
 
 jest.mock('node:fs');
@@ -84,6 +84,21 @@ describe('A QuotaStrategy', (): void => {
         piped.on('error', (): void => resolve());
       });
       await expect(destroy).resolves.toBeUndefined();
+    });
+
+    it('should only calculate the available space once instead of for every chunk.', async(): Promise<void> => {
+      const availableSpaceSpy = jest.spyOn(strategy, 'getAvailableSpace')
+        .mockResolvedValue({ amount: 10000, unit: mockSize.unit });
+      const chunk = 'A'.repeat(50);
+      const track = await strategy.createQuotaGuard({ path: `${base}nested/file2.txt` });
+      const source = guardedStreamFrom([ chunk, chunk, chunk, chunk, chunk ]);
+      const piped = pipeSafely(source, track);
+
+      // Fully consume the stream so every chunk passes through the guard.
+      await expect(readableToString(piped)).resolves.toBe(chunk.repeat(5));
+
+      expect(availableSpaceSpy).toHaveBeenCalledTimes(1);
+      expect(mockReporter.calculateChunkSize).toHaveBeenCalledTimes(5);
     });
   });
 });
