@@ -7,8 +7,10 @@
       "@type": "ComposedAuxiliaryStrategy",
       "identifierStrategy": { "@id": "urn:solid-server:default:AclIdentifierStrategy" },
       "validator": {
+        "comment": "Rejects auxiliary documents larger than maxSize bytes before buffering them for RDF validation. Set to 0 to disable.",
         "@type": "RdfValidator",
-        "converter": { "@id": "urn:solid-server:default:RepresentationConverter" }
+        "converter": { "@id": "urn:solid-server:default:RepresentationConverter" },
+        "maxSize": 4194304
       },
       "ownAuthorization": true,
       "requiredInRoot": true
