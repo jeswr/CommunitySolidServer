@@ -25,7 +25,8 @@ export class HttpError<T extends number = number> extends Error implements HttpE
   public readonly statusCode: T;
   public readonly cause?: unknown;
   public readonly errorCode: string;
-  public readonly metadata: RepresentationMetadata;
+
+  private lazyMetadata?: RepresentationMetadata;
 
   /**
    * Creates a new HTTP error. Subclasses should call this with their fixed status code.
@@ -41,14 +42,31 @@ export class HttpError<T extends number = number> extends Error implements HttpE
     this.name = name;
     this.cause = options.cause;
     this.errorCode = options.errorCode ?? `H${statusCode}`;
-    this.metadata = options.metadata ?? new RepresentationMetadata();
-    this.generateMetadata();
+    // Metadata provided by the caller is populated immediately so it always contains the generated triples
+    if (options.metadata) {
+      this.lazyMetadata = options.metadata;
+      this.generateMetadata();
+    }
   }
 
   public static isInstance(error: unknown): error is HttpError {
+    // Checking `metadata` here would force the lazy metadata build
     return isError(error) &&
       typeof (error as HttpError).statusCode === 'number' &&
-      Boolean((error as HttpError).metadata);
+      typeof (error as HttpError).errorCode === 'string';
+  }
+
+  /**
+   * The metadata describing this error.
+   * Only built on first access when no metadata was supplied through the constructor,
+   * since errors are frequently used as control flow where the metadata is never read.
+   */
+  public get metadata(): RepresentationMetadata {
+    if (!this.lazyMetadata) {
+      this.lazyMetadata = new RepresentationMetadata();
+      this.generateMetadata();
+    }
+    return this.lazyMetadata;
   }
 
   /**

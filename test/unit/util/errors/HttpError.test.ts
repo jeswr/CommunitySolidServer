@@ -3,7 +3,7 @@ import { RepresentationMetadata } from '../../../../src/http/representation/Repr
 import { BadRequestHttpError } from '../../../../src/util/errors/BadRequestHttpError';
 import { ConflictHttpError } from '../../../../src/util/errors/ConflictHttpError';
 import { ForbiddenHttpError } from '../../../../src/util/errors/ForbiddenHttpError';
-import { generateHttpErrorUri } from '../../../../src/util/errors/HttpError';
+import { generateHttpErrorUri, HttpError } from '../../../../src/util/errors/HttpError';
 import type { HttpErrorClass } from '../../../../src/util/errors/HttpError';
 import { InternalServerError } from '../../../../src/util/errors/InternalServerError';
 import { MethodNotAllowedHttpError } from '../../../../src/util/errors/MethodNotAllowedHttpError';
@@ -132,5 +132,47 @@ describe('HttpError', (): void => {
       expect(instance.metadata.get(HTTP.terms.statusCodeNumber)?.value).toBe('304');
       expect(instance.metadata.get(HH.terms.etag)?.value).toBe(eTag);
     });
+  });
+});
+
+describe('A HttpError', (): void => {
+  // Exposes the private lazy metadata cache so tests can assert it is not built prematurely.
+  type WithCache = { lazyMetadata?: RepresentationMetadata };
+
+  it('builds the provided metadata eagerly during construction.', (): void => {
+    const metadata = new RepresentationMetadata();
+    const error = new NotFoundHttpError('message', { metadata });
+    expect(error.metadata).toBe(metadata);
+    expect(metadata.get(SOLID_ERROR.terms.errorResponse)?.value).toBe(`${SOLID_ERROR.namespace}H404`);
+    expect(metadata.get(HTTP.terms.statusCodeNumber)?.value).toBe('404');
+  });
+
+  it('builds identical metadata lazily when none is provided.', (): void => {
+    const eager = new NotFoundHttpError('message', { metadata: new RepresentationMetadata() });
+    const lazy = new NotFoundHttpError('message');
+    expect(lazy.metadata.quads()).toBeRdfIsomorphic(eager.metadata.quads());
+    expect(lazy.metadata.get(SOLID_ERROR.terms.errorResponse)?.value).toBe(`${SOLID_ERROR.namespace}H404`);
+    expect(lazy.metadata.get(HTTP.terms.statusCodeNumber)?.value).toBe('404');
+  });
+
+  it('does not build the metadata store until it is accessed.', (): void => {
+    const error = new NotFoundHttpError();
+    expect((error as unknown as WithCache).lazyMetadata).toBeUndefined();
+    const { metadata } = error;
+    expect(metadata).toBeInstanceOf(RepresentationMetadata);
+    expect((error as unknown as WithCache).lazyMetadata).toBe(metadata);
+    expect(error.metadata).toBe(metadata);
+  });
+
+  it('is recognised by `isInstance` without building the metadata store.', (): void => {
+    const error = new NotFoundHttpError();
+    expect(HttpError.isInstance(error)).toBe(true);
+    expect((error as unknown as WithCache).lazyMetadata).toBeUndefined();
+  });
+
+  it('is not recognised by `isInstance` for non-HttpError values.', (): void => {
+    expect(HttpError.isInstance('string')).toBe(false);
+    expect(HttpError.isInstance(new Error('bad'))).toBe(false);
+    expect(HttpError.isInstance({ name: 'e', message: 'm', stack: 's', statusCode: 404 })).toBe(false);
   });
 });
