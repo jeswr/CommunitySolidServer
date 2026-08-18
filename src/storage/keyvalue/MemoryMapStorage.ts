@@ -1,9 +1,10 @@
+import type { SingleThreaded } from '../../init/cluster/SingleThreaded';
 import type { KeyValueStorage } from './KeyValueStorage';
 
 /**
  * A {@link KeyValueStorage} which uses a JavaScript Map for internal storage.
  */
-export class MemoryMapStorage<TValue> implements KeyValueStorage<string, TValue> {
+export class MemoryMapStorage<TValue> implements KeyValueStorage<string, TValue>, SingleThreaded {
   private readonly data: Map<string, TValue>;
 
   public constructor() {
