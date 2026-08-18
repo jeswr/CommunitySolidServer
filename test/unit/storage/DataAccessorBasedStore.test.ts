@@ -1,5 +1,6 @@
 import 'jest-rdf';
 import type { Readable } from 'node:stream';
+import type { Quad } from '@rdfjs/types';
 import arrayifyStream from 'arrayify-stream';
 import { DataFactory, Store } from 'n3';
 import type { Conditions } from '../../../src';
@@ -167,6 +168,8 @@ describe('A DataAccessorBasedStore', (): void => {
       expect(result.metadata.contentType).toEqual(INTERNAL_QUADS);
       expect(result.metadata.get(namedNode('AUXILIARY'))?.value)
         .toBe(auxiliaryStrategy.getAuxiliaryIdentifier(resourceID).path);
+      expect(result.metadata.get(SOLID_META.terms.containerEmpty, SOLID_META.terms.ResponseMetadata))
+        .toEqualRdfTerm(literal('true', XSD.terms.boolean));
     });
 
     it('keeps large container listings lazy and releases their child iterator on cancellation.', async():
@@ -193,9 +196,10 @@ describe('A DataAccessorBasedStore', (): void => {
 
       const result = await store.getRepresentation(resourceID);
 
-      // The first child is peeked before the body is consumed.
       expect(generatedChildren).toBe(1);
-      expect(result.metadata.getAll(LDP.terms.contains)).toHaveLength(1);
+      expect(result.metadata.getAll(LDP.terms.contains)).toHaveLength(0);
+      expect(result.metadata.get(SOLID_META.terms.containerEmpty, SOLID_META.terms.ResponseMetadata))
+        .toEqualRdfTerm(literal('false', XSD.terms.boolean));
 
       const iterator = result.data[Symbol.asyncIterator]();
       for (let i = 0; i < 20; ++i) {
@@ -216,7 +220,8 @@ describe('A DataAccessorBasedStore', (): void => {
       accessor.data[`${resourceID.path}resource`] = representation;
       accessor.data[`${resourceID.path}resource.dummy`] = representation;
       const result = await store.getRepresentation(resourceID);
-      const contains = result.metadata.getAll(LDP.terms.contains);
+      const quads = await arrayifyStream<Quad>(result.data);
+      const contains = new Store(quads).getObjects(namedNode(resourceID.path), LDP.terms.contains, null);
       expect(contains).toHaveLength(1);
       expect(contains[0].value).toBe(`${resourceID.path}resource`);
     });

@@ -170,7 +170,6 @@ export class DataAccessorBasedStore implements ResourceStore {
 
   /**
    * Creates a lazy quad stream for a container listing.
-   * Adds one containment quad to metadata for empty-container checks.
    */
   protected async streamContainerRepresentation(identifier: ResourceIdentifier, metadata: RepresentationMetadata):
   Promise<Readable> {
@@ -180,12 +179,13 @@ export class DataAccessorBasedStore implements ResourceStore {
     metadata.addQuad(LDP.terms.namespace, PREFERRED_PREFIX_TERM, 'ldp', SOLID_META.terms.ResponseMetadata);
     metadata.addQuad(POSIX.terms.namespace, PREFERRED_PREFIX_TERM, 'posix', SOLID_META.terms.ResponseMetadata);
     metadata.addQuad(XSD.terms.namespace, PREFERRED_PREFIX_TERM, 'xsd', SOLID_META.terms.ResponseMetadata);
-    // Retain the first containment quad for empty-container checks.
     const childQuads = this.getContainerListingQuads(identifier, metadata.identifier as NamedNode);
     const first = await childQuads.next();
-    if (!first.done) {
-      metadata.addQuads([ first.value ]);
-    }
+    metadata.add(
+      SOLID_META.terms.containerEmpty,
+      DataFactory.literal(`${first.done}`, XSD.terms.boolean),
+      SOLID_META.terms.ResponseMetadata,
+    );
 
     async function* generate(): AsyncIterableIterator<Quad> {
       yield* ownQuads;
