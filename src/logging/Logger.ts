@@ -1,4 +1,5 @@
 import cluster from 'node:cluster';
+import { getRequestId } from './LogContext';
 import type { LogLevel } from './LogLevel';
 
 export interface LogMetadata {
@@ -6,6 +7,8 @@ export interface LogMetadata {
   isPrimary: boolean;
   /** The process id of the current process */
   pid: number;
+  /** The unique identifier of the request during whose handling this message was logged */
+  requestId?: string;
 }
 
 /**
@@ -97,10 +100,17 @@ export interface Logger extends SimpleLogger {
 export abstract class BaseLogger implements Logger {
   public abstract log(level: LogLevel, message: string, meta?: LogMetadata): Logger;
 
-  private readonly getMeta = (): LogMetadata => ({
-    pid: process.pid,
-    isPrimary: cluster.isPrimary,
-  });
+  private readonly getMeta = (): LogMetadata => {
+    const meta: LogMetadata = {
+      pid: process.pid,
+      isPrimary: cluster.isPrimary,
+    };
+    const requestId = getRequestId();
+    if (requestId) {
+      meta.requestId = requestId;
+    }
+    return meta;
+  };
 
   public error(message: string): Logger {
     return this.log('error', message, this.getMeta());

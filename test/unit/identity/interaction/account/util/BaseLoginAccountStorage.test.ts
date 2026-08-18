@@ -2,6 +2,7 @@ import {
   BaseLoginAccountStorage,
 } from '../../../../../../src/identity/interaction/account/util/BaseLoginAccountStorage';
 import { ACCOUNT_TYPE } from '../../../../../../src/identity/interaction/account/util/LoginStorage';
+import { getRequestId, runWithRequestId } from '../../../../../../src/logging/LogContext';
 import type { IndexedStorage } from '../../../../../../src/storage/keyvalue/IndexedStorage';
 import { NotFoundHttpError } from '../../../../../../src/util/errors/NotFoundHttpError';
 
@@ -239,5 +240,50 @@ describe('A BaseLoginAccountStorage', (): void => {
     ]);
     expect(source.entries).toHaveBeenCalledTimes(1);
     expect(source.entries).toHaveBeenLastCalledWith('type');
+  });
+
+  describe('when the account cleanup timer fires', (): void => {
+    // Real timers are required: fake timers do not preserve the AsyncLocalStorage logging context,
+    // so they cannot demonstrate that the deferred callback avoids the originating request identifier.
+    beforeEach((): void => {
+      jest.useRealTimers();
+    });
+
+    afterEach((): void => {
+      jest.restoreAllMocks();
+      jest.useFakeTimers();
+    });
+
+    it('runs the deferred cleanup without the originating request identifier.', async(): Promise<void> => {
+      // A zero expiration makes the real timer fire immediately.
+      storage = new BaseLoginAccountStorage(source, 0);
+      const logger = (storage as any).logger;
+      let loggedRequestId: string | undefined = 'unset';
+      const debugSpy = jest.spyOn(logger, 'debug').mockImplementation((): unknown => {
+        loggedRequestId = getRequestId();
+        return logger;
+      });
+
+      source.get.mockResolvedValue({ id: 'id', linkedLoginsCount: 0 });
+      const deletion = new Promise<void>((resolve): void => {
+        source.delete.mockImplementation(async(): Promise<void> => {
+          resolve();
+        });
+      });
+
+      const requestId = await runWithRequestId(async(): Promise<string | undefined> => {
+        await storage.create(ACCOUNT_TYPE, { test: 'data' });
+        return getRequestId();
+      });
+      expect(requestId).toEqual(expect.any(String));
+
+      await deletion;
+
+      expect(debugSpy).toHaveBeenCalledTimes(1);
+      expect(loggedRequestId).toBeUndefined();
+      expect(loggedRequestId).not.toBe(requestId);
+      expect(source.delete).toHaveBeenCalledTimes(1);
+      expect(source.delete).toHaveBeenLastCalledWith(ACCOUNT_TYPE, 'id');
+    });
   });
 });

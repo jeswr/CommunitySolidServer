@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { RepresentationMetadata } from '../../../../src/http/representation/RepresentationMetadata';
 import type { ResourceIdentifier } from '../../../../src/http/representation/ResourceIdentifier';
+import { getRequestId, runWithRequestId } from '../../../../src/logging/LogContext';
 import type { Logger } from '../../../../src/logging/Logger';
 import { getLoggerFor } from '../../../../src/logging/LogUtil';
 import type { ActivityEmitter } from '../../../../src/server/notifications/ActivityEmitter';
@@ -137,5 +138,25 @@ describe('A ListeningActivityHandler', (): void => {
 
     expect(notificationHandler.handleSafe).toHaveBeenCalledTimes(0);
     expect(logger.error).toHaveBeenCalledTimes(0);
+  });
+
+  it('handles the notification fan-out without the writer request identifier.', async(): Promise<void> => {
+    let handlerRequestId: string | undefined = 'unset';
+    notificationHandler.handleSafe.mockImplementation(async(): Promise<void> => {
+      handlerRequestId = getRequestId();
+    });
+
+    // Emit the event from within a request context, as happens when a resource write triggers the fan-out.
+    const writerRequestId = runWithRequestId((): string | undefined => {
+      emitter.emit('changed', topic, activity, metadata);
+      return getRequestId();
+    });
+
+    await flushPromises();
+
+    expect(writerRequestId).toEqual(expect.any(String));
+    expect(notificationHandler.handleSafe).toHaveBeenCalledTimes(1);
+    expect(handlerRequestId).toBeUndefined();
+    expect(handlerRequestId).not.toBe(writerRequestId);
   });
 });

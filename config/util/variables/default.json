@@ -33,6 +33,11 @@
       "@type": "Variable"
     },
     {
+      "comment": "The format used to output log messages: 'pretty' or 'json'.",
+      "@id": "urn:solid-server:default:variable:loggingFormat",
+      "@type": "Variable"
+    },
+    {
       "comment": "Whether error stack traces should be shown in the server responses.",
       "@id": "urn:solid-server:default:variable:showStackTrace",
       "@type": "Variable"

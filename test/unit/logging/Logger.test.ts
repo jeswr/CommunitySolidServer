@@ -1,3 +1,4 @@
+import { getRequestId, runWithRequestId } from '../../../src/logging/LogContext';
 import { BaseLogger, WrappingLogger } from '../../../src/logging/Logger';
 import type { LogMetadata, SimpleLogger } from '../../../src/logging/Logger';
 
@@ -54,6 +55,15 @@ describe('Logger', (): void => {
       logger.silly('my message');
       expect(logger.log).toHaveBeenCalledTimes(1);
       expect(logger.log).toHaveBeenCalledWith('silly', 'my message', metadata);
+    });
+
+    it('includes the request identifier when logging within a request context.', async(): Promise<void> => {
+      const requestId = runWithRequestId((): string | undefined => {
+        logger.info('my message');
+        return getRequestId();
+      });
+      expect(logger.log).toHaveBeenCalledTimes(1);
+      expect(logger.log).toHaveBeenCalledWith('info', 'my message', { ...metadata, requestId });
     });
   });
 

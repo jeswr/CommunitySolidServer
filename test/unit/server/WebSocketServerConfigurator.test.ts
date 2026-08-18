@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import type { Server } from 'node:http';
 import type { WebSocket } from 'ws';
+import { getRequestId } from '../../../src/logging/LogContext';
 import type { Logger } from '../../../src/logging/Logger';
 import { getLoggerFor } from '../../../src/logging/LogUtil';
 import type { HttpRequest } from '../../../src/server/HttpRequest';
@@ -78,5 +79,21 @@ describe('A WebSocketServerConfigurator', (): void => {
     expect(webSocket.send).toHaveBeenCalledTimes(1);
     expect(webSocket.send).toHaveBeenLastCalledWith('There was an error opening this WebSocket: bad input');
     expect(webSocket.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles every connection within a context that has a unique request identifier.', async(): Promise<void> => {
+    let handlerRequestId: string | undefined;
+    handler.handleSafe.mockImplementationOnce(async(): Promise<void> => {
+      handlerRequestId = getRequestId();
+    });
+
+    server.emit('upgrade', upgradeRequest, webSocket);
+
+    await flushPromises();
+
+    expect(handler.handleSafe).toHaveBeenCalledTimes(1);
+    expect(handlerRequestId).toMatch(/^[0-9a-f-]{36}$/u);
+    // The context does not leak outside of the connection handling.
+    expect(getRequestId()).toBeUndefined();
   });
 });
