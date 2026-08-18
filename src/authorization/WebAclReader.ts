@@ -47,11 +47,8 @@ export class WebAclReader extends PermissionReader {
   private readonly accessChecker: AccessChecker;
 
   /**
-   * Caches the credential-independent part of ACL resolution: the effective-ACL walk per target
-   * identifier object, and the parsed ACL contents per ACL identifier object, so the multiple
-   * permission reads of one request (the authorization and WAC-Allow checks) share a single walk and read.
-   * A new request always has new identifier objects, so these `WeakMap`s can never serve stale data;
-   * an identifier object rebuilt along the way only causes a cache miss.
+   * Caches effective ACL lookups and parsed ACL data by identifier object.
+   * Weak keys prevent reuse across requests.
    */
   private readonly aclCache: PromiseCache<ResourceIdentifier, ResourceIdentifier>;
   private readonly storeCache: PromiseCache<ResourceIdentifier, Store>;
@@ -234,13 +231,7 @@ export class WebAclReader extends PermissionReader {
     return result;
   }
 
-  /**
-   * Reads and parses the contents of the given ACL resource.
-   *
-   * @param aclIdentifier - Identifier of the ACL resource to read.
-   *
-   * @returns A {@link Store} containing the statements of the ACL resource.
-   */
+  /** Reads and parses an ACL resource. */
   private async readAclData(aclIdentifier: ResourceIdentifier): Promise<Store> {
     this.logger.debug(`Trying to read the ACL document ${aclIdentifier.path}`);
     try {
