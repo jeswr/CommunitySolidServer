@@ -1,11 +1,16 @@
+import type { ClusterManager } from '../../../../src/init/cluster/ClusterManager';
+import * as LogUtil from '../../../../src/logging/LogUtil';
 import { InternalServerError } from '../../../../src/util/errors/InternalServerError';
 import { MemoryResourceLocker } from '../../../../src/util/locking/MemoryResourceLocker';
 
 describe('A MemoryResourceLocker', (): void => {
   let locker: MemoryResourceLocker;
   const identifier = { path: 'http://test.com/foo' };
+  let logger: { debug: jest.Mock; warn: jest.Mock };
 
   beforeEach(async(): Promise<void> => {
+    logger = { debug: jest.fn(), warn: jest.fn() };
+    jest.spyOn(LogUtil, 'getLoggerFor').mockReturnValue(logger as any);
     locker = new MemoryResourceLocker();
   });
 
@@ -67,5 +72,29 @@ describe('A MemoryResourceLocker', (): void => {
       return locker.release({ path: 'path1' });
     });
     expect(results).toEqual([ 2, 3, 1 ]);
+  });
+
+  it('does not warn when no ClusterManager is provided.', (): void => {
+    expect(new MemoryResourceLocker()).toBeDefined();
+    expect(logger.warn).toHaveBeenCalledTimes(0);
+  });
+
+  it('warns when constructed while running with multiple workers.', (): void => {
+    const clusterManager: jest.Mocked<ClusterManager> = {
+      isSingleThreaded: jest.fn().mockReturnValue(false),
+    } as any;
+    expect(new MemoryResourceLocker(clusterManager)).toBeDefined();
+    expect(clusterManager.isSingleThreaded).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenLastCalledWith(expect.stringContaining('MemoryResourceLocker'));
+  });
+
+  it('does not warn when constructed in singlethreaded mode.', (): void => {
+    const clusterManager: jest.Mocked<ClusterManager> = {
+      isSingleThreaded: jest.fn().mockReturnValue(true),
+    } as any;
+    expect(new MemoryResourceLocker(clusterManager)).toBeDefined();
+    expect(clusterManager.isSingleThreaded).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledTimes(0);
   });
 });

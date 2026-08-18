@@ -8,7 +8,12 @@
       "locker": {
         "@type": "GreedyReadWriteLocker",
         "locker": {
-          "@type": "MemoryResourceLocker"
+          "@type": "MemoryResourceLocker",
+          "clusterManager": {
+            "comment": "Used to warn when in-memory locks are used with multiple workers, where they are unsafe.",
+            "@type": "ClusterManager",
+            "workers": { "@id": "urn:solid-server:default:variable:workers" }
+          }
         },
         "storage": { "@id": "urn:solid-server:default:LockStorage" }
       },

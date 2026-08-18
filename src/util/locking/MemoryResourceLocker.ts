@@ -1,5 +1,6 @@
 import AsyncLock from 'async-lock';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
+import type { ClusterManager } from '../../init/cluster/ClusterManager';
 import type { SingleThreaded } from '../../init/cluster/SingleThreaded';
 import { getLoggerFor } from '../../logging/LogUtil';
 import { InternalServerError } from '../errors/InternalServerError';
@@ -10,6 +11,9 @@ import type { ResourceLocker } from './ResourceLocker';
  * Note that all locks are kept in memory until they are unlocked which could potentially result
  * in a memory leak if locks are never unlocked, so make sure this is covered with expiring locks for example,
  * and/or proper `finally` handles.
+ *
+ * Locks are not shared between processes, so this locker can not be used
+ * when multiple server instances run on the same storage.
  */
 export class MemoryResourceLocker implements ResourceLocker, SingleThreaded {
   protected readonly logger = getLoggerFor(this);
@@ -17,9 +21,21 @@ export class MemoryResourceLocker implements ResourceLocker, SingleThreaded {
   private readonly locker: AsyncLock;
   private readonly unlockCallbacks: Record<string, () => void>;
 
-  public constructor() {
+  /**
+   * @param clusterManager - Used to warn when the server is not running in singlethreaded mode.
+   */
+  public constructor(clusterManager?: ClusterManager) {
     this.locker = new AsyncLock();
     this.unlockCallbacks = {};
+    if (clusterManager && !clusterManager.isSingleThreaded()) {
+      this.logger.warn(
+        'Using the in-memory MemoryResourceLocker while running with multiple workers or in clustered mode. ' +
+        'Locks are only stored in the memory of a single process, so they are not shared across workers or ' +
+        'server instances, and concurrent writes to the same resource can corrupt data. ' +
+        'Switch to a shared locker such as the Redis locker (config/util/resource-locker/redis.json) ' +
+        'for multi-worker or multi-instance deployments.',
+      );
+    }
   }
 
   public async acquire(identifier: ResourceIdentifier): Promise<void> {

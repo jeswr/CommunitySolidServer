@@ -82,6 +82,8 @@ nav:
       - Tests: features/test.md
   - Usage:
       - Starting the server: usage/starting-server.md
+      - Scaling, clustering and locking: usage/scaling-and-locking.md
+      - Backup and restore: usage/backup-restore.md
       - Example request: usage/example-requests.md
       - Metadata: usage/metadata.md
       - Identity provider:
