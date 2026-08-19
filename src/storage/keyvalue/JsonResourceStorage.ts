@@ -106,7 +106,8 @@ export class JsonResourceStorage<T> implements KeyValueStorage<string, T> {
     representation: Representation,
   ): AsyncIterableIterator<ResourceIdentifier> {
     for await (const entry of representation.data as AsyncIterable<Partial<Quad>>) {
-      if (entry.subject?.value === identifier.path && entry.predicate?.equals(LDP.terms.contains) &&
+      if (entry.subject?.termType === 'NamedNode' && entry.subject.value === identifier.path &&
+        entry.predicate?.termType === 'NamedNode' && entry.predicate.value === LDP.terms.contains.value &&
         entry.object?.termType === 'NamedNode') {
         yield { path: entry.object.value };
       }

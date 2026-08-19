@@ -168,14 +168,28 @@ export class DataAccessorBasedStore implements ResourceStore {
       SOLID_META.terms.ResponseMetadata,
     );
 
-    async function* generate(): AsyncIterableIterator<Quad> {
+    async function* generate(): AsyncGenerator<Quad, void, undefined> {
       yield* ownQuads;
       if (!first.done) {
         yield first.value;
         yield* childQuads;
       }
     }
-    return Readable.from(generate(), { objectMode: true });
+    const listing = generate();
+    const streamSource: AsyncIterableIterator<Quad> = {
+      next: listing.next.bind(listing),
+      return: async(): Promise<IteratorResult<Quad>> => {
+        try {
+          return await listing.return();
+        } finally {
+          await childQuads.return?.();
+        }
+      },
+      [Symbol.asyncIterator](): AsyncIterableIterator<Quad> {
+        return this;
+      },
+    };
+    return Readable.from(streamSource, { objectMode: true });
   }
 
   /** Yields containment and metadata quads for non-auxiliary children. */

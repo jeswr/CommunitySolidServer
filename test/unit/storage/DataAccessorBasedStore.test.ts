@@ -1,4 +1,5 @@
 import 'jest-rdf';
+import { once } from 'node:events';
 import type { Readable } from 'node:stream';
 import type { Quad } from '@rdfjs/types';
 import arrayifyStream from 'arrayify-stream';
@@ -207,9 +208,35 @@ describe('A DataAccessorBasedStore', (): void => {
       }
       expect(generatedChildren).toBeLessThan(20);
 
+      const closed = new Promise<void>((resolve): void => {
+        result.data.once('close', resolve);
+      });
       await iterator.return?.();
+      await closed;
       expect(iteratorClosed).toBe(true);
       expect(generatedChildren).toBeLessThan(childCount);
+    });
+
+    it('releases the child iterator when an unread listing is destroyed.', async(): Promise<void> => {
+      const resourceID = { path: `${root}container/` };
+      containerMetadata.identifier = namedNode(resourceID.path);
+      accessor.data[resourceID.path] = { metadata: containerMetadata } as Representation;
+
+      let iteratorClosed = false;
+      accessor.getChildren = async function* (): AsyncIterableIterator<RepresentationMetadata> {
+        try {
+          yield new RepresentationMetadata({ path: `${resourceID.path}child` });
+        } finally {
+          iteratorClosed = true;
+        }
+      };
+
+      const result = await store.getRepresentation(resourceID);
+      const closed = once(result.data, 'close');
+      result.data.destroy();
+      await closed;
+
+      expect(iteratorClosed).toBe(true);
     });
 
     it('will remove containment triples referencing auxiliary resources.', async(): Promise<void> => {

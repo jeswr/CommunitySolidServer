@@ -137,6 +137,10 @@ describe('A JsonResourceStorage', (): void => {
     let listingClosed = false;
     async function* generateListing(): AsyncIterableIterator<Quad> {
       try {
+        yield {
+          subject: DataFactory.namedNode(containerIdentifier),
+          predicate: {},
+        } as unknown as Quad;
         for (let i = 0; i < childCount; ++i) {
           generatedChildren += 1;
           yield DataFactory.quad(
