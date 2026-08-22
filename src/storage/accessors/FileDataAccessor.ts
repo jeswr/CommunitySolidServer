@@ -1,9 +1,6 @@
 import type { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
-import type { Quad } from '@rdfjs/types';
 import type { Stats } from 'fs-extra';
 import { createReadStream, createWriteStream, ensureDir, lstat, opendir, remove, stat } from 'fs-extra';
-import { StreamParser, StreamWriter } from 'n3';
 import type { Representation } from '../../http/representation/Representation';
 import { RepresentationMetadata } from '../../http/representation/RepresentationMetadata';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
@@ -16,8 +13,8 @@ import { guardStream } from '../../util/GuardedStream';
 import type { Guarded } from '../../util/GuardedStream';
 import { parseContentType } from '../../util/HeaderUtil';
 import { isContainerIdentifier, isContainerPath, joinFilePath } from '../../util/PathUtil';
+import { parseQuads, serializeQuads } from '../../util/QuadUtil';
 import { addResourceMetadata, updateModifiedDate } from '../../util/ResourceUtil';
-import { guardedStreamFrom, pipeSafely } from '../../util/StreamUtil';
 import { toLiteral, toNamedTerm } from '../../util/TermUtil';
 import { CONTENT_TYPE_TERM, DC, IANA, LDP, POSIX, RDF, SOLID_META, XSD } from '../../util/Vocabularies';
 import type { FileIdentifierMapper, ResourceLink } from '../mapping/FileIdentifierMapper';
@@ -221,16 +218,15 @@ export class FileDataAccessor implements DataAccessor {
     if (isContainerPath(link.filePath) || typeof link.contentType !== 'undefined') {
       metadata.removeAll(CONTENT_TYPE_TERM);
     }
+    const quads = metadata.quads();
     const metadataLink = await this.resourceMapper.mapUrlToFilePath(link.identifier, true);
     let wroteMetadata: boolean;
 
     // Write metadata to file if there are quads remaining
-    if (metadata.size > 0) {
+    if (quads.length > 0) {
       // Determine required content-type based on mapper
-      const serializedMetadata = pipeSafely(
-        guardedStreamFrom(metadata),
-        new StreamWriter({ format: metadataLink.contentType }),
-      );
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- Buffered metadata is faster for this call site.
+      const serializedMetadata = serializeQuads(quads, metadataLink.contentType);
       await this.writeDataFile(metadataLink.filePath, serializedMetadata);
       wroteMetadata = true;
 
@@ -259,7 +255,7 @@ export class FileDataAccessor implements DataAccessor {
 
   /**
    * Reads the metadata from the corresponding metadata file.
-   * Returns empty metadata if there is no metadata file.
+   * Returns an empty array if there is no metadata file.
    *
    * @param identifier - Identifier of the resource (not the metadata!).
    */
@@ -270,16 +266,13 @@ export class FileDataAccessor implements DataAccessor {
       // Check if the metadata file exists first
       const stats = await lstat(metadataLink.filePath);
 
-      const metadata = new RepresentationMetadata(identifier);
-      await pipeline(
-        createReadStream(metadataLink.filePath),
-        new StreamParser({ format: metadataLink.contentType, baseIRI: identifier.path }),
-        async(quads: AsyncIterable<Quad>): Promise<void> => {
-          for await (const quad of quads) {
-            metadata.addQuad(quad);
-          }
-        },
+      const readMetadataStream = guardStream(createReadStream(metadataLink.filePath));
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- Streaming into metadata regresses performance.
+      const quads = await parseQuads(
+        readMetadataStream,
+        { format: metadataLink.contentType, baseIRI: identifier.path },
       );
+      const metadata = new RepresentationMetadata(identifier).addQuads(quads);
 
       // Already add modified date of metadata.
       // Final modified date should be max of data and metadata.
