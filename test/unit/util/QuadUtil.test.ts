@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- These tests protect the compatibility API. */
 import 'jest-rdf';
 import type { Quad } from '@rdfjs/types';
 import arrayifyStream from 'arrayify-stream';
@@ -44,12 +45,6 @@ describe('QuadUtil', (): void => {
       const promise = readableToString(stream);
       await expect(promise).rejects.toThrow(TypeError);
       await expect(promise).rejects.toThrow('Cannot read properties of undefined (reading \'equals\')');
-    });
-
-    it('throws immediately if quads cannot be serialized in a line-based format.', async(): Promise<void> => {
-      expect((): void => {
-        serializeQuads([ {} as unknown as Quad ], 'application/n-triples');
-      }).toThrow(TypeError);
     });
   });
 
