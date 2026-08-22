@@ -1,37 +1,18 @@
 import type { PromiseCacheStore } from './PromiseCache';
 import { PromiseCache } from './PromiseCache';
 
-/**
- * Options for the {@link cached} method decorator.
- */
+/** Options for the {@link cached} decorator. */
 export interface CachedOptions<TThis, TArgs extends unknown[]> {
-  /**
-   * Derives the cache key from the arguments of the decorated method.
-   * Defaults to using the first argument as key.
-   */
+  /** Derives the cache key. Defaults to the first argument. */
   readonly key?: (this: TThis, ...args: TArgs) => unknown;
-  /**
-   * Whether to back the cache with a `WeakMap` instead of a `Map`,
-   * letting entries be garbage collected once their key object is unreachable.
-   * Requires the cache key to be an object. Defaults to `false`.
-   */
+  /** Uses a `WeakMap`; requires object keys. */
   readonly weak?: boolean;
-  /**
-   * Whether an entry whose promise rejects is evicted so the call is retried next time.
-   * Defaults to `true`.
-   */
+  /** Evicts rejected promises. Defaults to `true`. */
   readonly evictOnError?: boolean;
 }
 
 /**
- * Method decorator that memoizes an asynchronous method with a {@link PromiseCache}.
- * Every instance gets its own cache, so instances never share cached results.
- * By default the first argument is used as cache key;
- * see {@link CachedOptions} for the key derivation, backing store, and error eviction.
- *
- * @param options - Options determining the caching behaviour.
- *
- * @returns A decorator applying the caching to the method.
+ * Caches asynchronous method results per instance.
  */
 export function cached<TThis extends object, TArgs extends unknown[], TValue>(
   options: CachedOptions<TThis, TArgs> = {},
@@ -43,7 +24,7 @@ export function cached<TThis extends object, TArgs extends unknown[], TValue>(
     async function(this: TThis, ...args: TArgs): Promise<TValue> {
       let cache = caches.get(this);
       if (!cache) {
-        // A WeakMap only accepts object keys, so a cast is needed to match the store interface
+        // The caller guarantees object keys when enabling `weak`.
         const store = options.weak ?
           new WeakMap<object, Promise<TValue>>() as unknown as PromiseCacheStore<unknown, Promise<TValue>> :
           new Map<unknown, Promise<TValue>>();
