@@ -28,4 +28,12 @@ describe('A WinstonLogger', (): void => {
     expect(innerLogger.isLevelEnabled).toHaveBeenCalledWith('debug');
     expect(innerLogger.log).toHaveBeenCalledTimes(0);
   });
+
+  it('delegates when the inner logger has no level check.', async(): Promise<void> => {
+    const log = jest.fn();
+    logger = new WinstonLogger({ log } as unknown as WinstonInnerLogger);
+    expect(logger.log('debug', 'my message', { abc: true })).toBe(logger);
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith('debug', 'my message', { abc: true });
+  });
 });
