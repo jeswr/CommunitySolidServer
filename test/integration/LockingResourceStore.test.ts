@@ -14,7 +14,7 @@ import type { ExpiringReadWriteLocker } from '../../src/util/locking/ExpiringRea
 import { MemoryResourceLocker } from '../../src/util/locking/MemoryResourceLocker';
 import type { ReadWriteLocker } from '../../src/util/locking/ReadWriteLocker';
 import { WrappedExpiringReadWriteLocker } from '../../src/util/locking/WrappedExpiringReadWriteLocker';
-import { guardedStreamFrom } from '../../src/util/StreamUtil';
+import { endOfStream, guardedStreamFrom } from '../../src/util/StreamUtil';
 import { PIM, RDF } from '../../src/util/Vocabularies';
 import { SimpleSuffixStrategy } from '../util/SimpleSuffixStrategy';
 import { flushPromises } from '../util/Util';
@@ -28,6 +28,7 @@ describe('A LockingResourceStore', (): void => {
   let expiringLocker: ExpiringReadWriteLocker;
   let source: ResourceStore;
   let getRepresentationSpy: jest.SpyInstance;
+  let setRepresentationSpy: jest.SpyInstance;
 
   beforeEach(async(): Promise<void> => {
     jest.clearAllMocks();
@@ -63,6 +64,12 @@ describe('A LockingResourceStore', (): void => {
 
     // Make sure something is in the store before we read from it in our tests.
     await source.setRepresentation({ path }, new BasicRepresentation([ 1, 2, 3 ], APPLICATION_OCTET_STREAM));
+
+    // Simulates a source store that consumes the incoming data before resolving
+    setRepresentationSpy = jest.spyOn(source, 'setRepresentation');
+    setRepresentationSpy.mockImplementation(
+      async(identifier, representation: Representation): Promise<any> => endOfStream(representation.data),
+    );
   });
 
   it('destroys the stream when nothing is read after 1000ms.', async(): Promise<void> => {
@@ -109,5 +116,67 @@ describe('A LockingResourceStore', (): void => {
 
     // Verify the lock was acquired and released at the right time
     expect(getRepresentationSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('destroys the incoming stream when nothing is written after 1000ms.', async(): Promise<void> => {
+    const representation = new BasicRepresentation([ 1, 2, 3 ], APPLICATION_OCTET_STREAM);
+    const errorCallback = jest.fn();
+    representation.data.on('error', errorCallback);
+
+    // Catch the expected error so its rejection is handled before the timer fires
+    let error: unknown;
+    const promise = store.setRepresentation({ path }, representation).catch((err: unknown): void => {
+      error = err;
+    });
+    // Allow the lock to be acquired
+    await flushPromises();
+    expect(setRepresentationSpy).toHaveBeenCalledTimes(1);
+
+    // Wait 1000ms without writing
+    jest.advanceTimersByTime(1000);
+    await flushPromises();
+    expect(representation.data.destroyed).toBe(true);
+    await promise;
+    expect(error).toEqual(new InternalServerError(`Lock expired after 1000ms on ${path}`));
+
+    // Verify a timeout error was thrown
+    expect(errorCallback).toHaveBeenCalledTimes(1);
+    expect(errorCallback).toHaveBeenLastCalledWith(new InternalServerError(`Lock expired after 1000ms on ${path}`));
+  });
+
+  it('destroys the incoming stream when pauses between writes exceed 1000ms.', async(): Promise<void> => {
+    const representation = new BasicRepresentation([ 1, 2, 3 ], APPLICATION_OCTET_STREAM);
+    const errorCallback = jest.fn();
+    representation.data.on('error', errorCallback);
+
+    // Catch the expected error so its rejection is handled before the timer fires
+    let error: unknown;
+    const promise = store.setRepresentation({ path }, representation).catch((err: unknown): void => {
+      error = err;
+    });
+    // Allow the lock to be acquired
+    await flushPromises();
+    expect(setRepresentationSpy).toHaveBeenCalledTimes(1);
+
+    // Wait 750ms and read
+    jest.advanceTimersByTime(750);
+    expect(representation.data.destroyed).toBe(false);
+    representation.data.read();
+
+    // Wait 750ms and read
+    jest.advanceTimersByTime(750);
+    expect(representation.data.destroyed).toBe(false);
+    representation.data.read();
+
+    // Wait 1000ms and watch the stream be destroyed
+    jest.advanceTimersByTime(1000);
+    await flushPromises();
+    expect(representation.data.destroyed).toBe(true);
+    await promise;
+    expect(error).toEqual(new InternalServerError(`Lock expired after 1000ms on ${path}`));
+
+    // Verify a timeout error was thrown
+    expect(errorCallback).toHaveBeenCalledTimes(1);
+    expect(errorCallback).toHaveBeenLastCalledWith(new InternalServerError(`Lock expired after 1000ms on ${path}`));
   });
 });

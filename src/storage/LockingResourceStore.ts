@@ -16,6 +16,7 @@ import type { ChangeMap, ResourceStore } from './ResourceStore';
  * Store that for every call acquires a lock before executing it on the requested resource,
  * and releases it afterwards.
  * In case the request returns a Representation the lock will only be released when the data stream is finished.
+ * Similarly, for write operations the lock will be maintained as long as the incoming data stream is being read.
  *
  * For auxiliary resources the lock will be applied to the subject resource.
  * The actual operation is still executed on the auxiliary resource.
@@ -60,8 +61,9 @@ export class LockingResourceStore implements AtomicResourceStore {
     representation: Representation,
     conditions?: Conditions,
   ): Promise<ChangeMap> {
-    return this.locks.withWriteLock(
+    return this.lockedRepresentationWrite(
       this.getLockIdentifier(container),
+      representation,
       async(): Promise<ChangeMap> => this.source.addResource(container, representation, conditions),
     );
   }
@@ -71,8 +73,9 @@ export class LockingResourceStore implements AtomicResourceStore {
     representation: Representation,
     conditions?: Conditions,
   ): Promise<ChangeMap> {
-    return this.locks.withWriteLock(
+    return this.lockedRepresentationWrite(
       this.getLockIdentifier(identifier),
+      representation,
       async(): Promise<ChangeMap> => this.source.setRepresentation(identifier, representation, conditions),
     );
   }
@@ -89,8 +92,9 @@ export class LockingResourceStore implements AtomicResourceStore {
     patch: Patch,
     conditions?: Conditions,
   ): Promise<ChangeMap> {
-    return this.locks.withWriteLock(
+    return this.lockedRepresentationWrite(
       this.getLockIdentifier(identifier),
+      patch,
       async(): Promise<ChangeMap> => this.source.modifyResource(identifier, patch, conditions),
     );
   }
@@ -141,6 +145,56 @@ export class LockingResourceStore implements AtomicResourceStore {
         reject(error as Error);
       });
     });
+  }
+
+  /**
+   * Acquires a write lock and executes the given function,
+   * adapting the incoming data stream to reset the timer every time data is read.
+   * The stream is adapted in place, as source stores do not expect
+   * to receive a different representation than the one that was passed in.
+   * Should the lock expire before the function has finished, the data stream will be destroyed.
+   *
+   * @param identifier - Identifier that should be locked.
+   * @param representation - Representation whose data will be consumed while the resource is locked.
+   * @param whileLocked - Function to be executed while the resource is locked.
+   */
+  protected async lockedRepresentationWrite(
+    identifier: ResourceIdentifier,
+    representation: Representation,
+    whileLocked: () => Promise<ChangeMap>,
+  ): Promise<ChangeMap> {
+    const { data } = representation;
+    // This method is restored by identity and invoked with an explicit receiver below.
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const originalRead = data.read;
+    let writeActive = false;
+    function restoreRead(): void {
+      data.read = originalRead;
+      writeActive = false;
+    }
+    try {
+      return await this.locks.withWriteLock(identifier, async(maintainLock): Promise<ChangeMap> => {
+        writeActive = true;
+        // Reset the timeout timer every time data is read while the lock is active
+        data.read = (size?: number): unknown => {
+          maintainLock();
+          return originalRead.call(data, size);
+        };
+        try {
+          return await whileLocked();
+        } finally {
+          restoreRead();
+        }
+      });
+    } catch (error: unknown) {
+      // Destroy the data stream in case the lock expired while the data was still being consumed,
+      // otherwise the source store could keep on writing data without the protection of the lock.
+      if (writeActive) {
+        restoreRead();
+        data.destroy(error as Error);
+      }
+      throw error;
+    }
   }
 
   /**
