@@ -12,18 +12,29 @@
         "converter": { "@id": "urn:solid-server:default:RepresentationConverter" },
         "source": {
           "@type": "ExpiringAdapterFactory",
-          "storage": {
-            "@id": "urn:solid-server:default:IdpAdapterExpiringStorage",
-            "@type": "WrappedExpiringStorage",
-            "source": {
-              "@type": "ContainerPathStorage",
-              "relativePath": "/idp/adapter/",
-              "source": {
-                "@id": "urn:solid-server:default:KeyValueStorage"
-              }
-            }
-          }
+          "storage": { "@id": "urn:solid-server:default:IdpAdapterExpiringStorage" },
+          "clientStorage": { "@id": "urn:solid-server:default:IdpClientAdapterExpiringStorage" }
         }
+      }
+    },
+    {
+      "comment": "Storage for transient OIDC provider state.",
+      "@id": "urn:solid-server:default:IdpAdapterExpiringStorage",
+      "@type": "WrappedExpiringStorage",
+      "source": {
+        "@type": "ContainerPathStorage",
+        "relativePath": "/idp/adapter/",
+        "source": { "@id": "urn:solid-server:default:KeyValueStorage" }
+      }
+    },
+    {
+      "comment": "Persistent storage for dynamic OIDC client registrations.",
+      "@id": "urn:solid-server:default:IdpClientAdapterExpiringStorage",
+      "@type": "WrappedExpiringStorage",
+      "source": {
+        "@type": "ContainerPathStorage",
+        "relativePath": "/idp/adapter/",
+        "source": { "@id": "urn:solid-server:default:KeyValueStorage" }
       }
     },
     {
@@ -34,6 +45,10 @@
         {
           "@type": "FinalizableHandler",
           "finalizable": { "@id": "urn:solid-server:default:IdpAdapterExpiringStorage" }
+        },
+        {
+          "@type": "FinalizableHandler",
+          "finalizable": { "@id": "urn:solid-server:default:IdpClientAdapterExpiringStorage" }
         }
       ]
     }
