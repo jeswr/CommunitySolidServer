@@ -15,7 +15,7 @@ export class WinstonLogger extends BaseLogger {
 
   public log(level: LogLevel, message: string, meta?: unknown): this {
     // Skip the expensive formatting pipeline for entries that no transport would emit.
-    if (this.logger.isLevelEnabled(level)) {
+    if (this.logger.isLevelEnabled?.(level) ?? true) {
       this.logger.log(level, message, meta);
     }
     return this;
