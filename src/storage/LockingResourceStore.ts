@@ -173,7 +173,7 @@ export class LockingResourceStore implements AtomicResourceStore {
       if (ownReadDescriptor) {
         Object.defineProperty(data, 'read', ownReadDescriptor);
       } else {
-        Reflect.deleteProperty(data as any, 'read');
+        Reflect.deleteProperty(data, 'read');
       }
       writeActive = false;
     }
