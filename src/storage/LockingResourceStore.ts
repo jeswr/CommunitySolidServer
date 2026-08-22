@@ -164,22 +164,32 @@ export class LockingResourceStore implements AtomicResourceStore {
     whileLocked: () => Promise<ChangeMap>,
   ): Promise<ChangeMap> {
     const { data } = representation;
+    const ownReadDescriptor = Object.getOwnPropertyDescriptor(data, 'read');
     // This method is restored by identity and invoked with an explicit receiver below.
     // eslint-disable-next-line @typescript-eslint/unbound-method
     const originalRead = data.read;
     let writeActive = false;
     function restoreRead(): void {
-      data.read = originalRead;
+      if (ownReadDescriptor) {
+        Object.defineProperty(data, 'read', ownReadDescriptor);
+      } else {
+        Reflect.deleteProperty(data as any, 'read');
+      }
       writeActive = false;
     }
     try {
       return await this.locks.withWriteLock(identifier, async(maintainLock): Promise<ChangeMap> => {
         writeActive = true;
         // Reset the timeout timer every time data is read while the lock is active
-        data.read = (size?: number): unknown => {
-          maintainLock();
-          return originalRead.call(data, size);
-        };
+        Object.defineProperty(data, 'read', {
+          configurable: ownReadDescriptor?.configurable ?? true,
+          enumerable: ownReadDescriptor?.enumerable ?? false,
+          writable: ownReadDescriptor?.writable ?? true,
+          value(this: Readable, size?: number): unknown {
+            maintainLock();
+            return originalRead.call(data, size);
+          },
+        });
         try {
           return await whileLocked();
         } finally {
