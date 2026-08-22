@@ -18,7 +18,7 @@ function emptyFn(): void {
 describe('A LockingResourceStore', (): void => {
   const auxiliaryId = { path: 'http://test.com/foo.dummy' };
   const subjectId = { path: 'http://test.com/foo' };
-  const data = { data: 'data!' } as any;
+  let data: Representation;
   let store: LockingResourceStore;
   let locker: jest.Mocked<ExpiringReadWriteLocker>;
   let source: ResourceStore;
@@ -32,6 +32,8 @@ describe('A LockingResourceStore', (): void => {
       order.push(name);
       return input;
     }
+
+    data = { data: guardedStreamFrom([ 1, 2, 3 ]) } as any;
 
     const readable = guardedStreamFrom([ 1, 2, 3 ]);
     const destroy = readable.destroy.bind(readable);
@@ -70,7 +72,12 @@ describe('A LockingResourceStore', (): void => {
       ): Promise<T> => {
         order.push('lock write');
         try {
-          return await whileLocked(emptyFn);
+          // Allows simulating a timeout event
+          const timeout = new Promise<never>((resolve, reject): any => timeoutTrigger.on('timeout', (): void => {
+            order.push('timeout');
+            reject(new Error('timeout'));
+          }));
+          return await Promise.race([ Promise.resolve(whileLocked(emptyFn)), timeout ]);
         } finally {
           order.push('unlock write');
         }
@@ -157,6 +164,83 @@ describe('A LockingResourceStore', (): void => {
     expect(source.modifyResource).toHaveBeenCalledTimes(2);
     expect(source.modifyResource).toHaveBeenLastCalledWith(auxiliaryId, data, undefined);
     expect(order).toEqual([ 'lock write', 'modifyResource', 'unlock write' ]);
+  });
+
+  it('resets the write lock expiration every time incoming data is read.', async(): Promise<void> => {
+    const originalRead = jest.spyOn(data.data, 'read');
+    const maintainLock = jest.fn();
+    locker.withWriteLock.mockImplementationOnce((async <T>(
+      identifier: ResourceIdentifier,
+      whileLocked: (maintain: () => void) => PromiseOrValue<T>,
+    ): Promise<T> => whileLocked(maintainLock)) satisfies ReadWriteLocker['withWriteLock'] as any);
+    jest.spyOn(source, 'setRepresentation').mockImplementation(
+      async(identifier: ResourceIdentifier, representation: Representation): Promise<any> => {
+        representation.data.read();
+        representation.data.read();
+        order.push('setRepresentation');
+      },
+    );
+
+    await store.setRepresentation(subjectId, data);
+    expect(locker.withWriteLock).toHaveBeenCalledTimes(1);
+    expect(source.setRepresentation).toHaveBeenCalledTimes(1);
+    expect(source.setRepresentation).toHaveBeenLastCalledWith(subjectId, data, undefined);
+    expect(maintainLock).toHaveBeenCalledTimes(2);
+
+    // The original read function is restored once the write is finished
+    expect(data.data.read).toBe(originalRead);
+    data.data.read();
+    expect(maintainLock).toHaveBeenCalledTimes(2);
+  });
+
+  it('destroys the incoming data stream if the write lock expires.', async(): Promise<void> => {
+    const originalRead = jest.spyOn(data.data, 'read');
+    const destroy = jest.spyOn(data.data, 'destroy');
+    jest.spyOn(source, 'setRepresentation').mockImplementation((): any => {
+      order.push('useless set');
+      // This will never resolve
+      return new Promise(emptyFn);
+    });
+
+    const prom = store.setRepresentation(subjectId, data);
+
+    timeoutTrigger.emit('timeout');
+
+    await expect(prom).rejects.toThrow('timeout');
+    expect(locker.withWriteLock).toHaveBeenCalledTimes(1);
+    expect(source.setRepresentation).toHaveBeenCalledTimes(1);
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(destroy).toHaveBeenLastCalledWith(new Error('timeout'));
+    expect(data.data.read).toBe(originalRead);
+    expect(order).toEqual([ 'lock write', 'useless set', 'timeout', 'unlock write' ]);
+  });
+
+  it('does not destroy the incoming data stream if the write itself errors.', async(): Promise<void> => {
+    const destroy = jest.spyOn(data.data, 'destroy');
+    jest.spyOn(source, 'setRepresentation').mockImplementation((): any => {
+      order.push('bad set');
+      throw new Error('dummy');
+    });
+
+    await expect(store.setRepresentation(subjectId, data)).rejects.toThrow('dummy');
+    expect(locker.withWriteLock).toHaveBeenCalledTimes(1);
+    expect(source.setRepresentation).toHaveBeenCalledTimes(1);
+    expect(destroy).toHaveBeenCalledTimes(0);
+    expect(order).toEqual([ 'lock write', 'bad set', 'unlock write' ]);
+  });
+
+  it('does not destroy the incoming data stream if the write lock can not be acquired.', async(): Promise<void> => {
+    const destroy = jest.spyOn(data.data, 'destroy');
+    locker.withWriteLock.mockImplementationOnce(async(): Promise<never> => {
+      order.push('failed lock');
+      throw new Error('lock error');
+    });
+
+    await expect(store.setRepresentation(subjectId, data)).rejects.toThrow('lock error');
+    expect(locker.withWriteLock).toHaveBeenCalledTimes(1);
+    expect(source.setRepresentation).toHaveBeenCalledTimes(0);
+    expect(destroy).toHaveBeenCalledTimes(0);
+    expect(order).toEqual([ 'failed lock' ]);
   });
 
   it('releases the lock if an error was thrown.', async(): Promise<void> => {
