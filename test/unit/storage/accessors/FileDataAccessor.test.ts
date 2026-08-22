@@ -1,5 +1,6 @@
 import 'jest-rdf';
-import type { Readable } from 'node:stream';
+import { EventEmitter, once } from 'node:events';
+import { PassThrough, Readable } from 'node:stream';
 import { DataFactory } from 'n3';
 import type { Representation } from '../../../../src/http/representation/Representation';
 import { RepresentationMetadata } from '../../../../src/http/representation/RepresentationMetadata';
@@ -15,7 +16,7 @@ import { isContainerPath } from '../../../../src/util/PathUtil';
 import { guardedStreamFrom, readableToString } from '../../../../src/util/StreamUtil';
 import { toLiteral } from '../../../../src/util/TermUtil';
 import { CONTENT_TYPE, DC, LDP, POSIX, RDF, SOLID_META, XSD } from '../../../../src/util/Vocabularies';
-import { mockFileSystem } from '../../../util/Util';
+import { flushPromises, mockFileSystem } from '../../../util/Util';
 
 const { namedNode, quad } = DataFactory;
 
@@ -256,6 +257,44 @@ describe('A FileDataAccessor', (): void => {
       expect(metadata.quads().some((qd): boolean => qd.subject.value === 'http://this')).toBe(true);
     });
 
+    it('adds stored metadata while the source is still streaming.', async(): Promise<void> => {
+      cache.data = { resource: 'data', 'resource.meta': 'metadata' };
+      const readStream = new PassThrough();
+      const streamEvents = new EventEmitter();
+      const streamCreated = once(streamEvents, 'created');
+      jest.requireMock('fs-extra').createReadStream = (): Readable => {
+        streamEvents.emit('created');
+        return readStream;
+      };
+      const addQuad = jest.spyOn(RepresentationMetadata.prototype, 'addQuad');
+
+      const metadataPromise = accessor.getMetadata({ path: `${base}resource` });
+      await streamCreated;
+      readStream.write('<http://this> <http://is> <http://metadata>.\n');
+      await flushPromises();
+
+      try {
+        expect(addQuad).toHaveBeenCalledWith(expect.objectContaining({
+          subject: expect.objectContaining({ value: 'http://this' }),
+        }));
+      } finally {
+        readStream.end();
+        await metadataPromise;
+        addQuad.mockRestore();
+      }
+    });
+
+    it('propagates metadata stream errors.', async(): Promise<void> => {
+      cache.data = { resource: 'data', 'resource.meta': 'metadata' };
+      jest.requireMock('fs-extra').createReadStream = (): Readable => new Readable({
+        read(): void {
+          this.destroy(new Error('metadata stream error'));
+        },
+      });
+
+      await expect(accessor.getMetadata({ path: `${base}resource` })).rejects.toThrow('metadata stream error');
+    });
+
     it('throws an error if there is a problem with the internal metadata.', async(): Promise<void> => {
       cache.data = { resource: 'data', 'resource.meta': 'invalid metadata!.' };
       await expect(accessor.getMetadata({ path: `${base}resource` }))
@@ -279,9 +318,11 @@ describe('A FileDataAccessor', (): void => {
         { path: `${base}res.ttl` },
         { [CONTENT_TYPE]: 'text/turtle', likes: 'apples' },
       );
+      const iterator = jest.spyOn(metadata, Symbol.iterator);
       await expect(accessor.writeDocument({ path: `${base}res.ttl` }, data, metadata)).resolves.toBeUndefined();
       expect(cache.data['res.ttl']).toBe('data');
       expect(cache.data['res.ttl.meta']).toMatch(`<${base}res.ttl> <likes> "apples".`);
+      expect(iterator).toHaveBeenCalledTimes(1);
     });
 
     it('does not write metadata that is stored by the file system.', async(): Promise<void> => {
