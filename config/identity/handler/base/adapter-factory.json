@@ -12,17 +12,18 @@
         "converter": { "@id": "urn:solid-server:default:RepresentationConverter" },
         "source": {
           "@type": "ExpiringAdapterFactory",
-          "storage": {
-            "@type": "WrappedExpiringStorage",
-            "source": {
-              "@type": "ContainerPathStorage",
-              "relativePath": "/idp/adapter/",
-              "source": {
-                "@id": "urn:solid-server:default:KeyValueStorage"
-              }
-            }
-          }
+          "storage": { "@id": "urn:solid-server:default:IdpAdapterStorage" },
+          "clientStorage": { "@id": "urn:solid-server:default:IdpAdapterStorage" }
         }
+      }
+    },
+    {
+      "@id": "urn:solid-server:default:IdpAdapterStorage",
+      "@type": "WrappedExpiringStorage",
+      "source": {
+        "@type": "ContainerPathStorage",
+        "relativePath": "/idp/adapter/",
+        "source": { "@id": "urn:solid-server:default:KeyValueStorage" }
       }
     }
   ]
