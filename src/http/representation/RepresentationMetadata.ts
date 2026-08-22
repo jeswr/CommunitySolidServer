@@ -40,7 +40,7 @@ function toCachedNamedNode(name: string): NamedNode {
  * Stores the metadata triples and provides methods for easy access.
  * Most functions return the metadata object to allow for chaining.
  */
-export class RepresentationMetadata implements Iterable<Quad> {
+export class RepresentationMetadata {
   protected readonly logger = getLoggerFor(this);
 
   private store: Store;
@@ -141,20 +141,6 @@ export class RepresentationMetadata implements Iterable<Quad> {
   }
 
   /**
-   * @returns The number of metadata quads.
-   */
-  public get size(): number {
-    return this.store.size;
-  }
-
-  /**
-   * Iterates over all metadata quads without first creating an array.
-   */
-  public [Symbol.iterator](): Iterator<Quad> {
-    return this.store[Symbol.iterator]();
-  }
-
-  /**
    * Identifier of the resource this metadata is relevant to.
    * Will update all relevant triples if this value gets changed.
    */
@@ -192,11 +178,6 @@ export class RepresentationMetadata implements Iterable<Quad> {
   }
 
   /**
-   * @param quad - Quad to add.
-   */
-  public addQuad(quad: Quad): this;
-
-  /**
    * @param subject - Subject of quad to add.
    * @param predicate - Predicate of quad to add.
    * @param object - Object of quad to add.
@@ -207,21 +188,7 @@ export class RepresentationMetadata implements Iterable<Quad> {
     predicate: NamedNode,
     object: NamedNode | BlankNode | Literal | string,
     graph?: MetadataGraph,
-  ): this;
-
-  public addQuad(
-    subject: NamedNode | BlankNode | Quad | string,
-    predicate?: NamedNode,
-    object?: NamedNode | BlankNode | Literal | string,
-    graph?: MetadataGraph,
   ): this {
-    if (typeof subject !== 'string' && subject.termType === 'Quad') {
-      this.store.addQuad(subject);
-      return this;
-    }
-    if (!predicate || typeof object === 'undefined') {
-      throw new TypeError('A predicate and object are required when adding a quad by its terms.');
-    }
     this.store.addQuad(
       toNamedTerm(subject),
       predicate,

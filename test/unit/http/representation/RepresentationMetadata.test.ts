@@ -120,11 +120,6 @@ describe('A RepresentationMetadata', (): void => {
       expect(metadata.quads()).toBeRdfIsomorphic(inputQuads);
     });
 
-    it('can report and iterate over all quads.', async(): Promise<void> => {
-      expect(metadata.size).toBe(inputQuads.length);
-      expect([ ...metadata ]).toBeRdfIsomorphic(inputQuads);
-    });
-
     it('can query quads.', async(): Promise<void> => {
       expect(metadata.quads(null, namedNode('has'))).toHaveLength(getQuads(inputQuads, undefined, 'has').length);
       expect(metadata.quads(null, null, literal('otherData')))
@@ -175,17 +170,6 @@ describe('A RepresentationMetadata', (): void => {
       const newQuad = quad(namedNode('random'), namedNode('new'), literal('triple'));
       metadata.addQuad('random', namedNode('new'), 'triple');
       expect(metadata.quads()).toBeRdfIsomorphic([ ...inputQuads, newQuad ]);
-    });
-
-    it('can add a quad object.', async(): Promise<void> => {
-      const newQuad = quad(namedNode('random'), namedNode('new'), literal('triple'));
-      metadata.addQuad(newQuad);
-      expect(metadata.quads()).toBeRdfIsomorphic([ ...inputQuads, newQuad ]);
-    });
-
-    it('requires all terms when not adding a quad object.', async(): Promise<void> => {
-      expect((): void => (metadata.addQuad as any)('random')).toThrow(TypeError);
-      expect((): void => (metadata.addQuad as any)('random', namedNode('new'))).toThrow(TypeError);
     });
 
     it('can add a quad with a graph.', async(): Promise<void> => {
