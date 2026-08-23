@@ -21,7 +21,9 @@ export function cached<TThis extends object, TArgs extends unknown[], TValue>(
 
   return (target: (this: TThis, ...args: TArgs) => Promise<TValue>):
   (this: TThis, ...args: TArgs) => Promise<TValue> =>
-    async function(this: TThis, ...args: TArgs): Promise<TValue> {
+    // Returning the promise directly preserves its identity.
+    // eslint-disable-next-line @typescript-eslint/promise-function-async
+    function(this: TThis, ...args: TArgs): Promise<TValue> {
       let cache = caches.get(this);
       if (!cache) {
         // The caller guarantees object keys when enabling `weak`.

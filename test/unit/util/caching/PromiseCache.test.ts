@@ -32,7 +32,10 @@ describe('A PromiseCache', (): void => {
   it('deduplicates concurrent calls for the same key onto a single computation.', async(): Promise<void> => {
     const cache = new PromiseCache<string, number>();
     const factory = jest.fn(async(): Promise<number> => 42);
-    const [ first, second ] = await Promise.all([ cache.getOrCreate('a', factory), cache.getOrCreate('a', factory) ]);
+    const firstPromise = cache.getOrCreate('a', factory);
+    const secondPromise = cache.getOrCreate('a', factory);
+    expect(firstPromise).toBe(secondPromise);
+    const [ first, second ] = await Promise.all([ firstPromise, secondPromise ]);
     expect(first).toBe(42);
     expect(second).toBe(42);
     expect(factory).toHaveBeenCalledTimes(1);
@@ -66,6 +69,19 @@ describe('A PromiseCache', (): void => {
     await expect(cache.getOrCreate('a', factory)).rejects.toThrow('fail');
     await expect(cache.getOrCreate('a', factory)).resolves.toBe(5);
     expect(factory).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not evict a newer entry when an earlier promise rejects.', async(): Promise<void> => {
+    const store = new Map<string, Promise<number>>();
+    const cache = new PromiseCache<string, number>(store);
+    const firstPromise = cache.getOrCreate('a', async(): Promise<number> => {
+      throw new Error('fail');
+    });
+    const newerPromise = Promise.resolve(5);
+    store.set('a', newerPromise);
+
+    await expect(firstPromise).rejects.toThrow('fail');
+    expect(store.get('a')).toBe(newerPromise);
   });
 
   it('keeps a rejected entry cached when evictOnError is disabled.', async(): Promise<void> => {

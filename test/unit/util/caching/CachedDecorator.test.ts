@@ -89,7 +89,10 @@ describe('The cached decorator', (): void => {
       }
     }
     const store = new Store();
-    const [ first, second ] = await Promise.all([ store.get('a'), store.get('a') ]);
+    const firstPromise = store.get('a');
+    const secondPromise = store.get('a');
+    expect(firstPromise).toBe(secondPromise);
+    const [ first, second ] = await Promise.all([ firstPromise, secondPromise ]);
     expect(first).toBe('a');
     expect(second).toBe('a');
     expect(spy).toHaveBeenCalledTimes(1);

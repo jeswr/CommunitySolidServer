@@ -31,7 +31,9 @@ export class PromiseCache<TKey, TValue> {
   }
 
   /** Returns the cached promise, creating it on a miss. */
-  public async getOrCreate(key: TKey, createPromise: (key: TKey) => Promise<TValue>): Promise<TValue> {
+  // Returning the promise directly preserves its identity.
+  // eslint-disable-next-line @typescript-eslint/promise-function-async
+  public getOrCreate(key: TKey, createPromise: (key: TKey) => Promise<TValue>): Promise<TValue> {
     const cached = this.store.get(key);
     if (cached) {
       return cached;
@@ -41,7 +43,9 @@ export class PromiseCache<TKey, TValue> {
     this.store.set(key, promise);
     if (this.evictOnError) {
       promise.catch((): void => {
-        this.store.delete(key);
+        if (this.store.get(key) === promise) {
+          this.store.delete(key);
+        }
       });
     }
     return promise;
