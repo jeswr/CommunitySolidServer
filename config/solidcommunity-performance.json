@@ -1,0 +1,21 @@
+{
+  "@context": [
+    "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+    "https://linkedsoftwaredependencies.org/bundles/npm/@jeswr/css-cached-storage/^0.0.0/components/context.jsonld"
+  ],
+  "import": [
+    "css:config/file.json",
+    "ccs:config/caching-file-read-only.json"
+  ],
+  "@graph": [
+    {
+      "comment": "Serve file-backed resources through the bounded, single-worker read cache.",
+      "@type": "Override",
+      "overrideInstance": { "@id": "urn:solid-server:default:ResourceStore_Backend" },
+      "overrideParameters": {
+        "@type": "DataAccessorBasedStore",
+        "accessor": { "@id": "urn:solid-server:default:CachedDataAccessor" }
+      }
+    }
+  ]
+}

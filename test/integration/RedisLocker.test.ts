@@ -274,15 +274,15 @@ describeIf('docker')('A server with a RedisLocker', (): void => {
       const countKey1 = `${key1}.count`;
       // Test fails
       await redis.set(writeKey1, 'locked');
-      await expect(redis.acquireReadLock(key1)).resolves.toBe(0);
+      await expect(redis.acquireReadLock(key1, 30_000)).resolves.toBe(0);
 
       // Test succeeds
       await redis.del(writeKey1);
-      await expect(redis.acquireReadLock(key1)).resolves.toBe(1);
+      await expect(redis.acquireReadLock(key1, 30_000)).resolves.toBe(1);
       await expect(redis.get(countKey1)).resolves.toBe('1');
-      await expect(redis.acquireReadLock(key1)).resolves.toBe(1);
+      await expect(redis.acquireReadLock(key1, 30_000)).resolves.toBe(1);
       await expect(redis.get(countKey1)).resolves.toBe('2');
-      await expect(redis.acquireReadLock(key1)).resolves.toBe(1);
+      await expect(redis.acquireReadLock(key1, 30_000)).resolves.toBe(1);
       await expect(redis.get(countKey1)).resolves.toBe('3');
     });
 
@@ -293,19 +293,19 @@ describeIf('docker')('A server with a RedisLocker', (): void => {
 
       // Test fails because count > 0
       await expect(redis.incr(countKey1)).resolves.toBe(1);
-      await expect(redis.acquireWriteLock(key1)).resolves.toBe(0);
+      await expect(redis.acquireWriteLock(key1, 30_000)).resolves.toBe(0);
 
       // Test fails because write lock is present
       await clearRedis();
       await redis.set(writeKey1, 'locked');
-      await expect(redis.acquireWriteLock(key1)).resolves.toBe(0);
+      await expect(redis.acquireWriteLock(key1, 30_000)).resolves.toBe(0);
 
       // Test succeeds
       await clearRedis();
-      await expect(redis.acquireWriteLock(key1)).resolves.toBe('OK');
+      await expect(redis.acquireWriteLock(key1, 30_000)).resolves.toBe('OK');
 
       // Test fails again
-      await expect(redis.acquireWriteLock(key1)).resolves.toBe(0);
+      await expect(redis.acquireWriteLock(key1, 30_000)).resolves.toBe(0);
     });
 
     it('#releaseReadLock.', async(): Promise<void> => {
@@ -313,9 +313,9 @@ describeIf('docker')('A server with a RedisLocker', (): void => {
       const countKey1 = `${key1}.count`;
 
       // Test succeeds
-      await expect(redis.acquireReadLock(key1)).resolves.toBe(1);
-      await expect(redis.acquireReadLock(key1)).resolves.toBe(1);
-      await expect(redis.acquireReadLock(key1)).resolves.toBe(1);
+      await expect(redis.acquireReadLock(key1, 30_000)).resolves.toBe(1);
+      await expect(redis.acquireReadLock(key1, 30_000)).resolves.toBe(1);
+      await expect(redis.acquireReadLock(key1, 30_000)).resolves.toBe(1);
       await expect(redis.get(countKey1)).resolves.toBe('3');
 
       await expect(redis.releaseReadLock(key1)).resolves.toBe(1);
@@ -341,7 +341,7 @@ describeIf('docker')('A server with a RedisLocker', (): void => {
         .toThrow('Error trying to release writelock that did not exist.');
 
       // Test succeeds
-      await redis.acquireWriteLock(key1);
+      await redis.acquireWriteLock(key1, 30_000);
       await expect(redis.exists(writeKey1)).resolves.toBe(1);
       await expect(redis.get(writeKey1)).resolves.toBe('locked');
       await expect(redis.releaseWriteLock(key1)).resolves.toBe(1);
@@ -352,19 +352,19 @@ describeIf('docker')('A server with a RedisLocker', (): void => {
       const key1 = 'key1';
       const lockKey1 = `${key1}.lock`;
       // Test succeeds
-      await expect(redis.acquireLock(key1)).resolves.toBe('OK');
+      await expect(redis.acquireLock(key1, 30_000)).resolves.toBe('OK');
       await expect(redis.exists(lockKey1)).resolves.toBe(1);
       await expect(redis.get(lockKey1)).resolves.toBe('locked');
 
       // Test fails
-      await expect(redis.acquireLock(key1)).resolves.toBe(0);
+      await expect(redis.acquireLock(key1, 30_000)).resolves.toBe(0);
       await expect(redis.exists(lockKey1)).resolves.toBe(1);
       await expect(redis.get(lockKey1)).resolves.toBe('locked');
 
       // Test succeeds again
       await redis.releaseLock(key1);
       await expect(redis.exists(lockKey1)).resolves.toBe(0);
-      await expect(redis.acquireLock(key1)).resolves.toBe('OK');
+      await expect(redis.acquireLock(key1, 30_000)).resolves.toBe('OK');
     });
 
     it('#releaseLock.', async(): Promise<void> => {
@@ -378,7 +378,7 @@ describeIf('docker')('A server with a RedisLocker', (): void => {
         .toThrow('Error trying to release lock that did not exist.');
 
       // Test succeeds
-      await redis.acquireLock(key1);
+      await redis.acquireLock(key1, 30_000);
       await expect(redis.exists(lockKey1)).resolves.toBe(1);
       await expect(redis.get(lockKey1)).resolves.toBe('locked');
       await expect(redis.releaseLock(key1)).resolves.toBe(1);
