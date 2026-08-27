@@ -6,8 +6,10 @@ import { RepresentationMetadata } from '../../../../src/http/representation/Repr
 import { FileDataAccessor } from '../../../../src/storage/accessors/FileDataAccessor';
 import { ExtensionBasedMapper } from '../../../../src/storage/mapping/ExtensionBasedMapper';
 import type { FileIdentifierMapper, ResourceLink } from '../../../../src/storage/mapping/FileIdentifierMapper';
+import { FixedContentTypeMapper } from '../../../../src/storage/mapping/FixedContentTypeMapper';
 import { APPLICATION_OCTET_STREAM } from '../../../../src/util/ContentTypes';
 import { NotFoundHttpError } from '../../../../src/util/errors/NotFoundHttpError';
+import { NotImplementedHttpError } from '../../../../src/util/errors/NotImplementedHttpError';
 import type { SystemError } from '../../../../src/util/errors/SystemError';
 import { UnsupportedMediaTypeHttpError } from '../../../../src/util/errors/UnsupportedMediaTypeHttpError';
 import type { Guarded } from '../../../../src/util/GuardedStream';
@@ -68,6 +70,149 @@ describe('A FileDataAccessor', (): void => {
       cache.data = { resource: 'data' };
       const stream = await accessor.getData({ path: `${base}resource` });
       await expect(readableToString(stream)).resolves.toBe('data');
+    });
+
+    it('uses a content-type candidate when mapping stored data.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      cache.data = { 'resource$.json': 'data' };
+      const mapSpy = jest.spyOn(mapper, 'mapUrlToFilePath');
+
+      const stream = await accessor.getData(identifier, {
+        contentType: { candidates: [ 'application/json' ], exhaustive: true },
+      });
+
+      await expect(readableToString(stream)).resolves.toBe('data');
+      expect(mapSpy).toHaveBeenCalledWith(identifier, false, 'application/json');
+    });
+
+    it('tries content-type candidates in order without searching the directory.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      cache.data = { 'resource$.json': 'data' };
+      const readdirSpy = jest.spyOn(jest.requireMock('node:fs').promises, 'readdir');
+
+      const stream = await accessor.getData(identifier, {
+        contentType: {
+          candidates: [ 'text/turtle', 'application/json' ],
+          exhaustive: true,
+        },
+      });
+
+      await expect(readableToString(stream)).resolves.toBe('data');
+      expect(readdirSpy).not.toHaveBeenCalled();
+    });
+
+    it('continues after a candidate path has a non-directory ancestor.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      cache.data = { 'resource$.json': 'data' };
+      const error = Object.assign(new Error('not a directory'), { code: 'ENOTDIR', syscall: 'stat' });
+      jest.spyOn(jest.requireMock('fs-extra'), 'stat').mockRejectedValueOnce(error);
+
+      const stream = await accessor.getData(identifier, {
+        contentType: {
+          candidates: [ 'text/turtle', 'application/json' ],
+          exhaustive: true,
+        },
+      });
+
+      await expect(readableToString(stream)).resolves.toBe('data');
+    });
+
+    it('continues when a candidate path is not a document.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      cache.data = { 'resource$.ttl': {}, 'resource$.json': 'data' };
+
+      const stream = await accessor.getData(identifier, {
+        contentType: {
+          candidates: [ 'text/turtle', 'application/json' ],
+          exhaustive: true,
+        },
+      });
+
+      await expect(readableToString(stream)).resolves.toBe('data');
+    });
+
+    it('does not probe the same candidate path twice.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      const statSpy = jest.spyOn(jest.requireMock('fs-extra'), 'stat');
+
+      await expect(accessor.getData(identifier, {
+        contentType: {
+          candidates: [ 'application/xml', 'text/xml' ],
+          exhaustive: true,
+        },
+      })).rejects.toThrow(NotFoundHttpError);
+
+      expect(statSpy.mock.calls.filter(([ path ]): boolean => path === `${rootFilePath}/resource$.xml`))
+        .toHaveLength(1);
+    });
+
+    it('falls back when a mapper cannot use an advisory candidate.', async(): Promise<void> => {
+      cache.data = { resource: 'data' };
+      accessor = new FileDataAccessor(new FixedContentTypeMapper(base, rootFilePath, 'text/turtle'));
+
+      const stream = await accessor.getData({ path: `${base}resource` }, {
+        contentType: { candidates: [ 'application/json' ], exhaustive: false },
+      });
+
+      await expect(readableToString(stream)).resolves.toBe('data');
+    });
+
+    it(
+      'returns 404 when a supported exhaustive candidate misses after an unsupported candidate.',
+      async(): Promise<void> => {
+        accessor = new FileDataAccessor(new FixedContentTypeMapper(base, rootFilePath, 'text/turtle'));
+
+        await expect(accessor.getData({ path: `${base}resource` }, {
+          contentType: {
+            candidates: [ 'application/json', 'text/turtle' ],
+            exhaustive: true,
+          },
+        })).rejects.toThrow(NotFoundHttpError);
+      },
+    );
+
+    it('returns the mapping error when no exhaustive candidate can be mapped.', async(): Promise<void> => {
+      accessor = new FileDataAccessor(new FixedContentTypeMapper(base, rootFilePath, 'text/turtle'));
+
+      await expect(accessor.getData({ path: `${base}resource` }, {
+        contentType: { candidates: [ 'application/json' ], exhaustive: true },
+      })).rejects.toThrow(NotImplementedHttpError);
+    });
+
+    it('returns 404 when an exhaustive candidate list is empty.', async(): Promise<void> => {
+      await expect(accessor.getData({ path: `${base}resource` }, {
+        contentType: { candidates: [], exhaustive: true },
+      })).rejects.toThrow(NotFoundHttpError);
+    });
+
+    it('throws unexpected candidate mapping errors.', async(): Promise<void> => {
+      jest.spyOn(mapper, 'mapUrlToFilePath').mockRejectedValueOnce(new Error('mapping error'));
+
+      await expect(accessor.getData({ path: `${base}resource` }, {
+        contentType: { candidates: [ 'application/json' ], exhaustive: false },
+      })).rejects.toThrow('mapping error');
+    });
+
+    it('returns 404 when advisory fallback resolves to a directory.', async(): Promise<void> => {
+      cache.data = { resource: {}};
+
+      await expect(accessor.getData({ path: `${base}resource` }, {
+        contentType: { candidates: [ 'application/json' ], exhaustive: false },
+      })).rejects.toThrow(NotFoundHttpError);
+    });
+
+    it('does not fall back after an unexpected candidate lookup error.', async(): Promise<void> => {
+      const error = Object.assign(new Error('permission denied'), { code: 'EACCES', syscall: 'stat' });
+      jest.requireMock('fs-extra').stat = (): never => {
+        throw error;
+      };
+      const readdirSpy = jest.spyOn(jest.requireMock('node:fs').promises, 'readdir');
+
+      await expect(accessor.getData({ path: `${base}resource` }, {
+        contentType: { candidates: [ 'application/json' ], exhaustive: false },
+      })).rejects.toThrow('permission denied');
+
+      expect(readdirSpy).not.toHaveBeenCalled();
     });
 
     it('throws an error if something else went wrong.', async(): Promise<void> => {
@@ -145,6 +290,86 @@ describe('A FileDataAccessor', (): void => {
         .toEqualRdfTerm(toLiteral(Math.floor(now.getTime() / 1000), XSD.terms.integer));
       // `dc:modified` is in the default graph
       expect(metadata.quads(null, null, null, SOLID_META.terms.ResponseMetadata)).toHaveLength(2);
+    });
+
+    it('uses a content-type candidate when mapping resource metadata.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      cache.data = { 'resource$.json': 'data' };
+      const mapSpy = jest.spyOn(mapper, 'mapUrlToFilePath');
+      const readdirSpy = jest.spyOn(jest.requireMock('node:fs').promises, 'readdir');
+
+      metadata = await accessor.getMetadata(identifier, {
+        contentType: { candidates: [ 'application/json' ], exhaustive: true },
+      });
+
+      expect(metadata.contentType).toBe('application/json');
+      expect(mapSpy).toHaveBeenCalledWith(identifier, false, 'application/json');
+      expect(mapSpy).toHaveBeenCalledWith(identifier, true, undefined, { canonical: true });
+      expect(readdirSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not search the directory after all exhaustive candidates miss.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      const readdirSpy = jest.spyOn(jest.requireMock('node:fs').promises, 'readdir');
+
+      await expect(accessor.getMetadata(identifier, {
+        contentType: { candidates: [ 'application/json' ], exhaustive: true },
+      }))
+        .rejects.toThrow(NotFoundHttpError);
+
+      expect(readdirSpy).not.toHaveBeenCalled();
+    });
+
+    it('falls back to directory discovery after advisory candidates miss.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      cache.data = { 'resource$.ttl': 'data' };
+      const readdirSpy = jest.spyOn(jest.requireMock('node:fs').promises, 'readdir');
+
+      metadata = await accessor.getMetadata(identifier, {
+        contentType: { candidates: [ 'application/json' ], exhaustive: false },
+      });
+
+      expect(metadata.contentType).toBe('text/turtle');
+      expect(readdirSpy).toHaveBeenCalledWith(`${rootFilePath}/`);
+    });
+
+    it('derives the actual content type from the resolved candidate path.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      cache.data = { 'resource$.xsl': 'data' };
+
+      metadata = await accessor.getMetadata(identifier, {
+        contentType: { candidates: [ 'application/xslt+xml' ], exhaustive: true },
+      });
+
+      expect(metadata.contentType).toBe('application/xml');
+    });
+
+    it('does not clean metadata when advisory fallback finds the document.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      cache.data = {
+        'resource$.ttl': 'data',
+        'resource.meta': `<${identifier.path}> <http://example.com/predicate> "value".`,
+      };
+
+      metadata = await accessor.getMetadata(identifier, {
+        contentType: { candidates: [ 'application/json' ], exhaustive: false },
+      });
+
+      expect(cache.data['resource.meta']).toBeDefined();
+      expect(metadata.get(namedNode('http://example.com/predicate'))?.value).toBe('value');
+    });
+
+    it('ignores document lookup candidates for containers.', async(): Promise<void> => {
+      const identifier = { path: `${base}container/` };
+      cache.data = { container: {}};
+      const mapSpy = jest.spyOn(mapper, 'mapUrlToFilePath');
+
+      await accessor.getMetadata(identifier, {
+        contentType: { candidates: [ 'application/json' ], exhaustive: true },
+      });
+
+      expect(mapSpy).toHaveBeenCalledWith(identifier, false);
+      expect(mapSpy).not.toHaveBeenCalledWith(identifier, false, expect.anything());
     });
 
     it('does not generate size metadata for a container.', async(): Promise<void> => {
@@ -299,6 +524,120 @@ describe('A FileDataAccessor', (): void => {
     it('writes the data to the corresponding file.', async(): Promise<void> => {
       await expect(accessor.writeDocument({ path: `${base}resource` }, data, metadata)).resolves.toBeUndefined();
       expect(cache.data.resource).toBe('data');
+    });
+
+    it('skips existing-extension discovery with exhaustive candidates.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      metadata.contentType = 'application/json';
+      const mapSpy = jest.spyOn(mapper, 'mapUrlToFilePath');
+      const readdirSpy = jest.spyOn(jest.requireMock('node:fs').promises, 'readdir');
+
+      await accessor.writeDocument(identifier, data, metadata, {
+        existingStorageHints: {
+          contentType: { candidates: [ 'application/json' ], exhaustive: true },
+        },
+      });
+
+      expect(cache.data['resource$.json']).toBe('data');
+      expect(mapSpy).not.toHaveBeenCalledWith(identifier, false);
+      expect(readdirSpy).not.toHaveBeenCalled();
+    });
+
+    it('uses an exhaustive candidate when replacing a document.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      cache.data = { 'resource$.ttl': 'old data' };
+      metadata.contentType = 'application/json';
+      const mapSpy = jest.spyOn(mapper, 'mapUrlToFilePath');
+      const readdirSpy = jest.spyOn(jest.requireMock('node:fs').promises, 'readdir');
+
+      await accessor.writeDocument(identifier, data, metadata, {
+        existingStorageHints: {
+          contentType: { candidates: [ 'text/turtle' ], exhaustive: true },
+        },
+      });
+
+      expect(cache.data['resource$.ttl']).toBeUndefined();
+      expect(cache.data['resource$.json']).toBe('data');
+      expect(mapSpy).toHaveBeenCalledWith(identifier, false, 'text/turtle');
+      expect(readdirSpy).not.toHaveBeenCalled();
+    });
+
+    it('discovers a differently typed document after an advisory candidate misses.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      cache.data = { 'resource$.ttl': 'old data' };
+      metadata.contentType = 'application/json';
+
+      await accessor.writeDocument(identifier, data, metadata, {
+        existingStorageHints: {
+          contentType: { candidates: [ 'application/json' ], exhaustive: false },
+        },
+      });
+
+      expect(cache.data['resource$.ttl']).toBeUndefined();
+      expect(cache.data['resource$.json']).toBe('data');
+    });
+
+    it(
+      'discovers an existing document after a candidate path has a non-directory ancestor.',
+      async(): Promise<void> => {
+        const identifier = { path: `${base}resource` };
+        cache.data = { 'resource$.ttl': 'old data' };
+        metadata.contentType = 'application/json';
+        const error = Object.assign(new Error('not a directory'), { code: 'ENOTDIR', syscall: 'lstat' });
+        jest.spyOn(jest.requireMock('fs-extra'), 'lstat').mockRejectedValueOnce(error);
+
+        await accessor.writeDocument(identifier, data, metadata, {
+          existingStorageHints: {
+            contentType: { candidates: [ 'application/json' ], exhaustive: false },
+          },
+        });
+
+        expect(cache.data['resource$.ttl']).toBeUndefined();
+        expect(cache.data['resource$.json']).toBe('data');
+      },
+    );
+
+    it('removes a dangling alternate-extension symlink when replacing a document.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      cache.data = { 'resource$.ttl': Symbol(`${rootFilePath}/missing`) };
+      metadata.contentType = 'application/json';
+
+      await accessor.writeDocument(identifier, data, metadata, {
+        existingStorageHints: {
+          contentType: { candidates: [ 'application/json' ], exhaustive: false },
+        },
+      });
+
+      expect(cache.data['resource$.ttl']).toBeUndefined();
+      expect(cache.data['resource$.json']).toBe('data');
+    });
+
+    it('retains extension discovery when write options are absent.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      const mapSpy = jest.spyOn(mapper, 'mapUrlToFilePath');
+
+      await accessor.writeDocument(identifier, data, metadata);
+
+      expect(mapSpy).toHaveBeenCalledWith(identifier, false);
+    });
+
+    it('round-trips MIME aliases without treating discovered metadata as a storage hint.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      metadata.contentType = 'application/xslt+xml';
+
+      await accessor.writeDocument(identifier, data, metadata);
+
+      expect(cache.data['resource$.xsl']).toBe('data');
+      await expect(accessor.getMetadata(identifier)).resolves.toMatchObject({ contentType: 'application/xml' });
+      await expect(readableToString(await accessor.getData(identifier))).resolves.toBe('data');
+
+      const replacementMetadata = new RepresentationMetadata('application/json');
+      await accessor.writeDocument(identifier, guardedStreamFrom([ 'updated' ]), replacementMetadata);
+
+      expect(cache.data['resource$.xsl']).toBeUndefined();
+      expect(cache.data['resource$.json']).toBe('updated');
+      await expect(accessor.deleteResource(identifier)).resolves.toBeUndefined();
+      expect(cache.data['resource$.json']).toBeUndefined();
     });
 
     it('writes metadata to the corresponding metadata file.', async(): Promise<void> => {
@@ -486,6 +825,43 @@ describe('A FileDataAccessor', (): void => {
       cache.data = { resource: 'apple' };
       await expect(accessor.deleteResource({ path: `${base}resource` })).resolves.toBeUndefined();
       expect(cache.data.resource).toBeUndefined();
+    });
+
+    it('uses an exhaustive content-type candidate when deleting a document.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      cache.data = { 'resource$.json': 'apple' };
+      const mapSpy = jest.spyOn(mapper, 'mapUrlToFilePath');
+      const readdirSpy = jest.spyOn(jest.requireMock('node:fs').promises, 'readdir');
+
+      await accessor.deleteResource(identifier, {
+        contentType: { candidates: [ 'application/json' ], exhaustive: true },
+      });
+
+      expect(cache.data['resource$.json']).toBeUndefined();
+      expect(mapSpy).toHaveBeenCalledWith(identifier, false, 'application/json');
+      expect(readdirSpy).not.toHaveBeenCalled();
+    });
+
+    it('discovers a document for deletion after an advisory candidate misses.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      cache.data = { 'resource$.ttl': 'apple' };
+
+      await accessor.deleteResource(identifier, {
+        contentType: { candidates: [ 'application/json' ], exhaustive: false },
+      });
+
+      expect(cache.data['resource$.ttl']).toBeUndefined();
+    });
+
+    it('does not remove metadata when the document lookup fails.', async(): Promise<void> => {
+      const identifier = { path: `${base}resource` };
+      cache.data = { 'resource.meta': 'metadata' };
+
+      await expect(accessor.deleteResource(identifier, {
+        contentType: { candidates: [ 'application/json' ], exhaustive: true },
+      })).rejects.toThrow(NotFoundHttpError);
+
+      expect(cache.data['resource.meta']).toBe('metadata');
     });
 
     it('throws error if there is a problem with deleting existing metadata.', async(): Promise<void> => {

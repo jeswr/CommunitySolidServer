@@ -29,7 +29,7 @@ describe('A RoutingResourceStore', (): void => {
     await expect(store.getRepresentation(identifier, 'preferences' as any, 'conditions' as any))
       .resolves.toBeUndefined();
     expect(source.getRepresentation).toHaveBeenCalledTimes(1);
-    expect(source.getRepresentation).toHaveBeenLastCalledWith(identifier, 'preferences', 'conditions');
+    expect(source.getRepresentation).toHaveBeenLastCalledWith(identifier, 'preferences', 'conditions', undefined);
   });
 
   it('calls addRepresentation on the resulting store.', async(): Promise<void> => {
@@ -43,7 +43,7 @@ describe('A RoutingResourceStore', (): void => {
     await expect(store.setRepresentation(identifier, 'representation' as any, 'conditions' as any))
       .resolves.toBeUndefined();
     expect(source.setRepresentation).toHaveBeenCalledTimes(1);
-    expect(source.setRepresentation).toHaveBeenLastCalledWith(identifier, 'representation', 'conditions');
+    expect(source.setRepresentation).toHaveBeenLastCalledWith(identifier, 'representation', 'conditions', undefined);
   });
 
   it('calls modifyResource on the resulting store.', async(): Promise<void> => {
@@ -57,13 +57,32 @@ describe('A RoutingResourceStore', (): void => {
     await expect(store.deleteResource(identifier, 'conditions' as any))
       .resolves.toBeUndefined();
     expect(source.deleteResource).toHaveBeenCalledTimes(1);
-    expect(source.deleteResource).toHaveBeenLastCalledWith(identifier, 'conditions');
+    expect(source.deleteResource).toHaveBeenLastCalledWith(identifier, 'conditions', undefined);
   });
 
   it('calls hasResource on the resulting store.', async(): Promise<void> => {
     await expect(store.hasResource(identifier)).resolves.toBeUndefined();
     expect(source.hasResource).toHaveBeenCalledTimes(1);
-    expect(source.hasResource).toHaveBeenLastCalledWith(identifier);
+    expect(source.hasResource).toHaveBeenLastCalledWith(identifier, undefined);
+  });
+
+  it('forwards storage hints to the selected store.', async(): Promise<void> => {
+    const hints = { contentType: { candidates: [ 'application/json' ], exhaustive: false }};
+    const ruleSpy = jest.spyOn(rule, 'handleSafe');
+
+    await store.hasResource(identifier, hints);
+    await store.getRepresentation(identifier, 'preferences' as any, 'conditions' as any, hints);
+    await store.setRepresentation(identifier, 'representation' as any, 'conditions' as any, hints);
+    await store.deleteResource(identifier, 'conditions' as any, hints);
+
+    expect(source.hasResource).toHaveBeenCalledWith(identifier, hints);
+    expect(source.getRepresentation).toHaveBeenCalledWith(identifier, 'preferences', 'conditions', hints);
+    expect(source.setRepresentation).toHaveBeenCalledWith(identifier, 'representation', 'conditions', hints);
+    expect(source.deleteResource).toHaveBeenCalledWith(identifier, 'conditions', hints);
+    expect(ruleSpy).toHaveBeenNthCalledWith(1, { identifier, hints });
+    expect(ruleSpy).toHaveBeenNthCalledWith(2, { identifier, hints });
+    expect(ruleSpy).toHaveBeenNthCalledWith(3, { identifier, representation: 'representation', hints });
+    expect(ruleSpy).toHaveBeenNthCalledWith(4, { identifier, hints });
   });
 
   it('throws a 404 if there is no body and no store was found.', async(): Promise<void> => {

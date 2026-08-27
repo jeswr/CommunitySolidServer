@@ -56,7 +56,8 @@ class SimpleDataAccessor implements DataAccessor {
     return this.data[identifier.path].data;
   }
 
-  public async getMetadata(identifier: ResourceIdentifier): Promise<RepresentationMetadata> {
+  public async getMetadata(identifier: ResourceIdentifier):
+  Promise<RepresentationMetadata> {
     this.checkExists(identifier);
     const metadata = new RepresentationMetadata(this.data[identifier.path].metadata);
     metadata.add(GENERATED_PREDICATE, 'data', SOLID_META.terms.ResponseMetadata);
@@ -85,7 +86,11 @@ class SimpleDataAccessor implements DataAccessor {
     this.data[identifier.path] = { metadata } as Representation;
   }
 
-  public async writeDocument(identifier: ResourceIdentifier, data: Readable, metadata?: RepresentationMetadata):
+  public async writeDocument(
+    identifier: ResourceIdentifier,
+    data: Readable,
+    metadata?: RepresentationMetadata,
+  ):
   Promise<void> {
     this.data[identifier.path] = { data, metadata } as Representation;
   }
@@ -151,6 +156,53 @@ describe('A DataAccessorBasedStore', (): void => {
       expect(result.metadata.contentType).toBe('text/plain');
       expect(result.metadata.get(namedNode('AUXILIARY'))?.value)
         .toBe(auxiliaryStrategy.getAuxiliaryIdentifier(resourceID).path);
+    });
+
+    it('uses the caller-provided storage hint for metadata and data.', async(): Promise<void> => {
+      const resourceID = { path: `${root}resource` };
+      const hints = { contentType: { candidates: [ 'application/json' ], exhaustive: false }};
+      representation.metadata.identifier = namedNode(resourceID.path);
+      representation.metadata.contentType = 'text/plain';
+      accessor.data[resourceID.path] = representation;
+      const metadataSpy = jest.spyOn(accessor, 'getMetadata');
+      const dataSpy = jest.spyOn(accessor, 'getData');
+
+      const result = await store.getRepresentation(resourceID, {}, undefined, hints);
+      result.data.destroy();
+
+      expect(metadataSpy).toHaveBeenCalledWith(resourceID, hints);
+      expect(dataSpy).toHaveBeenCalledWith(resourceID, hints);
+    });
+
+    it('does not derive a storage hint from representation metadata.', async(): Promise<void> => {
+      const resourceID = { path: `${root}resource` };
+      representation.metadata.identifier = namedNode(resourceID.path);
+      representation.metadata.contentType = 'application/xml';
+      accessor.data[resourceID.path] = representation;
+      const dataSpy = jest.spyOn(accessor, 'getData');
+
+      const result = await store.getRepresentation(resourceID);
+      result.data.destroy();
+
+      expect(dataSpy).toHaveBeenCalledWith(resourceID);
+    });
+
+    it('does not apply a subject storage hint to a metadata auxiliary.', async(): Promise<void> => {
+      const resourceID = { path: `${root}resource` };
+      const metaResourceID = { path: `${root}resource.meta` };
+      representation.metadata.identifier = namedNode(resourceID.path);
+      accessor.data[resourceID.path] = representation;
+      const metadataSpy = jest.spyOn(accessor, 'getMetadata');
+
+      const result = await store.getRepresentation(
+        metaResourceID,
+        {},
+        undefined,
+        { contentType: { candidates: [ 'application/json' ], exhaustive: false }},
+      );
+      result.data.destroy();
+
+      expect(metadataSpy).toHaveBeenCalledWith(resourceID);
     });
 
     it('will return a data stream that matches the metadata for containers.', async(): Promise<void> => {
@@ -296,6 +348,18 @@ describe('A DataAccessorBasedStore', (): void => {
       expect(result.get(resourceID)?.get(AS.terms.object)?.value).toEqual(generatedID.path);
     });
 
+    it('retains commit-time collision checks for documents created through POST.', async(): Promise<void> => {
+      const writeSpy = jest.spyOn(accessor, 'writeDocument');
+
+      await store.addResource({ path: root }, representation);
+
+      expect(writeSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({ path: expect.stringMatching(/^http:\/\/test\.com\/[^/]+$/u) }),
+        expect.anything(),
+        expect.any(RepresentationMetadata),
+      );
+    });
+
     it('can write containers.', async(): Promise<void> => {
       const resourceID = { path: root };
       representation.metadata.add(RDF.terms.type, LDP.terms.Container);
@@ -412,9 +476,13 @@ describe('A DataAccessorBasedStore', (): void => {
       const resourceID = { path: `${root}resource` };
       accessor.data[`${resourceID.path}/`] = representation;
       representation.metadata.identifier = namedNode(`${resourceID.path}/`);
-      const prom = store.setRepresentation(resourceID, representation);
+      const metadataSpy = jest.spyOn(accessor, 'getMetadata');
+      const hints = { contentType: { candidates: [ 'application/json' ], exhaustive: false }};
+      const prom = store.setRepresentation(resourceID, representation, undefined, hints);
       await expect(prom).rejects.toThrow(`${resourceID.path} conflicts with existing path ${resourceID.path}/`);
       await expect(prom).rejects.toThrow(ConflictHttpError);
+      expect(metadataSpy).toHaveBeenNthCalledWith(1, resourceID, hints);
+      expect(metadataSpy).toHaveBeenNthCalledWith(2, { path: `${resourceID.path}/` });
     });
 
     it('throws a 412 if the conditions are not matched.', async(): Promise<void> => {
@@ -512,6 +580,38 @@ describe('A DataAccessorBasedStore', (): void => {
       mockDate.mockReturnValue(now);
     });
 
+    it('passes existing storage information to document writes.', async(): Promise<void> => {
+      const resourceID = { path: `${root}resource` };
+      const oldRepresentation = new BasicRepresentation('old', resourceID, 'application/json');
+      accessor.data[resourceID.path] = oldRepresentation;
+      const metadataSpy = jest.spyOn(accessor, 'getMetadata');
+      const writeSpy = jest.spyOn(accessor, 'writeDocument');
+      const hints = { contentType: { candidates: [ 'application/json' ], exhaustive: false }};
+
+      await store.setRepresentation(resourceID, representation, undefined, hints);
+
+      expect(metadataSpy).toHaveBeenCalledWith(resourceID, hints);
+      expect(writeSpy).toHaveBeenLastCalledWith(
+        resourceID,
+        expect.anything(),
+        expect.any(RepresentationMetadata),
+        { existingStorageHints: hints },
+      );
+    });
+
+    it('retains commit-time collision checks for unhinted PUTs.', async(): Promise<void> => {
+      const resourceID = { path: `${root}new-resource` };
+      const writeSpy = jest.spyOn(accessor, 'writeDocument');
+
+      await store.setRepresentation(resourceID, representation);
+
+      expect(writeSpy).toHaveBeenLastCalledWith(
+        resourceID,
+        expect.anything(),
+        expect.any(RepresentationMetadata),
+      );
+    });
+
     it('does not write generated metadata.', async(): Promise<void> => {
       const resourceID = { path: `${root}resource` };
       representation.metadata.add(namedNode('notGen'), 'value');
@@ -599,6 +699,39 @@ describe('A DataAccessorBasedStore', (): void => {
           literal(now.toISOString(), XSD.terms.dateTime),
         ),
       ]);
+    });
+
+    it('does not apply document storage hints to metadata resource condition checks.', async(): Promise<void> => {
+      const resourceID = { path: `${root}resource` };
+      const metaResourceID = { path: `${root}resource.meta` };
+      accessor.data[resourceID.path] = representation;
+      accessor.data[metaResourceID.path] = new BasicRepresentation('', metaResourceID, INTERNAL_QUADS);
+      const metadataSpy = jest.spyOn(accessor, 'getMetadata');
+      const existingConditions: Conditions = { matchesMetadata: Boolean };
+      const missingConditions: Conditions = { matchesMetadata: (value): boolean => !value };
+      function createMetadata(): BasicRepresentation {
+        return new BasicRepresentation([ quad(
+          namedNode(resourceID.path),
+          namedNode(DC.description),
+          literal('something'),
+        ) ], resourceID);
+      }
+
+      await expect(store.setRepresentation(
+        metaResourceID,
+        createMetadata(),
+        existingConditions,
+        { contentType: { candidates: [ 'application/json' ], exhaustive: false }},
+      )).resolves.toBeDefined();
+      await expect(store.setRepresentation(
+        metaResourceID,
+        createMetadata(),
+        missingConditions,
+        { contentType: { candidates: [ 'application/json' ], exhaustive: false }},
+      )).rejects.toThrow(PreconditionFailedHttpError);
+
+      expect(metadataSpy).toHaveBeenCalledWith(metaResourceID);
+      expect(metadataSpy).not.toHaveBeenCalledWith(metaResourceID, expect.anything());
     });
 
     it('can write to metadata resource when using Readable using an RDF serialization.', async(): Promise<void> => {
@@ -791,6 +924,33 @@ describe('A DataAccessorBasedStore', (): void => {
       expect(accessor.data[root].metadata.get(GENERATED_PREDICATE)).toBeUndefined();
     });
 
+    it('uses the caller-provided storage hint while deleting documents.', async(): Promise<void> => {
+      const resourceID = { path: `${root}resource` };
+      representation.metadata.identifier = namedNode(resourceID.path);
+      representation.metadata.contentType = 'application/json';
+      accessor.data[resourceID.path] = representation;
+      const metadataSpy = jest.spyOn(accessor, 'getMetadata');
+      const deleteSpy = jest.spyOn(accessor, 'deleteResource');
+      const hints = { contentType: { candidates: [ 'application/json' ], exhaustive: false }};
+
+      await store.deleteResource(resourceID, undefined, hints);
+
+      expect(metadataSpy).toHaveBeenCalledWith(resourceID, hints);
+      expect(deleteSpy).toHaveBeenLastCalledWith(resourceID, hints);
+    });
+
+    it('does not derive a delete storage hint from representation metadata.', async(): Promise<void> => {
+      const resourceID = { path: `${root}resource` };
+      representation.metadata.identifier = namedNode(resourceID.path);
+      representation.metadata.contentType = 'application/xml';
+      accessor.data[resourceID.path] = representation;
+      const deleteSpy = jest.spyOn(accessor, 'deleteResource');
+
+      await store.deleteResource(resourceID);
+
+      expect(deleteSpy).toHaveBeenLastCalledWith(resourceID);
+    });
+
     it('will delete root non-storage containers.', async(): Promise<void> => {
       accessor.data[root] = new BasicRepresentation(representation.data, containerMetadata);
       const result = await store.deleteResource({ path: root });
@@ -874,6 +1034,17 @@ describe('A DataAccessorBasedStore', (): void => {
       await expect(store.hasResource(resourceID)).resolves.toBeTruthy();
     });
 
+    it('uses storage hints while checking document existence.', async(): Promise<void> => {
+      const resourceID = { path: `${root}resource` };
+      accessor.data[resourceID.path] = representation;
+      const metadataSpy = jest.spyOn(accessor, 'getMetadata');
+      const hints = { contentType: { candidates: [ 'application/json' ], exhaustive: false }};
+
+      await expect(store.hasResource(resourceID, hints)).resolves.toBe(true);
+
+      expect(metadataSpy).toHaveBeenCalledWith(resourceID, hints);
+    });
+
     it('should rethrow any unexpected errors from validateIdentifier.', async(): Promise<void> => {
       const resourceID = { path: `${root}resource` };
       // eslint-disable-next-line jest/unbound-method
@@ -896,6 +1067,19 @@ describe('A DataAccessorBasedStore', (): void => {
 
       accessor.data[resourceID.path] = representation;
       await expect(store.hasResource(metaResourceID)).resolves.toBeTruthy();
+    });
+
+    it('does not apply storage hints to metadata auxiliary subjects.', async(): Promise<void> => {
+      const resourceID = { path: `${root}resource` };
+      const metaResourceID = { path: `${root}resource.meta` };
+      accessor.data[resourceID.path] = representation;
+      const metadataSpy = jest.spyOn(accessor, 'getMetadata');
+
+      await expect(store.hasResource(metaResourceID, {
+        contentType: { candidates: [ 'text/turtle' ], exhaustive: false },
+      })).resolves.toBe(true);
+
+      expect(metadataSpy).toHaveBeenCalledWith(resourceID);
     });
   });
 });

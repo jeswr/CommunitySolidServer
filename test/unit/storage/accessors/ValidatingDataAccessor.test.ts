@@ -44,6 +44,14 @@ describe('ValidatingDataAccessor', (): void => {
       expect(childAccessor.writeDocument).toHaveBeenCalledTimes(1);
       expect(childAccessor.writeDocument).toHaveBeenCalledWith(mockIdentifier, mockData, mockMetadata);
     });
+
+    it('forwards write options to the accessor.', async(): Promise<void> => {
+      const options = {
+        existingStorageHints: { contentType: { candidates: [ 'application/json' ], exhaustive: false }},
+      };
+      await validatingAccessor.writeDocument(mockIdentifier, mockData, mockMetadata, options);
+      expect(childAccessor.writeDocument).toHaveBeenCalledWith(mockIdentifier, mockData, mockMetadata, options);
+    });
   });
 
   describe('writeContainer()', (): void => {

@@ -3,7 +3,7 @@ import type { RepresentationMetadata } from '../../http/representation/Represent
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
 import type { Guarded } from '../../util/GuardedStream';
 import type { FilterPattern } from '../../util/QuadUtil';
-import type { DataAccessor } from './DataAccessor';
+import type { DataAccessor, WriteDocumentOptions } from './DataAccessor';
 import { PassthroughDataAccessor } from './PassthroughDataAccessor';
 
 /**
@@ -28,9 +28,12 @@ export class FilterMetadataDataAccessor extends PassthroughDataAccessor {
     identifier: ResourceIdentifier,
     data: Guarded<Readable>,
     metadata: RepresentationMetadata,
+    options?: WriteDocumentOptions,
   ): Promise<void> {
     this.applyFilters(metadata);
-    return this.accessor.writeDocument(identifier, data, metadata);
+    return options ?
+        this.accessor.writeDocument(identifier, data, metadata, options) :
+        this.accessor.writeDocument(identifier, data, metadata);
   }
 
   public async writeContainer(identifier: ResourceIdentifier, metadata: RepresentationMetadata): Promise<void> {

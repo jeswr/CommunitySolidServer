@@ -60,7 +60,7 @@ describe('A MonitoringStore', (): void => {
   it('calls getRepresentation directly from the source.', async(): Promise<void> => {
     await expect(store.getRepresentation({ path: 'getPath' }, {})).resolves.toEqual({ success: true });
     expect(source.getRepresentation).toHaveBeenCalledTimes(1);
-    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: 'getPath' }, {}, undefined);
+    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: 'getPath' }, {}, undefined, undefined);
   });
 
   it('does not fire a change event after getRepresentation.', async(): Promise<void> => {
@@ -94,7 +94,7 @@ describe('A MonitoringStore', (): void => {
     await expect(store.setRepresentation(id, {} as Representation))
       .resolves.toEqual(setRepresentationReturnMock);
     expect(source.setRepresentation).toHaveBeenCalledTimes(1);
-    expect(source.setRepresentation).toHaveBeenLastCalledWith(id, {}, undefined);
+    expect(source.setRepresentation).toHaveBeenLastCalledWith(id, {}, undefined, undefined);
   });
 
   it('fires appropriate events according to the return value of source.setRepresentation.', async(): Promise<void> => {
@@ -113,7 +113,7 @@ describe('A MonitoringStore', (): void => {
     await expect(store.deleteResource(id))
       .resolves.toEqual(deleteResourceReturnMock);
     expect(source.deleteResource).toHaveBeenCalledTimes(1);
-    expect(source.deleteResource).toHaveBeenLastCalledWith(id, undefined);
+    expect(source.deleteResource).toHaveBeenLastCalledWith(id, undefined, undefined);
   });
 
   it('fires appropriate events according to the return value of source.deleteResource.', async(): Promise<void> => {
@@ -156,7 +156,21 @@ describe('A MonitoringStore', (): void => {
   it('calls hasResource directly from the source.', async(): Promise<void> => {
     await expect(store.hasResource(id)).resolves.toBe(true);
     expect(source.hasResource).toHaveBeenCalledTimes(1);
-    expect(source.hasResource).toHaveBeenLastCalledWith(id);
+    expect(source.hasResource).toHaveBeenLastCalledWith(id, undefined);
+  });
+
+  it('forwards storage hints without changing emitted activities.', async(): Promise<void> => {
+    const hints = { contentType: { candidates: [ 'application/json' ], exhaustive: false }};
+
+    await store.hasResource(id, hints);
+    await store.getRepresentation(id, {}, undefined, hints);
+    await store.setRepresentation(id, {} as Representation, undefined, hints);
+    await store.deleteResource(id, undefined, hints);
+
+    expect(source.hasResource).toHaveBeenCalledWith(id, hints);
+    expect(source.getRepresentation).toHaveBeenCalledWith(id, {}, undefined, hints);
+    expect(source.setRepresentation).toHaveBeenCalledWith(id, {}, undefined, hints);
+    expect(source.deleteResource).toHaveBeenCalledWith(id, undefined, hints);
   });
 
   it('should not emit an event when the Activity is not a valid AS value.', async(): Promise<void> => {

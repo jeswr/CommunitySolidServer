@@ -57,21 +57,29 @@ describe('A SingleContainerJsonStorage', (): void => {
       2,
       { path: 'http://example.com/.internal/accounts/foo' },
       { type: { 'application/json': 1 }},
+      undefined,
+      { contentType: { candidates: [ 'application/json' ], exhaustive: false }},
     );
     expect(store.getRepresentation).toHaveBeenNthCalledWith(
       3,
       { path: 'http://example.com/.internal/accounts/bad' },
       { type: { 'application/json': 1 }},
+      undefined,
+      { contentType: { candidates: [ 'application/json' ], exhaustive: false }},
     );
     expect(store.getRepresentation).toHaveBeenNthCalledWith(
       4,
       { path: 'http://example.com/.internal/accounts/baz' },
       { type: { 'application/json': 1 }},
+      undefined,
+      { contentType: { candidates: [ 'application/json' ], exhaustive: false }},
     );
     expect(store.getRepresentation).toHaveBeenNthCalledWith(
       5,
       { path: 'http://example.com/.internal/accounts/unknown' },
       { type: { 'application/json': 1 }},
+      undefined,
+      { contentType: { candidates: [ 'application/json' ], exhaustive: false }},
     );
   });
 

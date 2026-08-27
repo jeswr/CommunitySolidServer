@@ -5,7 +5,7 @@ import type { RepresentationPreferences } from '../http/representation/Represent
 import type { ResourceIdentifier } from '../http/representation/ResourceIdentifier';
 import type { IdentifierMap } from '../util/map/IdentifierMap';
 import type { Conditions } from './conditions/Conditions';
-import type { ResourceSet } from './ResourceSet';
+import type { ResourceSet, ResourceStorageHints } from './ResourceSet';
 
 /**
  * An {@link IdentifierMap} containing one entry for each resource that was created, updated or deleted
@@ -32,6 +32,7 @@ export interface ResourceStore extends ResourceSet {
    * @param identifier - Identifier of the resource to read.
    * @param preferences - Preferences indicating desired representations.
    * @param conditions - Optional conditions under which to proceed.
+   * @param hints - Optional details that can optimize how the resource is found in the source.
    *
    * @returns A representation corresponding to the identifier.
    */
@@ -39,6 +40,7 @@ export interface ResourceStore extends ResourceSet {
     identifier: ResourceIdentifier,
     preferences: RepresentationPreferences,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ) => Promise<Representation>;
 
   /**
@@ -48,6 +50,7 @@ export interface ResourceStore extends ResourceSet {
    * @param identifier - Identifier of resource to update.
    * @param representation - New representation of the resource.
    * @param conditions - Optional conditions under which to proceed.
+   * @param hints - Optional details that can optimize how the current resource is found in the source.
    *
    * @returns A {@link ChangeMap}.
    */
@@ -55,6 +58,7 @@ export interface ResourceStore extends ResourceSet {
     identifier: ResourceIdentifier,
     representation: Representation,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ) => Promise<ChangeMap>;
 
   /**
@@ -77,12 +81,14 @@ export interface ResourceStore extends ResourceSet {
    *
    * @param identifier - Identifier of resource to delete.
    * @param conditions - Optional conditions under which to proceed.
+   * @param hints - Optional details that can optimize how the resource is found in the source.
    *
    * @returns A {@link ChangeMap}.
    */
   deleteResource: (
     identifier: ResourceIdentifier,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ) => Promise<ChangeMap>;
 
   /**

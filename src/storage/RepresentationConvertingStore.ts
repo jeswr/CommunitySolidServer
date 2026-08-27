@@ -8,6 +8,7 @@ import type { Conditions } from './conditions/Conditions';
 import { PassthroughConverter } from './conversion/PassthroughConverter';
 import type { RepresentationConverter } from './conversion/RepresentationConverter';
 import { PassthroughStore } from './PassthroughStore';
+import type { ResourceStorageHints } from './ResourceSet';
 import type { ChangeMap, ResourceStore } from './ResourceStore';
 
 /**
@@ -47,8 +48,9 @@ export class RepresentationConvertingStore<T extends ResourceStore = ResourceSto
     identifier: ResourceIdentifier,
     preferences: RepresentationPreferences,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<Representation> {
-    const representation = await super.getRepresentation(identifier, preferences, conditions);
+    const representation = await super.getRepresentation(identifier, preferences, conditions, hints);
     return this.outConverter.handleSafe({ identifier, representation, preferences });
   }
 
@@ -72,6 +74,7 @@ export class RepresentationConvertingStore<T extends ResourceStore = ResourceSto
     identifier: ResourceIdentifier,
     representation: Representation,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<ChangeMap> {
     // When it is a metadata resource, convert it to Quads as those are expected in the later stores
     if (this.metadataStrategy.isAuxiliaryIdentifier(identifier)) {
@@ -83,6 +86,6 @@ export class RepresentationConvertingStore<T extends ResourceStore = ResourceSto
         { identifier, representation, preferences: this.inPreferences },
       );
     }
-    return this.source.setRepresentation(identifier, representation, conditions);
+    return this.source.setRepresentation(identifier, representation, conditions, hints);
   }
 }

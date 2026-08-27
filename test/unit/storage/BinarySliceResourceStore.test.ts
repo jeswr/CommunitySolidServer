@@ -31,6 +31,16 @@ describe('A BinarySliceResourceStore', (): void => {
     expect(result.metadata.get(SOLID_HTTP.terms.end)?.value).toBe('4');
   });
 
+  it('forwards storage hints to the source.', async(): Promise<void> => {
+    const preferences = { range: { unit: 'bytes', parts: [{ start: 1, end: 4 }]}};
+    const hints = { contentType: { candidates: [ 'application/json' ], exhaustive: false }};
+
+    const result = await store.getRepresentation(identifier, preferences, undefined, hints);
+    result.data.destroy();
+
+    expect(source.getRepresentation).toHaveBeenCalledWith(identifier, preferences, undefined, hints);
+  });
+
   it('uses the stream size when slicing if available.', async(): Promise<void> => {
     representation.metadata.set(POSIX.terms.size, '10');
     const result = await store.getRepresentation(identifier, { range: { unit: 'bytes', parts: [{ start: -4 }]}});

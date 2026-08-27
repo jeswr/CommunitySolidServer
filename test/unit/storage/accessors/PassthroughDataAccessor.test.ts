@@ -35,6 +35,14 @@ describe('ValidatingDataAccessor', (): void => {
       expect(childAccessor.writeDocument).toHaveBeenCalledTimes(1);
       expect(childAccessor.writeDocument).toHaveBeenCalledWith(mockIdentifier, mockData, mockMetadata);
     });
+
+    it('forwards write options.', async(): Promise<void> => {
+      const options = {
+        existingStorageHints: { contentType: { candidates: [ 'text/turtle' ], exhaustive: false }},
+      };
+      await passthrough.writeDocument(mockIdentifier, mockData, mockMetadata, options);
+      expect(childAccessor.writeDocument).toHaveBeenCalledWith(mockIdentifier, mockData, mockMetadata, options);
+    });
   });
 
   describe('canHandle()', (): void => {
@@ -51,6 +59,12 @@ describe('ValidatingDataAccessor', (): void => {
       expect(childAccessor.getData).toHaveBeenCalledTimes(1);
       expect(childAccessor.getData).toHaveBeenCalledWith(mockIdentifier);
     });
+
+    it('forwards storage hints.', async(): Promise<void> => {
+      const hints = { contentType: { candidates: [ 'text/turtle' ], exhaustive: false }};
+      await passthrough.getData(mockIdentifier, hints);
+      expect(childAccessor.getData).toHaveBeenCalledWith(mockIdentifier, hints);
+    });
   });
 
   describe('getMetadata()', (): void => {
@@ -58,6 +72,12 @@ describe('ValidatingDataAccessor', (): void => {
       await passthrough.getMetadata(mockIdentifier);
       expect(childAccessor.getMetadata).toHaveBeenCalledTimes(1);
       expect(childAccessor.getMetadata).toHaveBeenCalledWith(mockIdentifier);
+    });
+
+    it('forwards storage hints.', async(): Promise<void> => {
+      const hints = { contentType: { candidates: [ 'text/turtle' ], exhaustive: false }};
+      await passthrough.getMetadata(mockIdentifier, hints);
+      expect(childAccessor.getMetadata).toHaveBeenCalledWith(mockIdentifier, hints);
     });
   });
 
@@ -82,6 +102,12 @@ describe('ValidatingDataAccessor', (): void => {
       await passthrough.deleteResource(mockIdentifier);
       expect(childAccessor.deleteResource).toHaveBeenCalledTimes(1);
       expect(childAccessor.deleteResource).toHaveBeenCalledWith(mockIdentifier);
+    });
+
+    it('forwards storage hints.', async(): Promise<void> => {
+      const hints = { contentType: { candidates: [ 'text/turtle' ], exhaustive: false }};
+      await passthrough.deleteResource(mockIdentifier, hints);
+      expect(childAccessor.deleteResource).toHaveBeenCalledWith(mockIdentifier, hints);
     });
   });
 

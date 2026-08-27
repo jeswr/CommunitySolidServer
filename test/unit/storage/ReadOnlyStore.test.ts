@@ -21,7 +21,7 @@ describe('A ReadOnlyStore', (): void => {
   it('calls getRepresentation directly from the source.', async(): Promise<void> => {
     await expect(store.getRepresentation({ path: 'getPath' }, {})).resolves.toBe('get');
     expect(source.getRepresentation).toHaveBeenCalledTimes(1);
-    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: 'getPath' }, {}, undefined);
+    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: 'getPath' }, {}, undefined, undefined);
   });
 
   it('throws an error when calling addResource.', async(): Promise<void> => {

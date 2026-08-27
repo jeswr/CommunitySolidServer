@@ -4,6 +4,7 @@ import type { RepresentationPreferences } from '../http/representation/Represent
 import type { ResourceIdentifier } from '../http/representation/ResourceIdentifier';
 import { NotImplementedHttpError } from '../util/errors/NotImplementedHttpError';
 import type { Conditions } from './conditions/Conditions';
+import type { ResourceStorageHints } from './ResourceSet';
 import type { ChangeMap, ResourceStore } from './ResourceStore';
 
 /**
@@ -11,7 +12,7 @@ import type { ChangeMap, ResourceStore } from './ResourceStore';
  */
 /* eslint-disable unused-imports/no-unused-vars */
 export class BaseResourceStore implements ResourceStore {
-  public async hasResource(identifier: ResourceIdentifier): Promise<boolean> {
+  public async hasResource(identifier: ResourceIdentifier, hints?: ResourceStorageHints): Promise<boolean> {
     throw new NotImplementedHttpError();
   }
 
@@ -19,6 +20,7 @@ export class BaseResourceStore implements ResourceStore {
     identifier: ResourceIdentifier,
     preferences: RepresentationPreferences,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<Representation> {
     throw new NotImplementedHttpError();
   }
@@ -27,6 +29,7 @@ export class BaseResourceStore implements ResourceStore {
     identifier: ResourceIdentifier,
     representation: Representation,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<ChangeMap> {
     throw new NotImplementedHttpError();
   }
@@ -39,7 +42,11 @@ export class BaseResourceStore implements ResourceStore {
     throw new NotImplementedHttpError();
   }
 
-  public async deleteResource(identifier: ResourceIdentifier, conditions?: Conditions): Promise<ChangeMap> {
+  public async deleteResource(
+    identifier: ResourceIdentifier,
+    conditions?: Conditions,
+    hints?: ResourceStorageHints,
+  ): Promise<ChangeMap> {
     throw new NotImplementedHttpError();
   }
 

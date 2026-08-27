@@ -6,6 +6,7 @@ import type { ResourceIdentifier } from '../http/representation/ResourceIdentifi
 import { BaseActivityEmitter } from '../server/notifications/ActivityEmitter';
 import { AS, SOLID_AS } from '../util/Vocabularies';
 import type { Conditions } from './conditions/Conditions';
+import type { ResourceStorageHints } from './ResourceSet';
 import type { ChangeMap, ResourceStore } from './ResourceStore';
 
 // The ActivityStream terms for which we emit an event
@@ -24,16 +25,17 @@ export class MonitoringStore<T extends ResourceStore = ResourceStore>
     this.source = source;
   }
 
-  public async hasResource(identifier: ResourceIdentifier): Promise<boolean> {
-    return this.source.hasResource(identifier);
+  public async hasResource(identifier: ResourceIdentifier, hints?: ResourceStorageHints): Promise<boolean> {
+    return this.source.hasResource(identifier, hints);
   }
 
   public async getRepresentation(
     identifier: ResourceIdentifier,
     preferences: RepresentationPreferences,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<Representation> {
-    return this.source.getRepresentation(identifier, preferences, conditions);
+    return this.source.getRepresentation(identifier, preferences, conditions, hints);
   }
 
   public async addResource(
@@ -47,16 +49,18 @@ export class MonitoringStore<T extends ResourceStore = ResourceStore>
   public async deleteResource(
     identifier: ResourceIdentifier,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<ChangeMap> {
-    return this.emitChanged(await this.source.deleteResource(identifier, conditions));
+    return this.emitChanged(await this.source.deleteResource(identifier, conditions, hints));
   }
 
   public async setRepresentation(
     identifier: ResourceIdentifier,
     representation: Representation,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<ChangeMap> {
-    return this.emitChanged(await this.source.setRepresentation(identifier, representation, conditions));
+    return this.emitChanged(await this.source.setRepresentation(identifier, representation, conditions, hints));
   }
 
   public async modifyResource(

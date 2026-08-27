@@ -34,6 +34,18 @@ describe('FilterMetadataDataAccessor', (): void => {
     expect(mockMetadata.contentType).toBe(APPLICATION_JSON);
   });
 
+  it('forwards write options when filtering document metadata.', async(): Promise<void> => {
+    const filterMetadataAccessor = new FilterMetadataDataAccessor(childAccessor, []);
+    const mockMetadata = new RepresentationMetadata(APPLICATION_JSON);
+    const options = {
+      existingStorageHints: { contentType: { candidates: [ APPLICATION_JSON ], exhaustive: false }},
+    };
+
+    await filterMetadataAccessor.writeDocument(mockIdentifier, mockData, mockMetadata, options);
+
+    expect(childAccessor.writeDocument).toHaveBeenCalledWith(mockIdentifier, mockData, mockMetadata, options);
+  });
+
   it('supports multiple filter patterns when calling writeDocument.', async(): Promise<void> => {
     const filters = [
       new FilterPattern(undefined, CONTENT_LENGTH),

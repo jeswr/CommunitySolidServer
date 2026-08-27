@@ -4,7 +4,7 @@ import { BasicRepresentation } from '../../http/representation/BasicRepresentati
 import type { RepresentationMetadata } from '../../http/representation/RepresentationMetadata';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
 import type { Guarded } from '../../util/GuardedStream';
-import type { DataAccessor } from './DataAccessor';
+import type { DataAccessor, WriteDocumentOptions } from './DataAccessor';
 import { PassthroughDataAccessor } from './PassthroughDataAccessor';
 
 /**
@@ -23,12 +23,15 @@ export class ValidatingDataAccessor extends PassthroughDataAccessor {
     identifier: ResourceIdentifier,
     data: Guarded<Readable>,
     metadata: RepresentationMetadata,
+    options?: WriteDocumentOptions,
   ): Promise<void> {
     const pipedRep = await this.validator.handleSafe({
       representation: new BasicRepresentation(data, metadata),
       identifier,
     });
-    return this.accessor.writeDocument(identifier, pipedRep.data, metadata);
+    return options ?
+        this.accessor.writeDocument(identifier, pipedRep.data, metadata, options) :
+        this.accessor.writeDocument(identifier, pipedRep.data, metadata);
   }
 
   public async writeContainer(identifier: ResourceIdentifier, metadata: RepresentationMetadata): Promise<void> {

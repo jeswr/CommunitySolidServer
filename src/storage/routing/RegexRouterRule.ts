@@ -1,10 +1,10 @@
-import type { Representation } from '../../http/representation/Representation';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
 import { BadRequestHttpError } from '../../util/errors/BadRequestHttpError';
 import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpError';
 import { trimTrailingSlashes } from '../../util/PathUtil';
 import type { ResourceStore } from '../ResourceStore';
 import { RouterRule } from './RouterRule';
+import type { RouterRuleInput } from './RouterRule';
 
 /**
  * Utility class to easily configure Regex to ResourceStore mappings in the config files.
@@ -40,11 +40,11 @@ export class RegexRouterRule extends RouterRule {
     this.rules = rules;
   }
 
-  public async canHandle(input: { identifier: ResourceIdentifier; representation?: Representation }): Promise<void> {
+  public async canHandle(input: RouterRuleInput): Promise<void> {
     this.matchStore(input.identifier);
   }
 
-  public async handle(input: { identifier: ResourceIdentifier }): Promise<ResourceStore> {
+  public async handle(input: RouterRuleInput): Promise<ResourceStore> {
     return this.matchStore(input.identifier);
   }
 

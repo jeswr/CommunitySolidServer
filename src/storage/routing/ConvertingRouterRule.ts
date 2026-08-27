@@ -1,8 +1,7 @@
-import type { Representation } from '../../http/representation/Representation';
-import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
 import type { ResourceStore } from '../ResourceStore';
 import type { PreferenceSupport } from './PreferenceSupport';
 import { RouterRule } from './RouterRule';
+import type { RouterRuleInput } from './RouterRule';
 
 export interface ConvertingStoreEntry {
   store: ResourceStore;
@@ -29,9 +28,8 @@ export class ConvertingRouterRule extends RouterRule {
     this.defaultStore = defaultStore;
   }
 
-  public async handle(input: { identifier: ResourceIdentifier; representation?: Representation }):
-  Promise<ResourceStore> {
-    const { identifier, representation } = input;
+  public async handle(input: RouterRuleInput): Promise<ResourceStore> {
+    const { identifier, representation, hints } = input;
     let store: ResourceStore;
     if (representation) {
       // TS type checking is not smart enough to let us reuse the input object
@@ -39,7 +37,7 @@ export class ConvertingRouterRule extends RouterRule {
         entry.supportChecker.supports({ identifier, representation }));
     } else {
       // No content-type given so we can only check if one of the stores has data for the identifier
-      store = await this.findStore(async(entry): Promise<boolean> => entry.store.hasResource(identifier));
+      store = await this.findStore(async(entry): Promise<boolean> => entry.store.hasResource(identifier, hints));
     }
     return store;
   }

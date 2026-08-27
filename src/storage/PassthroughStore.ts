@@ -3,6 +3,7 @@ import type { Representation } from '../http/representation/Representation';
 import type { RepresentationPreferences } from '../http/representation/RepresentationPreferences';
 import type { ResourceIdentifier } from '../http/representation/ResourceIdentifier';
 import type { Conditions } from './conditions/Conditions';
+import type { ResourceStorageHints } from './ResourceSet';
 import type { ChangeMap, ResourceStore } from './ResourceStore';
 
 /**
@@ -17,16 +18,17 @@ export class PassthroughStore<T extends ResourceStore = ResourceStore> implement
     this.source = source;
   }
 
-  public async hasResource(identifier: ResourceIdentifier): Promise<boolean> {
-    return this.source.hasResource(identifier);
+  public async hasResource(identifier: ResourceIdentifier, hints?: ResourceStorageHints): Promise<boolean> {
+    return this.source.hasResource(identifier, hints);
   }
 
   public async getRepresentation(
     identifier: ResourceIdentifier,
     preferences: RepresentationPreferences,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<Representation> {
-    return this.source.getRepresentation(identifier, preferences, conditions);
+    return this.source.getRepresentation(identifier, preferences, conditions, hints);
   }
 
   public async addResource(
@@ -37,8 +39,12 @@ export class PassthroughStore<T extends ResourceStore = ResourceStore> implement
     return this.source.addResource(container, representation, conditions);
   }
 
-  public async deleteResource(identifier: ResourceIdentifier, conditions?: Conditions): Promise<ChangeMap> {
-    return this.source.deleteResource(identifier, conditions);
+  public async deleteResource(
+    identifier: ResourceIdentifier,
+    conditions?: Conditions,
+    hints?: ResourceStorageHints,
+  ): Promise<ChangeMap> {
+    return this.source.deleteResource(identifier, conditions, hints);
   }
 
   public async modifyResource(
@@ -53,7 +59,8 @@ export class PassthroughStore<T extends ResourceStore = ResourceStore> implement
     identifier: ResourceIdentifier,
     representation: Representation,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<ChangeMap> {
-    return this.source.setRepresentation(identifier, representation, conditions);
+    return this.source.setRepresentation(identifier, representation, conditions, hints);
   }
 }

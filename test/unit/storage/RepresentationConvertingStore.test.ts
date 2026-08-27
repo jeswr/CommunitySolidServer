@@ -14,9 +14,11 @@ describe('A RepresentationConvertingStore', (): void => {
 
   const sourceRepresentation = { data: 'data' };
   const source: ResourceStore = {
+    hasResource: jest.fn().mockResolvedValue(true),
     getRepresentation: jest.fn().mockResolvedValue(sourceRepresentation),
     addResource: jest.fn(),
     setRepresentation: jest.fn(),
+    deleteResource: jest.fn(),
   } as any;
 
   const convertedIn = { in: true };
@@ -66,7 +68,7 @@ describe('A RepresentationConvertingStore', (): void => {
       representation,
       preferences: { type: { 'text/turtle': 1 }},
     });
-    expect(source.setRepresentation).toHaveBeenLastCalledWith(identifier, convertedIn, 'conditions');
+    expect(source.setRepresentation).toHaveBeenLastCalledWith(identifier, convertedIn, 'conditions', undefined);
   });
 
   it('does not perform any conversions when constructed with empty arguments.', async(): Promise<void> => {
@@ -86,6 +88,20 @@ describe('A RepresentationConvertingStore', (): void => {
       representation,
       preferences: { type: { [INTERNAL_QUADS]: 1 }},
     });
-    expect(source.setRepresentation).toHaveBeenLastCalledWith(resourceID, convertedIn, undefined);
+    expect(source.setRepresentation).toHaveBeenLastCalledWith(resourceID, convertedIn, undefined, undefined);
+  });
+
+  it('forwards physical lookup hints unchanged across conversion boundaries.', async(): Promise<void> => {
+    const hints = { contentType: { candidates: [ 'application/json' ], exhaustive: false }};
+
+    await store.hasResource(identifier, hints);
+    await store.getRepresentation(identifier, preferences, undefined, hints);
+    await store.setRepresentation(identifier, representation, undefined, hints);
+    await store.deleteResource(identifier, undefined, hints);
+
+    expect(source.hasResource).toHaveBeenCalledWith(identifier, hints);
+    expect(source.getRepresentation).toHaveBeenCalledWith(identifier, preferences, undefined, hints);
+    expect(source.setRepresentation).toHaveBeenCalledWith(identifier, convertedIn, undefined, hints);
+    expect(source.deleteResource).toHaveBeenCalledWith(identifier, undefined, hints);
   });
 });

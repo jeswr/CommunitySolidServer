@@ -64,7 +64,7 @@ describe('An IndexRepresentationStore', (): void => {
     const result = await store.getRepresentation({ path: baseUrl }, preferences);
     await expect(readableToString(result.data)).resolves.toBe('container data');
     expect(source.getRepresentation).toHaveBeenCalledTimes(1);
-    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: baseUrl }, preferences, undefined);
+    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: baseUrl }, preferences, undefined, undefined);
 
     // Use correct metadata
     expect(result.metadata.identifier.value).toBe(baseUrl);
@@ -95,7 +95,7 @@ describe('An IndexRepresentationStore', (): void => {
       preferences,
       undefined,
     );
-    expect(source.getRepresentation).toHaveBeenLastCalledWith(emptyContainer, preferences, undefined);
+    expect(source.getRepresentation).toHaveBeenLastCalledWith(emptyContainer, preferences, undefined, undefined);
   });
 
   it('requests the usual data if the index media range is not the most preferred.', async(): Promise<void> => {
@@ -103,7 +103,45 @@ describe('An IndexRepresentationStore', (): void => {
     const result = await store.getRepresentation({ path: baseUrl }, preferences);
     await expect(readableToString(result.data)).resolves.toBe('container data');
     expect(source.getRepresentation).toHaveBeenCalledTimes(1);
-    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: baseUrl }, preferences, undefined);
+    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: baseUrl }, preferences, undefined, undefined);
+  });
+
+  it('forwards hints only when falling back to the requested resource.', async(): Promise<void> => {
+    const preferences = { type: { 'text/turtle': 0.5, 'text/html': 0.8 }};
+    const hints = { contentType: { candidates: [ 'application/json' ], exhaustive: false }};
+    source.getRepresentation.mockRejectedValueOnce(new NotFoundHttpError());
+
+    const result = await store.getRepresentation(emptyContainer, preferences, undefined, hints);
+    result.data.destroy();
+
+    expect(source.getRepresentation).toHaveBeenNthCalledWith(
+      1,
+      { path: `${emptyContainer.path}index.html` },
+      preferences,
+      undefined,
+    );
+    expect(source.getRepresentation).toHaveBeenLastCalledWith(emptyContainer, preferences, undefined, hints);
+  });
+
+  it('applies container hints only to the original container read.', async(): Promise<void> => {
+    const preferences = { type: { 'text/turtle': 0.5, 'text/html': 0.8 }};
+    const hints = { contentType: { candidates: [ 'application/json' ], exhaustive: false }};
+
+    const result = await store.getRepresentation(
+      { path: baseUrl },
+      preferences,
+      undefined,
+      hints,
+    );
+    result.data.destroy();
+
+    expect(source.getRepresentation).toHaveBeenNthCalledWith(
+      1,
+      { path: `${baseUrl}index.html` },
+      preferences,
+      undefined,
+    );
+    expect(source.getRepresentation).toHaveBeenNthCalledWith(2, { path: baseUrl }, {}, undefined, hints);
   });
 
   it('returns the index resource if the media range is set to */*.', async(): Promise<void> => {

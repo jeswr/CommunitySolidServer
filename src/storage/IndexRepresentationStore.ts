@@ -8,6 +8,7 @@ import { isValidFileName } from '../util/StringUtil';
 import type { Conditions } from './conditions/Conditions';
 import { cleanPreferences, matchesMediaType } from './conversion/ConversionUtil';
 import { PassthroughStore } from './PassthroughStore';
+import type { ResourceStorageHints } from './ResourceSet';
 import type { ResourceStore } from './ResourceStore';
 
 /**
@@ -41,13 +42,16 @@ export class IndexRepresentationStore extends PassthroughStore {
     identifier: ResourceIdentifier,
     preferences: RepresentationPreferences,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<Representation> {
     if (isContainerIdentifier(identifier) && this.matchesPreferences(preferences)) {
       try {
         const indexIdentifier = { path: `${identifier.path}${this.indexName}` };
         const index = await this.source.getRepresentation(indexIdentifier, preferences, conditions);
         // We only care about the container metadata so preferences don't matter
-        const container = await this.source.getRepresentation(identifier, {}, conditions);
+        const container = hints ?
+            await this.source.getRepresentation(identifier, {}, conditions, hints) :
+            await this.source.getRepresentation(identifier, {}, conditions);
         container.data.destroy();
 
         // Uses the container metadata but with the index content-type.
@@ -65,7 +69,7 @@ export class IndexRepresentationStore extends PassthroughStore {
       }
     }
 
-    return this.source.getRepresentation(identifier, preferences, conditions);
+    return this.source.getRepresentation(identifier, preferences, conditions, hints);
   }
 
   /**
