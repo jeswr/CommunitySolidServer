@@ -5,6 +5,7 @@ import type { ResourceIdentifier } from '../http/representation/ResourceIdentifi
 import { NotFoundHttpError } from '../util/errors/NotFoundHttpError';
 import { NotImplementedHttpError } from '../util/errors/NotImplementedHttpError';
 import type { Conditions } from './conditions/Conditions';
+import type { ResourceStorageHints } from './ResourceSet';
 import type { ChangeMap, ResourceStore } from './ResourceStore';
 import type { RouterRule } from './routing/RouterRule';
 
@@ -20,17 +21,19 @@ export class RoutingResourceStore implements ResourceStore {
     this.rule = rule;
   }
 
-  public async hasResource(identifier: ResourceIdentifier):
+  public async hasResource(identifier: ResourceIdentifier, hints?: ResourceStorageHints):
   Promise<boolean> {
-    return (await this.getStore(identifier)).hasResource(identifier);
+    return (await this.getStore(identifier, undefined, hints)).hasResource(identifier, hints);
   }
 
   public async getRepresentation(
     identifier: ResourceIdentifier,
     preferences: RepresentationPreferences,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<Representation> {
-    return (await this.getStore(identifier)).getRepresentation(identifier, preferences, conditions);
+    return (await this.getStore(identifier, undefined, hints))
+      .getRepresentation(identifier, preferences, conditions, hints);
   }
 
   public async addResource(
@@ -45,15 +48,18 @@ export class RoutingResourceStore implements ResourceStore {
     identifier: ResourceIdentifier,
     representation: Representation,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<ChangeMap> {
-    return (await this.getStore(identifier, representation)).setRepresentation(identifier, representation, conditions);
+    return (await this.getStore(identifier, representation, hints))
+      .setRepresentation(identifier, representation, conditions, hints);
   }
 
   public async deleteResource(
     identifier: ResourceIdentifier,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<ChangeMap> {
-    return (await this.getStore(identifier)).deleteResource(identifier, conditions);
+    return (await this.getStore(identifier, undefined, hints)).deleteResource(identifier, conditions, hints);
   }
 
   public async modifyResource(
@@ -64,14 +70,18 @@ export class RoutingResourceStore implements ResourceStore {
     return (await this.getStore(identifier)).modifyResource(identifier, patch, conditions);
   }
 
-  private async getStore(identifier: ResourceIdentifier, representation?: Representation): Promise<ResourceStore> {
+  private async getStore(
+    identifier: ResourceIdentifier,
+    representation?: Representation,
+    hints?: ResourceStorageHints,
+  ): Promise<ResourceStore> {
     if (representation) {
-      return this.rule.handleSafe({ identifier, representation });
+      return this.rule.handleSafe(hints ? { identifier, representation, hints } : { identifier, representation });
     }
 
     // In case there is no incoming data we want to return 404 if no store was found
     try {
-      return await this.rule.handleSafe({ identifier });
+      return await this.rule.handleSafe(hints ? { identifier, hints } : { identifier });
     } catch (error: unknown) {
       if (NotImplementedHttpError.isInstance(error)) {
         throw new NotFoundHttpError('', { cause: error });

@@ -108,4 +108,32 @@ describe('A ContentTypeReplacer', (): void => {
       'internal/anything': 1,
     });
   });
+
+  it('exposes the inputs that can reach a requested output.', async(): Promise<void> => {
+    await expect(converter.getInputTypes()).resolves.toEqual({
+      'application/n-triples': 1,
+      'application/ld+json': 1,
+      'application/json': 1,
+      'application/octet-stream': 1,
+      'internal/anything': 1,
+      '*/*': 1,
+    });
+    await expect(converter.getInputTypeHints({ type: { 'application/n-quads': 1 }})).resolves.toEqual({
+      candidates: [ 'application/n-triples' ],
+      exhaustive: true,
+    });
+  });
+
+  it('marks a reachable wildcard input as non-exhaustive.', async(): Promise<void> => {
+    await expect(converter.getInputTypeHints({ type: { 'internal/anything': 1 }})).resolves.toEqual({
+      candidates: [
+        'application/ld+json',
+        'application/json',
+        'application/octet-stream',
+        'internal/anything',
+        '*/*',
+      ],
+      exhaustive: false,
+    });
+  });
 });

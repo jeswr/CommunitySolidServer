@@ -20,6 +20,17 @@ export interface ResourceLink {
 }
 
 /**
+ * Options for mapping a resource URL to a file path.
+ */
+export interface MapUrlToFilePathOptions {
+  /**
+   * Whether a metadata resource should map directly to its canonical sidecar path,
+   * without discovering existing files in the parent directory.
+   */
+  readonly canonical?: boolean;
+}
+
+/**
  * Supports mapping a file to an URL and back.
  */
 export interface FileIdentifierMapper {
@@ -41,10 +52,16 @@ export interface FileIdentifierMapper {
    * @param identifier - The input identifier.
    * @param isMetadata - If we are mapping the metadata of the resource instead of its data.
    * @param contentType - The (optional) content-type of the resource.
+   * @param options - Additional mapping options.
    *
    * @returns A ResourceLink with all the necessary metadata.
    */
-  mapUrlToFilePath: (identifier: ResourceIdentifier, isMetadata: boolean, contentType?: string) =>
+  mapUrlToFilePath: (
+    identifier: ResourceIdentifier,
+    isMetadata: boolean,
+    contentType?: string,
+    options?: MapUrlToFilePathOptions,
+  ) =>
   Promise<ResourceLink>;
 }
 

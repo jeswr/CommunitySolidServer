@@ -7,6 +7,7 @@ import { BasicRepresentation } from '../http/representation/BasicRepresentation'
 import type { Patch } from '../http/representation/Patch';
 import type { Representation } from '../http/representation/Representation';
 import { RepresentationMetadata } from '../http/representation/RepresentationMetadata';
+import type { RepresentationPreferences } from '../http/representation/RepresentationPreferences';
 import type { ResourceIdentifier } from '../http/representation/ResourceIdentifier';
 import { getLoggerFor } from '../logging/LogUtil';
 import { INTERNAL_QUADS } from '../util/ContentTypes';
@@ -46,6 +47,7 @@ import {
 import type { DataAccessor } from './accessors/DataAccessor';
 import type { Conditions } from './conditions/Conditions';
 import type { ChangeMap, ResourceStore } from './ResourceStore';
+import type { ResourceStorageHints } from './ResourceSet';
 import namedNode = DataFactory.namedNode;
 
 /**
@@ -91,13 +93,14 @@ export class DataAccessorBasedStore implements ResourceStore {
     this.metadataStrategy = metadataStrategy;
   }
 
-  public async hasResource(identifier: ResourceIdentifier): Promise<boolean> {
+  public async hasResource(identifier: ResourceIdentifier, hints?: ResourceStorageHints): Promise<boolean> {
     try {
       this.validateIdentifier(identifier);
       if (this.metadataStrategy.isAuxiliaryIdentifier(identifier)) {
         identifier = this.metadataStrategy.getSubjectIdentifier(identifier);
+        hints = undefined;
       }
-      await this.accessor.getMetadata(identifier);
+      await this.getAccessorMetadata(identifier, hints);
       return true;
     } catch (error: unknown) {
       if (NotFoundHttpError.isInstance(error)) {
@@ -107,17 +110,23 @@ export class DataAccessorBasedStore implements ResourceStore {
     }
   }
 
-  public async getRepresentation(identifier: ResourceIdentifier): Promise<Representation> {
+  public async getRepresentation(
+    identifier: ResourceIdentifier,
+    preferences?: RepresentationPreferences,
+    conditions?: Conditions,
+    hints?: ResourceStorageHints,
+  ): Promise<Representation> {
     this.validateIdentifier(identifier);
     let isMetadata = false;
 
     if (this.metadataStrategy.isAuxiliaryIdentifier(identifier)) {
       identifier = this.metadataStrategy.getSubjectIdentifier(identifier);
       isMetadata = true;
+      hints = undefined;
     }
 
     // In the future we want to use getNormalizedMetadata and redirect in case the identifier differs
-    let metadata = await this.accessor.getMetadata(identifier);
+    let metadata = await this.getAccessorMetadata(identifier, hints);
     let representation: Representation;
 
     // Potentially add auxiliary related metadata
@@ -157,7 +166,10 @@ export class DataAccessorBasedStore implements ResourceStore {
     if (isContainer || isMetadata) {
       representation = new BasicRepresentation(data, metadata, INTERNAL_QUADS);
     } else {
-      representation = new BasicRepresentation(await this.accessor.getData(identifier), metadata);
+      const storedData = hints ?
+          await this.accessor.getData(identifier, hints) :
+          await this.accessor.getData(identifier);
+      representation = new BasicRepresentation(storedData, metadata);
     }
 
     return representation;
@@ -207,11 +219,14 @@ export class DataAccessorBasedStore implements ResourceStore {
     identifier: ResourceIdentifier,
     representation: Representation,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<ChangeMap> {
     this.validateIdentifier(identifier);
+    const isMetadata = this.metadataStrategy.isAuxiliaryIdentifier(identifier);
 
     // Check if the resource already exists
-    const oldMetadata = await this.getSafeNormalizedMetadata(identifier);
+    const oldMetadata = await this.getSafeNormalizedMetadata(identifier, isMetadata ? undefined : hints);
+    const existingStorageHints = isMetadata ? undefined : hints;
     // We do not allow PUT on an already existing Container
     // See https://github.com/CommunitySolidServer/CommunitySolidServer/issues/1027#issuecomment-1023371546
     if (oldMetadata && isContainerIdentifier(identifier)) {
@@ -254,12 +269,19 @@ export class DataAccessorBasedStore implements ResourceStore {
 
     this.validateConditions(conditions, oldMetadata);
 
-    if (this.metadataStrategy.isAuxiliaryIdentifier(identifier)) {
+    if (isMetadata) {
       return this.writeMetadata(identifier, representation);
     }
 
     // Potentially have to create containers if it didn't exist yet
-    return this.writeData(identifier, representation, isContainer, !oldMetadata, Boolean(oldMetadata));
+    return this.writeData(
+      identifier,
+      representation,
+      isContainer,
+      !oldMetadata,
+      Boolean(oldMetadata),
+      existingStorageHints,
+    );
   }
 
   public async modifyResource(identifier: ResourceIdentifier, patch: Patch, conditions?: Conditions): Promise<never> {
@@ -279,7 +301,11 @@ export class DataAccessorBasedStore implements ResourceStore {
     throw new NotImplementedHttpError('Patches are not supported by the default store.');
   }
 
-  public async deleteResource(identifier: ResourceIdentifier, conditions?: Conditions): Promise<ChangeMap> {
+  public async deleteResource(
+    identifier: ResourceIdentifier,
+    conditions?: Conditions,
+    hints?: ResourceStorageHints,
+  ): Promise<ChangeMap> {
     this.validateIdentifier(identifier);
 
     // https://github.com/CommunitySolidServer/CommunitySolidServer/issues/1027#issuecomment-988664970
@@ -288,7 +314,7 @@ export class DataAccessorBasedStore implements ResourceStore {
       throw new ConflictHttpError('Not allowed to delete metadata resources directly.');
     }
 
-    const metadata = await this.accessor.getMetadata(identifier);
+    const metadata = await this.getAccessorMetadata(identifier, hints);
     // Solid, §5.4: "When a DELETE request targets storage’s root container or its associated ACL resource,
     // the server MUST respond with the 405 status code."
     // https://solid.github.io/specification/protocol#deleting-resources
@@ -338,7 +364,9 @@ export class DataAccessorBasedStore implements ResourceStore {
       await this.updateContainerModifiedDate(container);
     }
 
-    await this.accessor.deleteResource(identifier);
+    await (hints ?
+        this.accessor.deleteResource(identifier, hints) :
+        this.accessor.deleteResource(identifier));
     this.addActivityMetadata(changes, identifier, AS.terms.Delete);
     return changes;
   }
@@ -376,10 +404,11 @@ export class DataAccessorBasedStore implements ResourceStore {
    *
    * @param identifier - Identifier that needs to be checked.
    */
-  protected async getNormalizedMetadata(identifier: ResourceIdentifier): Promise<RepresentationMetadata> {
+  protected async getNormalizedMetadata(identifier: ResourceIdentifier, hints?: ResourceStorageHints):
+  Promise<RepresentationMetadata> {
     const hasSlash = isContainerIdentifier(identifier);
     try {
-      return await this.accessor.getMetadata(identifier);
+      return await this.getAccessorMetadata(identifier, hints);
     } catch (error: unknown) {
       if (NotFoundHttpError.isInstance(error)) {
         const otherIdentifier =
@@ -387,7 +416,7 @@ export class DataAccessorBasedStore implements ResourceStore {
 
         // Only try to access other identifier if it is valid in the scope of the DataAccessor
         this.validateIdentifier(otherIdentifier);
-        return this.accessor.getMetadata(otherIdentifier);
+        return this.getAccessorMetadata(otherIdentifier);
       }
       throw error;
     }
@@ -396,15 +425,21 @@ export class DataAccessorBasedStore implements ResourceStore {
   /**
    * Returns the result of `getNormalizedMetadata` or undefined if a 404 error is thrown.
    */
-  protected async getSafeNormalizedMetadata(identifier: ResourceIdentifier):
+  protected async getSafeNormalizedMetadata(identifier: ResourceIdentifier, hints?: ResourceStorageHints):
   Promise<RepresentationMetadata | undefined> {
     try {
-      return await this.getNormalizedMetadata(identifier);
+      return await this.getNormalizedMetadata(identifier, hints);
     } catch (error: unknown) {
       if (!NotFoundHttpError.isInstance(error)) {
         throw error;
       }
     }
+  }
+
+  /** Retrieves metadata while preserving the original one-argument accessor call when there are no hints. */
+  private async getAccessorMetadata(identifier: ResourceIdentifier, hints?: ResourceStorageHints):
+  Promise<RepresentationMetadata> {
+    return hints ? this.accessor.getMetadata(identifier, hints) : this.accessor.getMetadata(identifier);
   }
 
   /**
@@ -459,6 +494,7 @@ export class DataAccessorBasedStore implements ResourceStore {
    * @param isContainer - Is the incoming resource a container?
    * @param createContainers - Should parent containers (potentially) be created?
    * @param exists - If the resource already exists.
+   * @param existingStorageHints - Hints for finding the representation being replaced.
    *
    * @returns Identifiers of resources that were possibly modified.
    */
@@ -468,6 +504,7 @@ export class DataAccessorBasedStore implements ResourceStore {
     isContainer: boolean,
     createContainers: boolean,
     exists: boolean,
+    existingStorageHints?: ResourceStorageHints,
   ): Promise<ChangeMap> {
     // Make sure the metadata has the correct identifier and correct type quads
     // Need to do this before handling container data to have the correct identifier
@@ -511,9 +548,18 @@ export class DataAccessorBasedStore implements ResourceStore {
     // Remove all generated metadata to prevent it from being stored permanently
     this.removeResponseMetadata(representation.metadata);
 
-    await (isContainer ?
-        this.accessor.writeContainer(identifier, representation.metadata) :
-        this.accessor.writeDocument(identifier, representation.data, representation.metadata));
+    if (isContainer) {
+      await this.accessor.writeContainer(identifier, representation.metadata);
+    } else if (existingStorageHints) {
+      await this.accessor.writeDocument(
+        identifier,
+        representation.data,
+        representation.metadata,
+        { existingStorageHints },
+      );
+    } else {
+      await this.accessor.writeDocument(identifier, representation.data, representation.metadata);
+    }
 
     this.addActivityMetadata(changes, identifier, exists ? AS.terms.Update : AS.terms.Create);
     return changes;

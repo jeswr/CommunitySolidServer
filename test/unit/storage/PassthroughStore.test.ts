@@ -23,7 +23,7 @@ describe('A PassthroughStore', (): void => {
   it('calls getRepresentation directly from the source.', async(): Promise<void> => {
     await expect(store.getRepresentation({ path: 'getPath' }, {})).resolves.toBe('get');
     expect(source.getRepresentation).toHaveBeenCalledTimes(1);
-    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: 'getPath' }, {}, undefined);
+    expect(source.getRepresentation).toHaveBeenLastCalledWith({ path: 'getPath' }, {}, undefined, undefined);
   });
 
   it('calls addResource directly from the source.', async(): Promise<void> => {
@@ -35,13 +35,13 @@ describe('A PassthroughStore', (): void => {
   it('calls setRepresentation directly from the source.', async(): Promise<void> => {
     await expect(store.setRepresentation({ path: 'setPath' }, {} as Representation)).resolves.toBe('set');
     expect(source.setRepresentation).toHaveBeenCalledTimes(1);
-    expect(source.setRepresentation).toHaveBeenLastCalledWith({ path: 'setPath' }, {}, undefined);
+    expect(source.setRepresentation).toHaveBeenLastCalledWith({ path: 'setPath' }, {}, undefined, undefined);
   });
 
   it('calls deleteResource directly from the source.', async(): Promise<void> => {
     await expect(store.deleteResource({ path: 'deletePath' })).resolves.toBe('delete');
     expect(source.deleteResource).toHaveBeenCalledTimes(1);
-    expect(source.deleteResource).toHaveBeenLastCalledWith({ path: 'deletePath' }, undefined);
+    expect(source.deleteResource).toHaveBeenLastCalledWith({ path: 'deletePath' }, undefined, undefined);
   });
 
   it('calls modifyResource directly from the source.', async(): Promise<void> => {
@@ -53,6 +53,21 @@ describe('A PassthroughStore', (): void => {
   it('calls hasResource directly from the source.', async(): Promise<void> => {
     await expect(store.hasResource({ path: 'existsPath' })).resolves.toBe('exists');
     expect(source.hasResource).toHaveBeenCalledTimes(1);
-    expect(source.hasResource).toHaveBeenLastCalledWith({ path: 'existsPath' });
+    expect(source.hasResource).toHaveBeenLastCalledWith({ path: 'existsPath' }, undefined);
+  });
+
+  it('forwards storage hints to the source.', async(): Promise<void> => {
+    const identifier = { path: 'hintedPath' };
+    const hints = { contentType: { candidates: [ 'application/json' ], exhaustive: false }};
+
+    await store.hasResource(identifier, hints);
+    await store.getRepresentation(identifier, {}, undefined, hints);
+    await store.setRepresentation(identifier, {} as Representation, undefined, hints);
+    await store.deleteResource(identifier, undefined, hints);
+
+    expect(source.hasResource).toHaveBeenCalledWith(identifier, hints);
+    expect(source.getRepresentation).toHaveBeenCalledWith(identifier, {}, undefined, hints);
+    expect(source.setRepresentation).toHaveBeenCalledWith(identifier, {}, undefined, hints);
+    expect(source.deleteResource).toHaveBeenCalledWith(identifier, undefined, hints);
   });
 });

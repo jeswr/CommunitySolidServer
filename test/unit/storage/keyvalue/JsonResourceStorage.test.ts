@@ -86,6 +86,35 @@ describe('A JsonResourceStorage', (): void => {
     await expect(storage.get(path1)).resolves.toBe('apple');
   });
 
+  it('provides advisory JSON storage hints for document operations.', async(): Promise<void> => {
+    const identifier = { path: joinUrl(containerIdentifier, path1) };
+    const hints = { contentType: { candidates: [ 'application/json' ], exhaustive: false }};
+
+    await storage.set(path1, 'apple');
+    expect(store.setRepresentation).toHaveBeenLastCalledWith(
+      identifier,
+      expect.any(BasicRepresentation),
+      undefined,
+      hints,
+    );
+
+    await storage.get(path1);
+    expect(store.getRepresentation).toHaveBeenLastCalledWith(
+      identifier,
+      { type: { 'application/json': 1 }},
+      undefined,
+      hints,
+    );
+
+    await storage.has(path1);
+    expect(store.hasResource).toHaveBeenLastCalledWith(identifier, hints);
+
+    await storage.delete(path1);
+    expect(store.deleteResource).toHaveBeenLastCalledWith(identifier, undefined, hints);
+    const written = store.setRepresentation.mock.calls[0][1];
+    expect(written.metadata.contentType).toBe('application/json');
+  });
+
   it('re-throws errors thrown by the store.', async(): Promise<void> => {
     store.getRepresentation.mockRejectedValue(new Error('bad GET'));
     await expect(storage.get(path1)).rejects.toThrow('bad GET');
@@ -124,5 +153,21 @@ describe('A JsonResourceStorage', (): void => {
       [ path2, 'path2' ],
       [ subPath, 'subDocument' ],
     ]);
+
+    const containerCalls = store.getRepresentation.mock.calls
+      .filter(([ identifier ]): boolean => isContainerIdentifier(identifier));
+    expect(containerCalls).not.toHaveLength(0);
+    for (const call of containerCalls) {
+      expect(call[3]).toBeUndefined();
+    }
+
+    const documentCalls = store.getRepresentation.mock.calls
+      .filter(([ identifier ]): boolean => !isContainerIdentifier(identifier));
+    expect(documentCalls).not.toHaveLength(0);
+    for (const call of documentCalls) {
+      expect(call[3]).toEqual({
+        contentType: { candidates: [ 'application/json' ], exhaustive: false },
+      });
+    }
   });
 });

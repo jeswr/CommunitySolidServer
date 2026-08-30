@@ -10,6 +10,7 @@ import type { Representation } from '../../../../src/http/representation/Represe
 import { RepresentationMetadata } from '../../../../src/http/representation/RepresentationMetadata';
 import type { RepresentationPreferences } from '../../../../src/http/representation/RepresentationPreferences';
 import type { ResourceIdentifier } from '../../../../src/http/representation/ResourceIdentifier';
+import { getRdfInputTypes } from '../../../../src/storage/conversion/RdfParserUtil';
 import { RdfToQuadConverter } from '../../../../src/storage/conversion/RdfToQuadConverter';
 import { INTERNAL_QUADS } from '../../../../src/util/ContentTypes';
 import { BadRequestHttpError } from '../../../../src/util/errors/BadRequestHttpError';
@@ -39,6 +40,7 @@ describe('A RdfToQuadConverter', (): void => {
     const types = await rdfParser.getContentTypesPrioritized();
     // JSON is not supported
     delete types['application/json'];
+    await expect(getRdfInputTypes()).resolves.toEqual(types);
     for (const [ type, priority ] of Object.entries(types)) {
       await expect(converter.getOutputTypes(type)).resolves.toEqual({ [INTERNAL_QUADS]: priority });
     }

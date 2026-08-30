@@ -113,7 +113,7 @@ describe('A LockingResourceStore', (): void => {
     expect(locker.withWriteLock).toHaveBeenCalledTimes(1);
     expect(locker.withWriteLock.mock.calls[0][0]).toEqual(subjectId);
     expect(source.setRepresentation).toHaveBeenCalledTimes(1);
-    expect(source.setRepresentation).toHaveBeenLastCalledWith(subjectId, data, undefined);
+    expect(source.setRepresentation).toHaveBeenLastCalledWith(subjectId, data, undefined, undefined);
     expect(order).toEqual([ 'lock write', 'setRepresentation', 'unlock write' ]);
 
     order = [];
@@ -121,7 +121,7 @@ describe('A LockingResourceStore', (): void => {
     expect(locker.withWriteLock).toHaveBeenCalledTimes(2);
     expect(locker.withWriteLock.mock.calls[1][0]).toEqual(subjectId);
     expect(source.setRepresentation).toHaveBeenCalledTimes(2);
-    expect(source.setRepresentation).toHaveBeenLastCalledWith(auxiliaryId, data, undefined);
+    expect(source.setRepresentation).toHaveBeenLastCalledWith(auxiliaryId, data, undefined, undefined);
     expect(order).toEqual([ 'lock write', 'setRepresentation', 'unlock write' ]);
   });
 
@@ -130,7 +130,7 @@ describe('A LockingResourceStore', (): void => {
     expect(locker.withWriteLock).toHaveBeenCalledTimes(1);
     expect(locker.withWriteLock.mock.calls[0][0]).toEqual(subjectId);
     expect(source.deleteResource).toHaveBeenCalledTimes(1);
-    expect(source.deleteResource).toHaveBeenLastCalledWith(subjectId, undefined);
+    expect(source.deleteResource).toHaveBeenLastCalledWith(subjectId, undefined, undefined);
     expect(order).toEqual([ 'lock write', 'deleteResource', 'unlock write' ]);
 
     order = [];
@@ -138,7 +138,7 @@ describe('A LockingResourceStore', (): void => {
     expect(locker.withWriteLock).toHaveBeenCalledTimes(2);
     expect(locker.withWriteLock.mock.calls[1][0]).toEqual(subjectId);
     expect(source.deleteResource).toHaveBeenCalledTimes(2);
-    expect(source.deleteResource).toHaveBeenLastCalledWith(auxiliaryId, undefined);
+    expect(source.deleteResource).toHaveBeenLastCalledWith(auxiliaryId, undefined, undefined);
     expect(order).toEqual([ 'lock write', 'deleteResource', 'unlock write' ]);
   });
 
@@ -183,7 +183,7 @@ describe('A LockingResourceStore', (): void => {
     expect(locker.withReadLock).toHaveBeenCalledTimes(1);
     expect(locker.withReadLock.mock.calls[0][0]).toEqual(subjectId);
     expect(source.getRepresentation).toHaveBeenCalledTimes(1);
-    expect(source.getRepresentation).toHaveBeenLastCalledWith(subjectId, {}, undefined);
+    expect(source.getRepresentation).toHaveBeenLastCalledWith(subjectId, {}, undefined, undefined);
     expect(order).toEqual([ 'lock read', 'getRepresentation', 'end', 'unlock read' ]);
   });
 
@@ -200,7 +200,7 @@ describe('A LockingResourceStore', (): void => {
     expect(locker.withReadLock).toHaveBeenCalledTimes(1);
     expect(locker.withReadLock.mock.calls[0][0]).toEqual(subjectId);
     expect(source.getRepresentation).toHaveBeenCalledTimes(1);
-    expect(source.getRepresentation).toHaveBeenLastCalledWith(auxiliaryId, {}, undefined);
+    expect(source.getRepresentation).toHaveBeenLastCalledWith(auxiliaryId, {}, undefined, undefined);
     expect(order).toEqual([ 'lock read', 'getRepresentation', 'end', 'unlock read' ]);
   });
 
@@ -299,7 +299,22 @@ describe('A LockingResourceStore', (): void => {
     expect(locker.withReadLock).toHaveBeenCalledTimes(1);
     expect(locker.withWriteLock).toHaveBeenCalledTimes(0);
     expect(source.hasResource).toHaveBeenCalledTimes(1);
-    expect(source.hasResource).toHaveBeenLastCalledWith(subjectId);
+    expect(source.hasResource).toHaveBeenLastCalledWith(subjectId, undefined);
     expect(order).toEqual([ 'lock read', 'hasResource', 'unlock read' ]);
+  });
+
+  it('forwards storage hints while holding the corresponding lock.', async(): Promise<void> => {
+    const hints = { contentType: { candidates: [ 'application/json' ], exhaustive: false }};
+
+    await store.hasResource(subjectId, hints);
+    const representation = await store.getRepresentation(subjectId, {}, undefined, hints);
+    representation.data.destroy();
+    await store.setRepresentation(subjectId, data, undefined, hints);
+    await store.deleteResource(subjectId, undefined, hints);
+
+    expect(source.hasResource).toHaveBeenCalledWith(subjectId, hints);
+    expect(source.getRepresentation).toHaveBeenCalledWith(subjectId, {}, undefined, hints);
+    expect(source.setRepresentation).toHaveBeenCalledWith(subjectId, data, undefined, hints);
+    expect(source.deleteResource).toHaveBeenCalledWith(subjectId, undefined, hints);
   });
 });

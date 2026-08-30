@@ -6,6 +6,8 @@ import type { Credentials } from '../authentication/Credentials';
 import type { AuxiliaryStrategy } from '../http/auxiliary/AuxiliaryStrategy';
 import type { ResourceIdentifier } from '../http/representation/ResourceIdentifier';
 import { getLoggerFor } from '../logging/LogUtil';
+import type { RepresentationConverterInputTypeProvider } from '../storage/conversion/RepresentationConverter';
+import type { ResourceStorageHints } from '../storage/ResourceSet';
 import type { ResourceStore } from '../storage/ResourceStore';
 import { INTERNAL_QUADS } from '../util/ContentTypes';
 import { createErrorMessage } from '../util/errors/ErrorUtil';
@@ -17,12 +19,15 @@ import { getDefault } from '../util/map/MapUtil';
 import { readableToQuads } from '../util/StreamUtil';
 import { ACL } from '../util/Vocabularies';
 import { getAccessControlledResources } from './AcpUtil';
+import { getAuthorizationStorageHints } from './AuthorizationStorageHints';
 import type { PermissionReaderInput } from './PermissionReader';
 import { PermissionReader } from './PermissionReader';
 import type { AclPermissionSet } from './permissions/AclPermissionSet';
 import { AclMode } from './permissions/AclPermissionSet';
 import { AccessMode } from './permissions/Permissions';
 import type { PermissionMap, PermissionSet } from './permissions/Permissions';
+
+type AuthorizationAuxiliaryStrategy = AuxiliaryStrategy & RepresentationConverterInputTypeProvider;
 
 const modesMap: Record<string, readonly (keyof AclPermissionSet)[]> = {
   [ACL.Read]: [ AccessMode.read ],
@@ -40,15 +45,23 @@ const modesMap: Record<string, readonly (keyof AclPermissionSet)[]> = {
 export class AcpReader extends PermissionReader {
   protected readonly logger = getLoggerFor(this);
 
-  private readonly acrStrategy: AuxiliaryStrategy;
+  private readonly acrStrategy: AuthorizationAuxiliaryStrategy;
   private readonly acrStore: ResourceStore;
   private readonly identifierStrategy: IdentifierStrategy;
+  private readonly storageHints?: Promise<ResourceStorageHints>;
 
-  public constructor(acrStrategy: AuxiliaryStrategy, acrStore: ResourceStore, identifierStrategy: IdentifierStrategy) {
+  public constructor(
+    acrStrategy: AuxiliaryStrategy,
+    acrStore: ResourceStore,
+    identifierStrategy: IdentifierStrategy,
+  ) {
     super();
-    this.acrStrategy = acrStrategy;
+    this.acrStrategy = acrStrategy as AuthorizationAuxiliaryStrategy;
     this.acrStore = acrStore;
     this.identifierStrategy = identifierStrategy;
+    this.storageHints = this.acrStrategy.getInputTypeHints ?
+        getAuthorizationStorageHints(this.acrStrategy) :
+      undefined;
   }
 
   public async handle({ credentials, requestedModes }: PermissionReaderInput): Promise<PermissionMap> {
@@ -146,7 +159,11 @@ export class AcpReader extends PermissionReader {
     let data: Readable;
     try {
       this.logger.debug(`Reading ACR document ${acrIdentifier.path}`);
-      ({ data } = await this.acrStore.getRepresentation(acrIdentifier, { type: { [INTERNAL_QUADS]: 1 }}));
+      const preferences = { type: { [INTERNAL_QUADS]: 1 }};
+      const hints = await this.storageHints;
+      ({ data } = hints ?
+          await this.acrStore.getRepresentation(acrIdentifier, preferences, undefined, hints) :
+          await this.acrStore.getRepresentation(acrIdentifier, preferences));
     } catch (error: unknown) {
       if (!NotFoundHttpError.isInstance(error)) {
         const message = `Error reading ACR ${acrIdentifier.path}: ${createErrorMessage(error)}`;

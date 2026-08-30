@@ -11,6 +11,7 @@ import { toLiteral } from '../util/TermUtil';
 import { POSIX, SOLID_HTTP, XSD } from '../util/Vocabularies';
 import type { Conditions } from './conditions/Conditions';
 import { PassthroughStore } from './PassthroughStore';
+import type { ResourceStorageHints } from './ResourceSet';
 import type { ResourceStore } from './ResourceStore';
 
 /**
@@ -38,8 +39,9 @@ export class BinarySliceResourceStore<T extends ResourceStore = ResourceStore> e
     identifier: ResourceIdentifier,
     preferences: RepresentationPreferences,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<Representation> {
-    const result = await this.source.getRepresentation(identifier, preferences, conditions);
+    const result = await this.source.getRepresentation(identifier, preferences, conditions, hints);
 
     if (!preferences.range || preferences.range.unit !== 'bytes' || preferences.range.parts.length === 0) {
       return result;

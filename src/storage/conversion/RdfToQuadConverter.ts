@@ -5,12 +5,13 @@ import rdfParser from 'rdf-parse';
 import { BasicRepresentation } from '../../http/representation/BasicRepresentation';
 import type { Representation } from '../../http/representation/Representation';
 import { RepresentationMetadata } from '../../http/representation/RepresentationMetadata';
-import { APPLICATION_JSON, INTERNAL_QUADS } from '../../util/ContentTypes';
+import { INTERNAL_QUADS } from '../../util/ContentTypes';
 import { BadRequestHttpError } from '../../util/errors/BadRequestHttpError';
 import { pipeSafely } from '../../util/StreamUtil';
 import { PREFERRED_PREFIX_TERM, SOLID_META } from '../../util/Vocabularies';
 import { BaseTypedRepresentationConverter } from './BaseTypedRepresentationConverter';
 import { ContextDocumentLoader } from './ConversionUtil';
+import { getRdfInputTypes } from './RdfParserUtil';
 import type { RepresentationConverterArgs } from './RepresentationConverter';
 
 /**
@@ -25,13 +26,7 @@ export class RdfToQuadConverter extends BaseTypedRepresentationConverter {
   private readonly documentLoader: ContextDocumentLoader;
 
   public constructor(contexts: Record<string, string> = {}) {
-    const inputTypes = rdfParser.getContentTypesPrioritized()
-      // ContentType application/json MAY NOT be converted to Quad.
-      .then((types): Record<string, number> => {
-        delete types[APPLICATION_JSON];
-        return types;
-      });
-    super(inputTypes, INTERNAL_QUADS);
+    super(getRdfInputTypes(), INTERNAL_QUADS);
     this.documentLoader = new ContextDocumentLoader(contexts);
   }
 

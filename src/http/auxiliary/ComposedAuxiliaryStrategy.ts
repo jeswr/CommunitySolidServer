@@ -1,5 +1,10 @@
+import type {
+  RepresentationConverterInputTypeHints,
+  RepresentationConverterInputTypeProvider,
+} from '../../storage/conversion/RepresentationConverter';
 import type { Representation } from '../representation/Representation';
 import type { RepresentationMetadata } from '../representation/RepresentationMetadata';
+import type { RepresentationPreferences } from '../representation/RepresentationPreferences';
 import type { ResourceIdentifier } from '../representation/ResourceIdentifier';
 import type { AuxiliaryIdentifierStrategy } from './AuxiliaryIdentifierStrategy';
 import type { AuxiliaryStrategy } from './AuxiliaryStrategy';
@@ -68,5 +73,12 @@ export class ComposedAuxiliaryStrategy implements AuxiliaryStrategy {
         identifier: { path: representation.metadata.identifier.value },
       });
     }
+  }
+
+  /** Returns the inputs accepted by the same validator used for auxiliary resource writes. */
+  public async getInputTypeHints(preferences: RepresentationPreferences):
+  Promise<RepresentationConverterInputTypeHints> {
+    const provider = this.validator as (Validator & RepresentationConverterInputTypeProvider) | undefined;
+    return provider?.getInputTypeHints?.(preferences) ?? { candidates: [], exhaustive: false };
   }
 }

@@ -3,7 +3,10 @@ import { RepresentationMetadata } from '../../http/representation/Representation
 import type { ValuePreferences } from '../../http/representation/RepresentationPreferences';
 import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpError';
 import { getConversionTarget, matchesMediaType } from './ConversionUtil';
-import type { RepresentationConverterArgs } from './RepresentationConverter';
+import type {
+  RepresentationConverterArgs,
+  RepresentationConverterInputTypeHints,
+} from './RepresentationConverter';
 import { TypedRepresentationConverter } from './TypedRepresentationConverter';
 
 /**
@@ -45,6 +48,21 @@ export class ContentTypeReplacer extends TypedRepresentationConverter {
       .filter((type): boolean => matchesMediaType(contentType, type))
       .map((type): ValuePreferences => this.contentTypeMap[type]);
     return Object.assign({}, ...supported) as ValuePreferences;
+  }
+
+  public async getInputTypes(): Promise<ValuePreferences> {
+    return Object.fromEntries(Object.keys(this.contentTypeMap).map((type): [string, number] => [ type, 1 ]));
+  }
+
+  public async getInputTypeHints(preferences: { type?: ValuePreferences }):
+  Promise<RepresentationConverterInputTypeHints> {
+    const candidates = Object.entries(this.contentTypeMap)
+      .filter(([ , outputTypes ]): boolean => Boolean(getConversionTarget(outputTypes, preferences.type)))
+      .map(([ inputType ]): string => inputType);
+    return {
+      candidates,
+      exhaustive: candidates.every((type): boolean => !type.includes('*')),
+    };
   }
 
   public async canHandle({ representation, preferences }: RepresentationConverterArgs): Promise<void> {

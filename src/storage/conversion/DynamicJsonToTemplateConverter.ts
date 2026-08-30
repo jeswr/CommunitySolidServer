@@ -2,7 +2,10 @@ import type { NamedNode, Term } from '@rdfjs/types';
 import { BasicRepresentation } from '../../http/representation/BasicRepresentation';
 import type { Representation } from '../../http/representation/Representation';
 import { RepresentationMetadata } from '../../http/representation/RepresentationMetadata';
-import type { ValuePreferences } from '../../http/representation/RepresentationPreferences';
+import type {
+  RepresentationPreferences,
+  ValuePreferences,
+} from '../../http/representation/RepresentationPreferences';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
 import { APPLICATION_JSON } from '../../util/ContentTypes';
 import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpError';
@@ -11,7 +14,10 @@ import type { TemplateEngine } from '../../util/templates/TemplateEngine';
 import { CONTENT_TYPE, CONTENT_TYPE_TERM, SOLID_META } from '../../util/Vocabularies';
 import { getConversionTarget } from './ConversionUtil';
 import { RepresentationConverter } from './RepresentationConverter';
-import type { RepresentationConverterArgs } from './RepresentationConverter';
+import type {
+  RepresentationConverterArgs,
+  RepresentationConverterInputTypeHints,
+} from './RepresentationConverter';
 
 /**
  * Converts JSON data by using it as input parameters for rendering a template.
@@ -33,6 +39,13 @@ export class DynamicJsonToTemplateConverter extends RepresentationConverter {
   public constructor(templateEngine: TemplateEngine) {
     super();
     this.templateEngine = templateEngine;
+  }
+
+  // eslint-disable-next-line unused-imports/no-unused-vars
+  public async getInputTypeHints(preferences: RepresentationPreferences):
+  Promise<RepresentationConverterInputTypeHints> {
+    // Template metadata can declare any requested output type, but the input is always JSON.
+    return { candidates: [ APPLICATION_JSON ], exhaustive: true };
   }
 
   public async canHandle(input: RepresentationConverterArgs): Promise<void> {

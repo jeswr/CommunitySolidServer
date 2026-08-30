@@ -13,7 +13,7 @@ import {
   normalizeFilePath,
   trimTrailingSlashes,
 } from '../../util/PathUtil';
-import type { FileIdentifierMapper, ResourceLink } from './FileIdentifierMapper';
+import type { FileIdentifierMapper, MapUrlToFilePathOptions, ResourceLink } from './FileIdentifierMapper';
 
 /**
  * Base class for {@link FileIdentifierMapper} implementations.
@@ -40,10 +40,16 @@ export class BaseFileIdentifierMapper implements FileIdentifierMapper {
    * @param identifier - The input identifier.
    * @param isMetadata - If we need the data or metadata file path.
    * @param contentType - The content-type provided with the request.
+   * @param options - Additional mapping options.
    *
    * @returns A ResourceLink with all the necessary metadata.
    */
-  public async mapUrlToFilePath(identifier: ResourceIdentifier, isMetadata: boolean, contentType?: string):
+  public async mapUrlToFilePath(
+    identifier: ResourceIdentifier,
+    isMetadata: boolean,
+    contentType?: string,
+    options?: MapUrlToFilePathOptions,
+  ):
   Promise<ResourceLink> {
     let path = this.getRelativePath(identifier);
     if (isMetadata) {
@@ -52,7 +58,12 @@ export class BaseFileIdentifierMapper implements FileIdentifierMapper {
     this.validateRelativePath(path, identifier);
 
     const filePath = this.getAbsolutePath(path);
-    return isContainerIdentifier(identifier) ?
+    const isContainer = isContainerIdentifier(identifier);
+    if (!isContainer && isMetadata && !contentType && options?.canonical) {
+      // Metadata uses a canonical path, so its type can be inferred without searching the parent directory.
+      contentType = await this.getContentTypeFromPath(filePath);
+    }
+    return isContainer ?
         this.mapUrlToContainerPath(identifier, filePath) :
         this.mapUrlToDocumentPath(identifier, filePath, contentType);
   }

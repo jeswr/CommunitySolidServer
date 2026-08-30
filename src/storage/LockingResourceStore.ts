@@ -10,6 +10,7 @@ import type { ExpiringReadWriteLocker } from '../util/locking/ExpiringReadWriteL
 import { endOfStream } from '../util/StreamUtil';
 import type { AtomicResourceStore } from './AtomicResourceStore';
 import type { Conditions } from './conditions/Conditions';
+import type { ResourceStorageHints } from './ResourceSet';
 import type { ChangeMap, ResourceStore } from './ResourceStore';
 
 /**
@@ -37,10 +38,10 @@ export class LockingResourceStore implements AtomicResourceStore {
     this.auxiliaryStrategy = auxiliaryStrategy;
   }
 
-  public async hasResource(identifier: ResourceIdentifier): Promise<boolean> {
+  public async hasResource(identifier: ResourceIdentifier, hints?: ResourceStorageHints): Promise<boolean> {
     return this.locks.withReadLock(
       this.getLockIdentifier(identifier),
-      async(): Promise<boolean> => this.source.hasResource(identifier),
+      async(): Promise<boolean> => this.source.hasResource(identifier, hints),
     );
   }
 
@@ -48,10 +49,11 @@ export class LockingResourceStore implements AtomicResourceStore {
     identifier: ResourceIdentifier,
     preferences: RepresentationPreferences,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<Representation> {
     return this.lockedRepresentationRun(
       this.getLockIdentifier(identifier),
-      async(): Promise<Representation> => this.source.getRepresentation(identifier, preferences, conditions),
+      async(): Promise<Representation> => this.source.getRepresentation(identifier, preferences, conditions, hints),
     );
   }
 
@@ -70,17 +72,22 @@ export class LockingResourceStore implements AtomicResourceStore {
     identifier: ResourceIdentifier,
     representation: Representation,
     conditions?: Conditions,
+    hints?: ResourceStorageHints,
   ): Promise<ChangeMap> {
     return this.locks.withWriteLock(
       this.getLockIdentifier(identifier),
-      async(): Promise<ChangeMap> => this.source.setRepresentation(identifier, representation, conditions),
+      async(): Promise<ChangeMap> => this.source.setRepresentation(identifier, representation, conditions, hints),
     );
   }
 
-  public async deleteResource(identifier: ResourceIdentifier, conditions?: Conditions): Promise<ChangeMap> {
+  public async deleteResource(
+    identifier: ResourceIdentifier,
+    conditions?: Conditions,
+    hints?: ResourceStorageHints,
+  ): Promise<ChangeMap> {
     return this.locks.withWriteLock(
       this.getLockIdentifier(identifier),
-      async(): Promise<ChangeMap> => this.source.deleteResource(identifier, conditions),
+      async(): Promise<ChangeMap> => this.source.deleteResource(identifier, conditions, hints),
     );
   }
 

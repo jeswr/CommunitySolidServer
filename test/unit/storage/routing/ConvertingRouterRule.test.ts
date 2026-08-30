@@ -64,6 +64,18 @@ describe('A ConvertingRouterRule', (): void => {
     expect(store1.hasResource).toHaveBeenCalledTimes(1);
   });
 
+  it('forwards storage hints while probing stores for the identifier.', async(): Promise<void> => {
+    const identifier = { path: 'identifier' };
+    const hints = { contentType: { candidates: [ 'application/json' ], exhaustive: false }};
+    store1.hasResource.mockResolvedValueOnce(false);
+    store2.hasResource.mockResolvedValueOnce(true);
+
+    await expect(rule.handle({ identifier, hints })).resolves.toBe(store2);
+
+    expect(store1.hasResource).toHaveBeenCalledWith(identifier, hints);
+    expect(store2.hasResource).toHaveBeenCalledWith(identifier, hints);
+  });
+
   it('returns the defaultStore if no other store has the resource.', async(): Promise<void> => {
     store1.hasResource.mockImplementationOnce((): any => false);
     store2.hasResource.mockImplementationOnce((): any => false);

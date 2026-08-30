@@ -1,7 +1,9 @@
 import { RdfValidator } from '../../../../src/http/auxiliary/RdfValidator';
 import { BasicRepresentation } from '../../../../src/http/representation/BasicRepresentation';
 import type { ResourceIdentifier } from '../../../../src/http/representation/ResourceIdentifier';
+import { PassthroughConverter } from '../../../../src/storage/conversion/PassthroughConverter';
 import type { RepresentationConverter } from '../../../../src/storage/conversion/RepresentationConverter';
+import { INTERNAL_QUADS } from '../../../../src/util/ContentTypes';
 import { readableToString } from '../../../../src/util/StreamUtil';
 import { StaticAsyncHandler } from '../../../util/StaticAsyncHandler';
 import 'jest-rdf';
@@ -23,6 +25,35 @@ describe('An RdfValidator', (): void => {
   it('always accepts content-type internal/quads.', async(): Promise<void> => {
     const representation = new BasicRepresentation('data', 'internal/quads');
     await expect(validator.handle({ representation, identifier })).resolves.toEqual(representation);
+  });
+
+  it('exposes the converter inputs and the directly accepted quad type.', async(): Promise<void> => {
+    const preferences = { type: { [INTERNAL_QUADS]: 1 }};
+    await expect(validator.getInputTypeHints(preferences)).resolves.toEqual({
+      candidates: [ INTERNAL_QUADS ],
+      exhaustive: false,
+    });
+
+    const hintingConverter = new PassthroughConverter();
+    const getInputTypeHints = jest.spyOn(hintingConverter, 'getInputTypeHints').mockResolvedValue({
+      candidates: [ 'text/turtle' ],
+      exhaustive: true,
+    });
+    validator = new RdfValidator(hintingConverter);
+    await expect(validator.getInputTypeHints(preferences)).resolves.toEqual({
+      candidates: [ INTERNAL_QUADS, 'text/turtle' ],
+      exhaustive: true,
+    });
+    expect(getInputTypeHints).toHaveBeenCalledWith(preferences);
+
+    getInputTypeHints.mockResolvedValue({
+      candidates: [ INTERNAL_QUADS ],
+      exhaustive: true,
+    });
+    await expect(validator.getInputTypeHints(preferences)).resolves.toEqual({
+      candidates: [ INTERNAL_QUADS ],
+      exhaustive: true,
+    });
   });
 
   it('validates data by running it through a converter.', async(): Promise<void> => {

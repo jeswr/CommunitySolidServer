@@ -8,6 +8,10 @@ import { BaseTypedRepresentationConverter } from '../../../../src/storage/conver
 import { ChainedConverter } from '../../../../src/storage/conversion/ChainedConverter';
 import { matchesMediaType } from '../../../../src/storage/conversion/ConversionUtil';
 import type { RepresentationConverterArgs } from '../../../../src/storage/conversion/RepresentationConverter';
+import { MarkdownToHtmlConverter } from '../../../../src/storage/conversion/MarkdownToHtmlConverter';
+import { RdfToQuadConverter } from '../../../../src/storage/conversion/RdfToQuadConverter';
+import { TypedRepresentationConverter } from '../../../../src/storage/conversion/TypedRepresentationConverter';
+import { INTERNAL_QUADS, TEXT_HTML, TEXT_MARKDOWN } from '../../../../src/util/ContentTypes';
 import { CONTENT_TYPE, POSIX } from '../../../../src/util/Vocabularies';
 
 class DummyConverter extends BaseTypedRepresentationConverter {
@@ -42,6 +46,16 @@ class DummyConverter extends BaseTypedRepresentationConverter {
   }
 }
 
+class UnknownTypedConverter extends TypedRepresentationConverter {
+  public async getOutputTypes(): Promise<ValuePreferences> {
+    return { [INTERNAL_QUADS]: 1 };
+  }
+
+  public async handle(input: RepresentationConverterArgs): Promise<Representation> {
+    return input.representation;
+  }
+}
+
 describe('A ChainedConverter', (): void => {
   let representation: Representation;
   let preferences: RepresentationPreferences;
@@ -58,6 +72,58 @@ describe('A ChainedConverter', (): void => {
   it('needs at least 1 converter.', async(): Promise<void> => {
     expect((): any => new ChainedConverter([])).toThrow('At least 1 converter is required.');
     expect(new ChainedConverter([ new DummyConverter({}, {}) ])).toBeInstanceOf(ChainedConverter);
+  });
+
+  it('finds all declared input types that can reach the requested output.', async(): Promise<void> => {
+    const converter = new ChainedConverter([
+      new RdfToQuadConverter(),
+      new MarkdownToHtmlConverter({} as any),
+    ]);
+
+    const hints = await converter.getInputTypeHints({ type: { [INTERNAL_QUADS]: 1 }});
+    expect(hints.exhaustive).toBe(true);
+    expect(hints.candidates).toContain(INTERNAL_QUADS);
+    expect(hints.candidates).toContain(TEXT_HTML);
+    expect(hints.candidates).toContain(TEXT_MARKDOWN);
+  });
+
+  it('propagates reachable wildcards but does not return them as physical candidates.', async(): Promise<void> => {
+    const converter = new ChainedConverter([
+      new DummyConverter({ 'text/*': 1 }, { [INTERNAL_QUADS]: 1 }),
+      new DummyConverter({ [TEXT_MARKDOWN]: 1 }, { [TEXT_HTML]: 1 }),
+    ]);
+
+    await expect(converter.getInputTypeHints({ type: { [INTERNAL_QUADS]: 1 }})).resolves.toEqual({
+      candidates: [ INTERNAL_QUADS, TEXT_MARKDOWN ],
+      exhaustive: false,
+    });
+    await expect(converter.getInputTypeHints({ type: { 'internal/*': 1 }})).resolves.toEqual({
+      candidates: [ TEXT_MARKDOWN ],
+      exhaustive: false,
+    });
+  });
+
+  it('is non-exhaustive when a converter does not expose its inputs.', async(): Promise<void> => {
+    const unknown = new UnknownTypedConverter();
+    await expect(unknown.getInputTypes()).resolves.toEqual({});
+    const converter = new ChainedConverter([ unknown ]);
+    await expect(converter.getInputTypeHints({ type: { [INTERNAL_QUADS]: 1 }})).resolves.toEqual({
+      candidates: [ INTERNAL_QUADS ],
+      exhaustive: false,
+    });
+  });
+
+  it('supports legacy typed converters without the optional hint method.', async(): Promise<void> => {
+    const legacy = {
+      getOutputTypes: jest.fn(),
+      handle: jest.fn(),
+    } as unknown as TypedRepresentationConverter;
+    const converter = new ChainedConverter([ legacy ]);
+
+    await expect(converter.getInputTypeHints({ type: { [INTERNAL_QUADS]: 1 }})).resolves.toEqual({
+      candidates: [ INTERNAL_QUADS ],
+      exhaustive: false,
+    });
   });
 
   it('errors if there are no content-type or preferences.', async(): Promise<void> => {

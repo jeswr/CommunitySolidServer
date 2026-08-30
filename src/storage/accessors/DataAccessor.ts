@@ -3,6 +3,15 @@ import type { Representation } from '../../http/representation/Representation';
 import type { RepresentationMetadata } from '../../http/representation/RepresentationMetadata';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
 import type { Guarded } from '../../util/GuardedStream';
+import type { ResourceStorageHints } from '../ResourceSet';
+
+/**
+ * Information known by the caller about a document being written.
+ */
+export interface WriteDocumentOptions {
+  /** Hints for finding an existing representation that might need to be replaced. */
+  readonly existingStorageHints: ResourceStorageHints;
+}
 
 /**
  * A DataAccessor is the building block closest to the actual data storage.
@@ -29,8 +38,9 @@ export interface DataAccessor {
    * It can be assumed that the incoming identifier will always correspond to a document.
    *
    * @param identifier - Identifier for which the data is requested.
+   * @param hints - Optional details that can optimize how the resource is found.
    */
-  getData: (identifier: ResourceIdentifier) => Promise<Guarded<Readable>>;
+  getData: (identifier: ResourceIdentifier, hints?: ResourceStorageHints) => Promise<Guarded<Readable>>;
 
   /**
    * Returns the metadata corresponding to the identifier.
@@ -38,8 +48,9 @@ export interface DataAccessor {
    * This is necessary for range requests.
    *
    * @param identifier - Identifier for which the metadata is requested.
+   * @param hints - Optional details that can optimize how the resource is found.
    */
-  getMetadata: (identifier: ResourceIdentifier) => Promise<RepresentationMetadata>;
+  getMetadata: (identifier: ResourceIdentifier, hints?: ResourceStorageHints) => Promise<RepresentationMetadata>;
 
   /**
    * Returns metadata for all resources in the requested container.
@@ -62,8 +73,14 @@ export interface DataAccessor {
    * @param identifier - Identifier of the resource.
    * @param data - Data to store.
    * @param metadata - Metadata to store.
+   * @param options - Optional facts about the representation being replaced.
    */
-  writeDocument: (identifier: ResourceIdentifier, data: Guarded<Readable>, metadata: RepresentationMetadata) =>
+  writeDocument: (
+    identifier: ResourceIdentifier,
+    data: Guarded<Readable>,
+    metadata: RepresentationMetadata,
+    options?: WriteDocumentOptions,
+  ) =>
   Promise<void>;
 
   /**
@@ -93,6 +110,7 @@ export interface DataAccessor {
    * https://solid.github.io/specification/protocol#deleting-resources
    *
    * @param identifier - Resource to delete.
+   * @param hints - Optional details that can optimize how the resource is found.
    */
-  deleteResource: (identifier: ResourceIdentifier) => Promise<void>;
+  deleteResource: (identifier: ResourceIdentifier, hints?: ResourceStorageHints) => Promise<void>;
 }

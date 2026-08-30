@@ -3,7 +3,8 @@ import type { Credentials } from '../authentication/Credentials';
 import type { AuxiliaryIdentifierStrategy } from '../http/auxiliary/AuxiliaryIdentifierStrategy';
 import type { ResourceIdentifier } from '../http/representation/ResourceIdentifier';
 import { getLoggerFor } from '../logging/LogUtil';
-import type { ResourceSet } from '../storage/ResourceSet';
+import type { RepresentationConverterInputTypeProvider } from '../storage/conversion/RepresentationConverter';
+import type { ResourceSet, ResourceStorageHints } from '../storage/ResourceSet';
 import type { ResourceStore } from '../storage/ResourceStore';
 import { INTERNAL_QUADS } from '../util/ContentTypes';
 import { createErrorMessage } from '../util/errors/ErrorUtil';
@@ -14,12 +15,15 @@ import { IdentifierMap, IdentifierSetMultiMap } from '../util/map/IdentifierMap'
 import { readableToQuads } from '../util/StreamUtil';
 import { ACL, RDF } from '../util/Vocabularies';
 import type { AccessChecker } from './access/AccessChecker';
+import { getAuthorizationStorageHints } from './AuthorizationStorageHints';
 import type { PermissionReaderInput } from './PermissionReader';
 import { PermissionReader } from './PermissionReader';
 import type { AclPermissionSet } from './permissions/AclPermissionSet';
 import { AclMode } from './permissions/AclPermissionSet';
 import type { PermissionMap } from './permissions/Permissions';
 import { AccessMode } from './permissions/Permissions';
+
+type AuthorizationAuxiliaryStrategy = AuxiliaryIdentifierStrategy & RepresentationConverterInputTypeProvider;
 
 // Maps WebACL-specific modes to generic access modes.
 const modesMap: Record<string, readonly (keyof AclPermissionSet)[]> = {
@@ -39,11 +43,12 @@ const modesMap: Record<string, readonly (keyof AclPermissionSet)[]> = {
 export class WebAclReader extends PermissionReader {
   protected readonly logger = getLoggerFor(this);
 
-  private readonly aclStrategy: AuxiliaryIdentifierStrategy;
+  private readonly aclStrategy: AuthorizationAuxiliaryStrategy;
   private readonly resourceSet: ResourceSet;
   private readonly aclStore: ResourceStore;
   private readonly identifierStrategy: IdentifierStrategy;
   private readonly accessChecker: AccessChecker;
+  private readonly storageHints?: Promise<ResourceStorageHints>;
 
   public constructor(
     aclStrategy: AuxiliaryIdentifierStrategy,
@@ -53,11 +58,14 @@ export class WebAclReader extends PermissionReader {
     accessChecker: AccessChecker,
   ) {
     super();
-    this.aclStrategy = aclStrategy;
+    this.aclStrategy = aclStrategy as AuthorizationAuxiliaryStrategy;
     this.resourceSet = resourceSet;
     this.aclStore = aclStore;
     this.identifierStrategy = identifierStrategy;
     this.accessChecker = accessChecker;
+    this.storageHints = this.aclStrategy.getInputTypeHints ?
+        getAuthorizationStorageHints(this.aclStrategy) :
+      undefined;
   }
 
   /**
@@ -158,7 +166,9 @@ export class WebAclReader extends PermissionReader {
 
     const acl = this.aclStrategy.getAuxiliaryIdentifier(identifier);
     this.logger.debug(`Determining existence of  ${acl.path}`);
-    if (await this.resourceSet.hasResource(acl)) {
+    const hints = await this.storageHints;
+    const aclExists = hints ? await this.resourceSet.hasResource(acl, hints) : await this.resourceSet.hasResource(acl);
+    if (aclExists) {
       this.logger.info(`Found applicable ACL document ${acl.path}`);
       return acl;
     }
@@ -192,7 +202,11 @@ export class WebAclReader extends PermissionReader {
       this.logger.debug(`Trying to read the ACL document ${aclIdentifier.path}`);
       let contents: Store;
       try {
-        const data = await this.aclStore.getRepresentation(aclIdentifier, { type: { [INTERNAL_QUADS]: 1 }});
+        const preferences = { type: { [INTERNAL_QUADS]: 1 }};
+        const hints = await this.storageHints;
+        const data = hints ?
+            await this.aclStore.getRepresentation(aclIdentifier, preferences, undefined, hints) :
+            await this.aclStore.getRepresentation(aclIdentifier, preferences);
         contents = await readableToQuads(data.data);
       } catch (error: unknown) {
         // Something is wrong with the server if we can't read the resource

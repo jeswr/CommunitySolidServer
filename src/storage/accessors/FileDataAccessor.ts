@@ -7,6 +7,7 @@ import type { ResourceIdentifier } from '../../http/representation/ResourceIdent
 import { getLoggerFor } from '../../logging/LogUtil';
 import { createErrorMessage } from '../../util/errors/ErrorUtil';
 import { NotFoundHttpError } from '../../util/errors/NotFoundHttpError';
+import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpError';
 import { isSystemError } from '../../util/errors/SystemError';
 import { UnsupportedMediaTypeHttpError } from '../../util/errors/UnsupportedMediaTypeHttpError';
 import { guardStream } from '../../util/GuardedStream';
@@ -17,8 +18,20 @@ import { parseQuads, serializeQuads } from '../../util/QuadUtil';
 import { addResourceMetadata, updateModifiedDate } from '../../util/ResourceUtil';
 import { toLiteral, toNamedTerm } from '../../util/TermUtil';
 import { CONTENT_TYPE_TERM, DC, IANA, LDP, POSIX, RDF, SOLID_META, XSD } from '../../util/Vocabularies';
-import type { FileIdentifierMapper, ResourceLink } from '../mapping/FileIdentifierMapper';
-import type { DataAccessor } from './DataAccessor';
+import type {
+  FileIdentifierMapper,
+  MapUrlToFilePathOptions,
+  ResourceLink,
+} from '../mapping/FileIdentifierMapper';
+import type { ResourceStorageHints } from '../ResourceSet';
+import type { DataAccessor, WriteDocumentOptions } from './DataAccessor';
+
+const CANONICAL_METADATA_MAPPING: MapUrlToFilePathOptions = { canonical: true };
+
+interface ResolvedResource {
+  link: ResourceLink;
+  stats: Stats;
+}
 
 /**
  * DataAccessor that uses the file system to store documents as files and containers as folders.
@@ -45,27 +58,20 @@ export class FileDataAccessor implements DataAccessor {
    * Will return data stream directly to the file corresponding to the resource.
    * Will throw NotFoundHttpError if the input is a container.
    */
-  public async getData(identifier: ResourceIdentifier): Promise<Guarded<Readable>> {
-    const link = await this.resourceMapper.mapUrlToFilePath(identifier, false);
-    const stats = await this.getStats(link.filePath);
-
-    if (stats.isFile()) {
-      return guardStream(createReadStream(link.filePath));
-    }
-
-    throw new NotFoundHttpError();
+  public async getData(identifier: ResourceIdentifier, hints?: ResourceStorageHints): Promise<Guarded<Readable>> {
+    const { link } = await this.resolveResource(identifier, hints);
+    return guardStream(createReadStream(link.filePath));
   }
 
   /**
    * Will return corresponding metadata by reading the metadata file (if it exists)
    * and adding file system specific metadata elements.
    */
-  public async getMetadata(identifier: ResourceIdentifier): Promise<RepresentationMetadata> {
-    const link = await this.resourceMapper.mapUrlToFilePath(identifier, false);
-
-    let stats: Stats;
+  public async getMetadata(identifier: ResourceIdentifier, hints?: ResourceStorageHints):
+  Promise<RepresentationMetadata> {
+    let resolved: ResolvedResource;
     try {
-      stats = await this.getStats(link.filePath);
+      resolved = await this.resolveResource(identifier, hints);
     } catch (error: unknown) {
       if (NotFoundHttpError.isInstance(error) && !isContainerIdentifier(identifier)) {
         // If the document file vanished out-of-band, remove a potentially orphaned metadata file.
@@ -73,6 +79,7 @@ export class FileDataAccessor implements DataAccessor {
       }
       throw error;
     }
+    const { link, stats } = resolved;
 
     if (!isContainerIdentifier(identifier) && stats.isFile()) {
       return this.getFileMetadata(link, stats);
@@ -92,12 +99,17 @@ export class FileDataAccessor implements DataAccessor {
    * Writes the given data as a file (and potential metadata as additional file).
    * The metadata file will be written first and will be deleted if something goes wrong writing the actual data.
    */
-  public async writeDocument(identifier: ResourceIdentifier, data: Guarded<Readable>, metadata: RepresentationMetadata):
+  public async writeDocument(
+    identifier: ResourceIdentifier,
+    data: Guarded<Readable>,
+    metadata: RepresentationMetadata,
+    options?: WriteDocumentOptions,
+  ):
   Promise<void> {
     const link = await this.resourceMapper.mapUrlToFilePath(identifier, false, metadata.contentType);
 
     // Check if we already have a corresponding file with a different extension
-    await this.verifyExistingExtension(link);
+    await this.verifyExistingExtension(link, options?.existingStorageHints);
 
     const wroteMetadata = await this.writeMetadataFile(link, metadata);
 
@@ -106,7 +118,12 @@ export class FileDataAccessor implements DataAccessor {
     } catch (error: unknown) {
       // Delete the metadata if there was an error writing the file
       if (wroteMetadata) {
-        const metaLink = await this.resourceMapper.mapUrlToFilePath(identifier, true);
+        const metaLink = await this.resourceMapper.mapUrlToFilePath(
+          identifier,
+          true,
+          undefined,
+          CANONICAL_METADATA_MAPPING,
+        );
         await remove(metaLink.filePath);
       }
       throw error;
@@ -124,27 +141,111 @@ export class FileDataAccessor implements DataAccessor {
   }
 
   public async writeMetadata(identifier: ResourceIdentifier, metadata: RepresentationMetadata): Promise<void> {
-    const metadataLink = await this.resourceMapper.mapUrlToFilePath(identifier, true);
+    const metadataLink = await this.resourceMapper.mapUrlToFilePath(
+      identifier,
+      true,
+      undefined,
+      CANONICAL_METADATA_MAPPING,
+    );
     await this.writeMetadataFile(metadataLink, metadata);
   }
 
   /**
    * Removes the corresponding file/folder (and metadata file).
    */
-  public async deleteResource(identifier: ResourceIdentifier): Promise<void> {
-    const metaLink = await this.resourceMapper.mapUrlToFilePath(identifier, true);
-    await remove(metaLink.filePath);
+  public async deleteResource(identifier: ResourceIdentifier, hints?: ResourceStorageHints): Promise<void> {
+    const { link, stats } = await this.resolveResource(identifier, hints);
 
-    const link = await this.resourceMapper.mapUrlToFilePath(identifier, false);
-    const stats = await this.getStats(link.filePath);
-
-    if (!isContainerIdentifier(identifier) && stats.isFile()) {
-      await remove(link.filePath);
-    } else if (isContainerIdentifier(identifier) && stats.isDirectory()) {
-      await remove(link.filePath);
-    } else {
+    if ((!isContainerIdentifier(identifier) && !stats.isFile()) ||
+      (isContainerIdentifier(identifier) && !stats.isDirectory())) {
       throw new NotFoundHttpError();
     }
+
+    const metaLink = await this.resourceMapper.mapUrlToFilePath(
+      identifier,
+      true,
+      undefined,
+      CANONICAL_METADATA_MAPPING,
+    );
+    await remove(metaLink.filePath);
+    await remove(link.filePath);
+  }
+
+  /**
+   * Resolves the physical path of a resource, trying content-type candidates before directory discovery.
+   */
+  protected async resolveResource(
+    identifier: ResourceIdentifier,
+    hints?: ResourceStorageHints,
+    followSymbolicLinks = true,
+  ):
+  Promise<ResolvedResource> {
+    if (isContainerIdentifier(identifier) || !hints?.contentType) {
+      const link = await this.resourceMapper.mapUrlToFilePath(identifier, false);
+      const stats = followSymbolicLinks ? await this.getStats(link.filePath) : await this.getLinkStats(link.filePath);
+      if (!isContainerIdentifier(identifier) && !this.isDocument(stats, followSymbolicLinks)) {
+        throw new NotFoundHttpError();
+      }
+      return { link, stats };
+    }
+
+    const { candidates, exhaustive } = hints.contentType;
+    const checkedPaths = new Set<string>();
+    let mappingError: Error | undefined;
+    let missingError: NotFoundHttpError | undefined;
+
+    for (const candidate of candidates) {
+      let link: ResourceLink;
+      try {
+        link = await this.resourceMapper.mapUrlToFilePath(identifier, false, candidate);
+      } catch (error: unknown) {
+        if (NotImplementedHttpError.isInstance(error)) {
+          mappingError ??= error;
+          continue;
+        }
+        throw error;
+      }
+
+      if (checkedPaths.has(link.filePath)) {
+        continue;
+      }
+      checkedPaths.add(link.filePath);
+
+      let stats: Stats;
+      try {
+        stats = followSymbolicLinks ? await this.getStats(link.filePath) : await this.getLinkStats(link.filePath);
+      } catch (error: unknown) {
+        if (NotFoundHttpError.isInstance(error)) {
+          missingError = error;
+          continue;
+        }
+        throw error;
+      }
+
+      if (!this.isDocument(stats, followSymbolicLinks)) {
+        missingError = new NotFoundHttpError();
+        continue;
+      }
+
+      const actualLink = await this.resourceMapper.mapFilePathToUrl(link.filePath, false);
+      return { link: { ...link, contentType: actualLink.contentType }, stats };
+    }
+
+    if (exhaustive) {
+      throw missingError ?? mappingError ?? new NotFoundHttpError();
+    }
+
+    const link = await this.resourceMapper.mapUrlToFilePath(identifier, false);
+    const stats = followSymbolicLinks ? await this.getStats(link.filePath) : await this.getLinkStats(link.filePath);
+    if (!this.isDocument(stats, followSymbolicLinks)) {
+      throw new NotFoundHttpError();
+    }
+    return { link, stats };
+  }
+
+  /** Checks whether file details represent a readable document or a replaceable symbolic link. */
+  private isDocument(stats: Stats, followSymbolicLinks: boolean): boolean {
+    return stats.isFile() || (!followSymbolicLinks && stats.isSymbolicLink());
   }
 
   /**
@@ -159,6 +260,18 @@ export class FileDataAccessor implements DataAccessor {
   protected async getStats(path: string): Promise<Stats> {
     try {
       return await stat(path);
+    } catch (error: unknown) {
+      if (isSystemError(error) && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) {
+        throw new NotFoundHttpError('', { cause: error });
+      }
+      throw error;
+    }
+  }
+
+  /** Gets file details without resolving symbolic links. */
+  private async getLinkStats(path: string): Promise<Stats> {
+    try {
+      return await lstat(path);
     } catch (error: unknown) {
       if (isSystemError(error) && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) {
         throw new NotFoundHttpError('', { cause: error });
@@ -219,7 +332,12 @@ export class FileDataAccessor implements DataAccessor {
       metadata.removeAll(CONTENT_TYPE_TERM);
     }
     const quads = metadata.quads();
-    const metadataLink = await this.resourceMapper.mapUrlToFilePath(link.identifier, true);
+    const metadataLink = await this.resourceMapper.mapUrlToFilePath(
+      link.identifier,
+      true,
+      undefined,
+      CANONICAL_METADATA_MAPPING,
+    );
     let wroteMetadata: boolean;
 
     // Write metadata to file if there are quads remaining
@@ -260,7 +378,12 @@ export class FileDataAccessor implements DataAccessor {
    */
   private async getRawMetadata(identifier: ResourceIdentifier): Promise<RepresentationMetadata> {
     try {
-      const metadataLink = await this.resourceMapper.mapUrlToFilePath(identifier, true);
+      const metadataLink = await this.resourceMapper.mapUrlToFilePath(
+        identifier,
+        true,
+        undefined,
+        CANONICAL_METADATA_MAPPING,
+      );
 
       // Check if the metadata file exists first
       const stats = await lstat(metadataLink.filePath);
@@ -368,12 +491,19 @@ export class FileDataAccessor implements DataAccessor {
    * This can happen if the content-type differs from the one that was stored.
    *
    * @param link - ResourceLink corresponding to the new resource data.
+   * @param existingStorageHints - Hints for finding the existing representation.
    */
-  protected async verifyExistingExtension(link: ResourceLink): Promise<void> {
-    // Delete the old file with the (now) wrong extension
-    const oldLink = await this.resourceMapper.mapUrlToFilePath(link.identifier, false);
-    if (oldLink.filePath !== link.filePath) {
-      await remove(oldLink.filePath);
+  protected async verifyExistingExtension(link: ResourceLink, existingStorageHints?: ResourceStorageHints):
+  Promise<void> {
+    try {
+      const { link: oldLink } = await this.resolveResource(link.identifier, existingStorageHints, false);
+      if (oldLink.filePath !== link.filePath) {
+        await remove(oldLink.filePath);
+      }
+    } catch (error: unknown) {
+      if (!NotFoundHttpError.isInstance(error)) {
+        throw error;
+      }
     }
   }
 
@@ -402,7 +532,12 @@ export class FileDataAccessor implements DataAccessor {
    */
   protected async cleanupDanglingMetadata(identifier: ResourceIdentifier): Promise<void> {
     try {
-      const metadataLink = await this.resourceMapper.mapUrlToFilePath(identifier, true);
+      const metadataLink = await this.resourceMapper.mapUrlToFilePath(
+        identifier,
+        true,
+        undefined,
+        CANONICAL_METADATA_MAPPING,
+      );
       await remove(metadataLink.filePath);
     } catch (error: unknown) {
       this.logger.error(`Failed to remove dangling metadata for ${identifier.path}: ${createErrorMessage(error)}`);

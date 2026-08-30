@@ -3,6 +3,7 @@ import { NotFoundHttpError } from '../../util/errors/NotFoundHttpError';
 import type { KeyValueStorage } from '../keyvalue/KeyValueStorage';
 import type { ResourceStore } from '../ResourceStore';
 import { RouterRule } from './RouterRule';
+import type { RouterRuleInput } from './RouterRule';
 
 /**
  * Routes requests based on their base url.
@@ -24,7 +25,7 @@ export class BaseUrlRouterRule extends RouterRule {
     this.stores = stores;
   }
 
-  public async handle({ identifier }: { identifier: ResourceIdentifier }): Promise<ResourceStore> {
+  public async handle({ identifier }: RouterRuleInput): Promise<ResourceStore> {
     try {
       return await this.findStore(identifier);
     } catch (error: unknown) {

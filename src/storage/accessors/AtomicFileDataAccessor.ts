@@ -7,6 +7,7 @@ import type { Guarded } from '../../util/GuardedStream';
 import { joinFilePath } from '../../util/PathUtil';
 import type { FileIdentifierMapper } from '../mapping/FileIdentifierMapper';
 import type { AtomicDataAccessor } from './AtomicDataAccessor';
+import type { WriteDocumentOptions } from './DataAccessor';
 import { FileDataAccessor } from './FileDataAccessor';
 
 /**
@@ -30,7 +31,12 @@ export class AtomicFileDataAccessor extends FileDataAccessor implements AtomicDa
    * If the stream errors it is made sure the temporary file will be deleted.
    * The metadata file will only be written if the data was written successfully.
    */
-  public async writeDocument(identifier: ResourceIdentifier, data: Guarded<Readable>, metadata: RepresentationMetadata):
+  public async writeDocument(
+    identifier: ResourceIdentifier,
+    data: Guarded<Readable>,
+    metadata: RepresentationMetadata,
+    options?: WriteDocumentOptions,
+  ):
   Promise<void> {
     const link = await this.resourceMapper.mapUrlToFilePath(identifier, false, metadata.contentType);
 
@@ -41,7 +47,7 @@ export class AtomicFileDataAccessor extends FileDataAccessor implements AtomicDa
       await this.writeDataFile(tempFilePath, data);
 
       // Check if we already have a corresponding file with a different extension
-      await this.verifyExistingExtension(link);
+      await this.verifyExistingExtension(link, options?.existingStorageHints);
 
       // When no quota errors occur move the file to its desired location
       await rename(tempFilePath, link.filePath);

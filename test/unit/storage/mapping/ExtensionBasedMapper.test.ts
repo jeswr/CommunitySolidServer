@@ -19,7 +19,7 @@ describe('An ExtensionBasedMapper', (): void => {
   beforeEach(async(): Promise<void> => {
     jest.clearAllMocks();
     fs.promises = {
-      readdir: jest.fn(),
+      readdir: jest.fn().mockResolvedValue([]),
     } as any;
     fsPromises = fs.promises as any;
   });
@@ -57,7 +57,7 @@ describe('An ExtensionBasedMapper', (): void => {
 
     it('determines content-type by extension when looking in a folder that does not exist.', async(): Promise<void> => {
       fsPromises.readdir.mockImplementation((): void => {
-        throw new Error('does not exist');
+        throw Object.assign(new Error('does not exist'), { code: 'ENOENT', syscall: 'readdir' });
       });
       await expect(mapper.mapUrlToFilePath({ path: `${base}no/test.txt` }, false)).resolves.toEqual({
         identifier: { path: `${base}no/test.txt` },
@@ -85,16 +85,51 @@ describe('An ExtensionBasedMapper', (): void => {
         contentType: 'text/plain',
         isMetadata: false,
       });
+      expect(fsPromises.readdir).toHaveBeenCalledWith(rootFilepath);
     });
 
-    it('determines the content-type correctly for metadata files.', async(): Promise<void> => {
-      fsPromises.readdir.mockReturnValue([ 'test.meta' ]);
+    it('discovers non-canonical metadata paths by default.', async(): Promise<void> => {
+      fsPromises.readdir.mockReturnValue([ 'test.meta$.nq' ]);
       await expect(mapper.mapUrlToFilePath({ path: `${base}test` }, true)).resolves.toEqual({
         identifier: { path: `${base}test` },
-        filePath: `${rootFilepath}test.meta`,
-        contentType: 'text/turtle',
-        isMetadata: true,
+        filePath: `${rootFilepath}test.meta$.nq`,
+        contentType: 'application/n-quads',
+        isMetadata: false,
       });
+      expect(fsPromises.readdir).toHaveBeenCalledWith(rootFilepath);
+    });
+
+    it('maps canonical metadata without searching the directory when requested.', async(): Promise<void> => {
+      await expect(mapper.mapUrlToFilePath({ path: `${base}test` }, true, undefined, { canonical: true }))
+        .resolves.toEqual({
+          identifier: { path: `${base}test` },
+          filePath: `${rootFilepath}test.meta`,
+          contentType: 'text/turtle',
+          isMetadata: true,
+        });
+      expect(fsPromises.readdir).not.toHaveBeenCalled();
+    });
+
+    it('uses custom content-types for canonical metadata without searching the directory.', async(): Promise<void> => {
+      const customMapper = new ExtensionBasedMapper(base, rootFilepath, { meta: 'application/n-quads' });
+      await expect(customMapper.mapUrlToFilePath({ path: `${base}test` }, true, undefined, { canonical: true }))
+        .resolves.toEqual({
+          identifier: { path: `${base}test` },
+          filePath: `${rootFilepath}test.meta`,
+          contentType: 'application/n-quads',
+          isMetadata: true,
+        });
+      expect(fsPromises.readdir).not.toHaveBeenCalled();
+    });
+
+    it('preserves explicit content-types for metadata files.', async(): Promise<void> => {
+      await expect(mapper.mapUrlToFilePath({ path: `${base}test` }, true, 'application/n-quads')).resolves.toEqual({
+        identifier: { path: `${base}test` },
+        filePath: `${rootFilepath}test.meta$.nq`,
+        contentType: 'application/n-quads',
+        isMetadata: false,
+      });
+      expect(fsPromises.readdir).not.toHaveBeenCalled();
     });
 
     it('matches even if the content-type does not match the extension.', async(): Promise<void> => {

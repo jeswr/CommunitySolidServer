@@ -2,13 +2,22 @@ import { BasicRepresentation } from '../../http/representation/BasicRepresentati
 import type { Representation } from '../../http/representation/Representation';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
 import { getLoggerFor } from '../../logging/LogUtil';
+import { APPLICATION_JSON } from '../../util/ContentTypes';
 import { createErrorMessage } from '../../util/errors/ErrorUtil';
 import { NotFoundHttpError } from '../../util/errors/NotFoundHttpError';
 import { ensureTrailingSlash, isContainerIdentifier, joinUrl, trimLeadingSlashes } from '../../util/PathUtil';
 import { readableToString } from '../../util/StreamUtil';
 import { LDP } from '../../util/Vocabularies';
 import type { ResourceStore } from '../ResourceStore';
+import type { ResourceStorageHints } from '../ResourceSet';
 import type { KeyValueStorage } from './KeyValueStorage';
+
+const JSON_STORAGE_HINTS: ResourceStorageHints = {
+  contentType: {
+    candidates: [ APPLICATION_JSON ],
+    exhaustive: false,
+  },
+};
 
 /**
  * A {@link KeyValueStorage} for JSON-like objects using a {@link ResourceStore} as backend.
@@ -36,8 +45,13 @@ export class JsonResourceStorage<T> implements KeyValueStorage<string, T> {
   public async get(key: string): Promise<T | undefined> {
     try {
       const identifier = this.keyToIdentifier(key);
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      const representation = await this.source.getRepresentation(identifier, { type: { 'application/json': 1 }});
+      const preferences = { type: { [APPLICATION_JSON]: 1 }};
+      const representation = await this.source.getRepresentation(
+        identifier,
+        preferences,
+        undefined,
+        JSON_STORAGE_HINTS,
+      );
       // eslint-disable-next-line @typescript-eslint/no-unsafe-return
       return JSON.parse(await readableToString(representation.data));
     } catch (error: unknown) {
@@ -49,20 +63,20 @@ export class JsonResourceStorage<T> implements KeyValueStorage<string, T> {
 
   public async has(key: string): Promise<boolean> {
     const identifier = this.keyToIdentifier(key);
-    return this.source.hasResource(identifier);
+    return this.source.hasResource(identifier, JSON_STORAGE_HINTS);
   }
 
   public async set(key: string, value: unknown): Promise<this> {
     const identifier = this.keyToIdentifier(key);
-    const representation = new BasicRepresentation(JSON.stringify(value), identifier, 'application/json');
-    await this.source.setRepresentation(identifier, representation);
+    const representation = new BasicRepresentation(JSON.stringify(value), identifier, APPLICATION_JSON);
+    await this.source.setRepresentation(identifier, representation, undefined, JSON_STORAGE_HINTS);
     return this;
   }
 
   public async delete(key: string): Promise<boolean> {
     try {
       const identifier = this.keyToIdentifier(key);
-      await this.source.deleteResource(identifier);
+      await this.source.deleteResource(identifier, undefined, JSON_STORAGE_HINTS);
       return true;
     } catch (error: unknown) {
       if (!NotFoundHttpError.isInstance(error)) {
@@ -110,9 +124,13 @@ export class JsonResourceStorage<T> implements KeyValueStorage<string, T> {
   protected async safelyGetResource(identifier: ResourceIdentifier): Promise<Representation | undefined> {
     let representation: Representation | undefined;
     try {
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      const preferences = isContainerIdentifier(identifier) ? {} : { type: { 'application/json': 1 }};
-      representation = await this.source.getRepresentation(identifier, preferences);
+      const isContainer = isContainerIdentifier(identifier);
+      const preferences = isContainer ? {} : { type: { [APPLICATION_JSON]: 1 }};
+      if (isContainer) {
+        representation = await this.source.getRepresentation(identifier, preferences);
+      } else {
+        representation = await this.source.getRepresentation(identifier, preferences, undefined, JSON_STORAGE_HINTS);
+      }
     } catch (error: unknown) {
       // Can happen if resource is deleted by this point.
       // When using this for internal data this can specifically happen quite often with locks.

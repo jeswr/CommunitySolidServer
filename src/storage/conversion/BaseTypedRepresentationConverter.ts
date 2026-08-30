@@ -2,7 +2,10 @@ import type { ValuePreferences } from '../../http/representation/RepresentationP
 import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpError';
 import type { PromiseOrValue } from '../../util/PromiseUtil';
 import { getConversionTarget, getTypeWeight, preferencesToString } from './ConversionUtil';
-import type { RepresentationConverterArgs } from './RepresentationConverter';
+import type {
+  RepresentationConverterArgs,
+  RepresentationConverterInputTypeHints,
+} from './RepresentationConverter';
 import { TypedRepresentationConverter } from './TypedRepresentationConverter';
 
 type ValuePreferencesArg =
@@ -40,11 +43,30 @@ export abstract class BaseTypedRepresentationConverter extends TypedRepresentati
     this.outputTypes = toValuePreferences(outputTypes);
   }
 
+  public async getInputTypes(): Promise<ValuePreferences> {
+    return { ...await this.inputTypes };
+  }
+
+  public async getInputTypeHints(preferences: { type?: ValuePreferences }):
+  Promise<RepresentationConverterInputTypeHints> {
+    if (!getConversionTarget(await this.outputTypes, preferences.type)) {
+      return { candidates: [], exhaustive: true };
+    }
+
+    const candidates = Object.entries(await this.getInputTypes())
+      .filter(([ , weight ]): boolean => weight > 0)
+      .map(([ type ]): string => type);
+    return {
+      candidates,
+      exhaustive: candidates.every((type): boolean => !type.includes('*')),
+    };
+  }
+
   /**
    * Matches all inputs to all outputs.
    */
   public async getOutputTypes(contentType: string): Promise<ValuePreferences> {
-    const weight = getTypeWeight(contentType, await this.inputTypes);
+    const weight = getTypeWeight(contentType, await this.getInputTypes());
     if (weight > 0) {
       const outputTypes = { ...await this.outputTypes };
       for (const [ key, value ] of Object.entries(outputTypes)) {
