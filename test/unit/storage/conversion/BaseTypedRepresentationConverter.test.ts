@@ -28,6 +28,27 @@ describe('A BaseTypedRepresentationConverter', (): void => {
     });
   });
 
+  it('exposes its supported input types.', async(): Promise<void> => {
+    const converter = new CustomTypedRepresentationConverter({ 'a/b': 0.5, 'ignored/type': 0 }, 'c/d');
+    await expect(converter.getInputTypes()).resolves.toEqual({ 'a/b': 0.5, 'ignored/type': 0 });
+    await expect(converter.getInputTypeHints({ type: { 'c/d': 1 }})).resolves.toEqual({
+      candidates: [ 'a/b' ],
+      exhaustive: true,
+    });
+    await expect(converter.getInputTypeHints({ type: { 'e/f': 1 }})).resolves.toEqual({
+      candidates: [],
+      exhaustive: true,
+    });
+  });
+
+  it('marks wildcard input declarations as non-exhaustive.', async(): Promise<void> => {
+    const converter = new CustomTypedRepresentationConverter('a/*', 'c/d');
+    await expect(converter.getInputTypeHints({ type: { 'c/d': 1 }})).resolves.toEqual({
+      candidates: [ 'a/*' ],
+      exhaustive: false,
+    });
+  });
+
   it('can not handle input without a Content-Type.', async(): Promise<void> => {
     const args: RepresentationConverterArgs = { representation: { metadata: {}}, preferences: {}} as any;
     const converter = new CustomTypedRepresentationConverter('*/*', 'b/b');

@@ -3,6 +3,9 @@ import { ComposedAuxiliaryStrategy } from '../../../../src/http/auxiliary/Compos
 import type { MetadataGenerator } from '../../../../src/http/auxiliary/MetadataGenerator';
 import type { Validator } from '../../../../src/http/auxiliary/Validator';
 import { RepresentationMetadata } from '../../../../src/http/representation/RepresentationMetadata';
+import type {
+  RepresentationConverterInputTypeProvider,
+} from '../../../../src/storage/conversion/RepresentationConverter';
 
 describe('A ComposedAuxiliaryStrategy', (): void => {
   const identifier = { path: 'http://test.com/foo' };
@@ -67,6 +70,30 @@ describe('A ComposedAuxiliaryStrategy', (): void => {
     expect(validator.handleSafe).toHaveBeenLastCalledWith({ representation, identifier: { path: 'any' }});
   });
 
+  it('exposes input hints from the exact validator used for writes.', async(): Promise<void> => {
+    const preferences = { type: { 'internal/quads': 1 }};
+    const hintingValidator = Object.assign(validator, {
+      getInputTypeHints: jest.fn().mockResolvedValue({
+        candidates: [ 'text/turtle' ],
+        exhaustive: true,
+      }),
+    }) as Validator & RepresentationConverterInputTypeProvider;
+    strategy = new ComposedAuxiliaryStrategy(identifierStrategy, metadataGenerator, hintingValidator);
+
+    await expect(strategy.getInputTypeHints(preferences)).resolves.toEqual({
+      candidates: [ 'text/turtle' ],
+      exhaustive: true,
+    });
+    expect(hintingValidator.getInputTypeHints).toHaveBeenCalledWith(preferences);
+  });
+
+  it('preserves discovery when its validator does not expose input hints.', async(): Promise<void> => {
+    await expect(strategy.getInputTypeHints({ type: { 'internal/quads': 1 }})).resolves.toEqual({
+      candidates: [],
+      exhaustive: false,
+    });
+  });
+
   it('defaults isRequiredInRoot to false.', async(): Promise<void> => {
     strategy = new ComposedAuxiliaryStrategy(identifierStrategy, metadataGenerator, validator);
     expect(strategy.isRequiredInRoot()).toBe(false);
@@ -80,5 +107,9 @@ describe('A ComposedAuxiliaryStrategy', (): void => {
 
     const representation = { data: 'data!' } as any;
     await expect(strategy.validate(representation)).resolves.toBeUndefined();
+    await expect(strategy.getInputTypeHints({ type: { 'internal/quads': 1 }})).resolves.toEqual({
+      candidates: [],
+      exhaustive: false,
+    });
   });
 });

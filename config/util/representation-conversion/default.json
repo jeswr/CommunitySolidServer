@@ -13,7 +13,7 @@
     {
       "comment": "Handles data conversion when required.",
       "@id": "urn:solid-server:default:RepresentationConverter",
-      "@type": "WaterfallHandler",
+      "@type": "WaterfallConverter",
       "handlers": [
         { "@id": "urn:solid-server:default:DynamicJsonToTemplateConverter" },
         {

@@ -1,8 +1,12 @@
 import arrayifyStream from 'arrayify-stream';
-import type { RepresentationConverter } from '../../storage/conversion/RepresentationConverter';
+import type {
+  RepresentationConverter,
+  RepresentationConverterInputTypeHints,
+} from '../../storage/conversion/RepresentationConverter';
 import { INTERNAL_QUADS } from '../../util/ContentTypes';
 import { cloneRepresentation } from '../../util/ResourceUtil';
 import type { Representation } from '../representation/Representation';
+import type { RepresentationPreferences } from '../representation/RepresentationPreferences';
 import type { ValidatorInput } from './Validator';
 import { Validator } from './Validator';
 
@@ -16,6 +20,18 @@ export class RdfValidator extends Validator {
   public constructor(converter: RepresentationConverter) {
     super();
     this.converter = converter;
+  }
+
+  /** Returns the inputs accepted by the same converter used for validation. */
+  public async getInputTypeHints(preferences: RepresentationPreferences):
+  Promise<RepresentationConverterInputTypeHints> {
+    const hints = await this.converter.getInputTypeHints?.(preferences) ?? { candidates: [], exhaustive: false };
+    return {
+      candidates: hints.candidates.includes(INTERNAL_QUADS) ?
+        hints.candidates :
+          [ INTERNAL_QUADS, ...hints.candidates ],
+      exhaustive: hints.exhaustive,
+    };
   }
 
   public async handle({ representation, identifier }: ValidatorInput): Promise<Representation> {

@@ -43,6 +43,13 @@ describe('A DynamicJsonToTemplateConverter', (): void => {
     await expect(converter.canHandle(input)).rejects.toThrow('Only JSON data is supported');
   });
 
+  it('reports JSON as its only possible input type.', async(): Promise<void> => {
+    await expect(converter.getInputTypeHints({ type: { 'internal/quads': 1 }})).resolves.toEqual({
+      candidates: [ 'application/json' ],
+      exhaustive: true,
+    });
+  });
+
   it('can only handle preferences matching the templates found.', async(): Promise<void> => {
     input.preferences = { type: { 'text/plain': 1 }};
     await expect(converter.canHandle(input)).rejects.toThrow('No templates found matching text/plain, only text/html');

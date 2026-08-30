@@ -474,6 +474,7 @@ export * from './storage/conversion/QuadToRdfConverter';
 export * from './storage/conversion/RdfToQuadConverter';
 export * from './storage/conversion/RepresentationConverter';
 export * from './storage/conversion/TypedRepresentationConverter';
+export * from './storage/conversion/WaterfallConverter';
 
 // Storage/KeyValue
 export * from './storage/keyvalue/Base64EncodingStorage';

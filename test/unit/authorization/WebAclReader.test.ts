@@ -75,6 +75,32 @@ describe('A WebAclReader', (): void => {
     await expect(reader.canHandle({} as any)).resolves.toBeUndefined();
   });
 
+  it('uses exhaustive RDF hints for ACL discovery and reads.', async(): Promise<void> => {
+    const hintedStrategy = {
+      ...aclStrategy,
+      getInputTypeHints: jest.fn().mockResolvedValue({ candidates: [ 'text/turtle' ], exhaustive: true }),
+    };
+    reader = new WebAclReader(
+      hintedStrategy,
+      resourceSet,
+      store,
+      identifierStrategy,
+      accessChecker,
+    );
+    await reader.handle(input);
+    const hints = { contentType: { candidates: [ 'text/turtle' ], exhaustive: true }};
+    const aclIdentifier = aclStrategy.getAuxiliaryIdentifier(identifier);
+
+    expect(hintedStrategy.getInputTypeHints).toHaveBeenCalledWith({ type: { [INTERNAL_QUADS]: 1 }});
+    expect(resourceSet.hasResource).toHaveBeenCalledWith(aclIdentifier, hints);
+    expect(store.getRepresentation).toHaveBeenCalledWith(
+      aclIdentifier,
+      { type: { [INTERNAL_QUADS]: 1 }},
+      undefined,
+      hints,
+    );
+  });
+
   it('returns undefined permissions for undefined credentials.', async(): Promise<void> => {
     input.credentials = {};
     compareMaps(await reader.handle(input), new IdentifierMap([[ identifier, {}]]));

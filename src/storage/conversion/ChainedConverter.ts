@@ -1,13 +1,19 @@
 import { BasicRepresentation } from '../../http/representation/BasicRepresentation';
 import type { Representation } from '../../http/representation/Representation';
 import { RepresentationMetadata } from '../../http/representation/RepresentationMetadata';
-import type { ValuePreferences } from '../../http/representation/RepresentationPreferences';
+import type {
+  RepresentationPreferences,
+  ValuePreferences,
+} from '../../http/representation/RepresentationPreferences';
 import { getLoggerFor } from '../../logging/LogUtil';
 import { BadRequestHttpError } from '../../util/errors/BadRequestHttpError';
 import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpError';
 import { POSIX } from '../../util/Vocabularies';
 import { cleanPreferences, getBestPreference, getTypeWeight, preferencesToString } from './ConversionUtil';
-import type { RepresentationConverterArgs } from './RepresentationConverter';
+import type {
+  RepresentationConverterArgs,
+  RepresentationConverterInputTypeHints,
+} from './RepresentationConverter';
 import { RepresentationConverter } from './RepresentationConverter';
 import type { TypedRepresentationConverter } from './TypedRepresentationConverter';
 
@@ -81,6 +87,43 @@ export class ChainedConverter extends RepresentationConverter {
       throw new Error('At least 1 converter is required.');
     }
     this.converters = [ ...converters ];
+  }
+
+  public async getInputTypeHints(preferences: RepresentationPreferences):
+  Promise<RepresentationConverterInputTypeHints> {
+    const reachable = new Set(Object.entries(cleanPreferences(preferences.type))
+      .filter(([ , weight ]): boolean => weight > 0)
+      .map(([ type ]): string => type));
+    let exhaustive = [ ...reachable ].every((type): boolean => !type.includes('*'));
+    let changed = true;
+
+    while (changed) {
+      changed = false;
+      const reachablePreferences = {
+        type: Object.fromEntries([ ...reachable ].map((type): [string, number] => [ type, 1 ])),
+      };
+      const hints = await Promise.all(this.converters
+        .map(async(converter): Promise<RepresentationConverterInputTypeHints> =>
+          converter.getInputTypeHints?.(reachablePreferences) ?? { candidates: [], exhaustive: false }));
+
+      for (const result of hints) {
+        exhaustive &&= result.exhaustive;
+        for (const candidate of result.candidates) {
+          if (candidate.includes('*')) {
+            exhaustive = false;
+          }
+          if (!reachable.has(candidate)) {
+            reachable.add(candidate);
+            changed = true;
+          }
+        }
+      }
+    }
+
+    return {
+      candidates: [ ...reachable ].filter((type): boolean => !type.includes('*')),
+      exhaustive,
+    };
   }
 
   public async canHandle(input: RepresentationConverterArgs): Promise<void> {

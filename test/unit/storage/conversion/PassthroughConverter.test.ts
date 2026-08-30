@@ -10,6 +10,13 @@ describe('A PassthroughConverter', (): void => {
     await expect(converter.canHandle(args)).resolves.toBeUndefined();
   });
 
+  it('does not claim exhaustive input type knowledge by default.', async(): Promise<void> => {
+    await expect(converter.getInputTypeHints!({ type: { 'a/b': 1 }})).resolves.toEqual({
+      candidates: [],
+      exhaustive: false,
+    });
+  });
+
   it('returns the original representation on handle.', async(): Promise<void> => {
     await expect(converter.handle(args)).resolves.toBe(representation);
   });

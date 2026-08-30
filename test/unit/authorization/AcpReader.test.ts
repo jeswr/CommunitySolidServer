@@ -169,11 +169,39 @@ describe('An AcpReader', (): void => {
     compareMaps(await acpReader.handle({ credentials, requestedModes }), expectedPermissions);
     expect(acrStore.getRepresentation).toHaveBeenCalledTimes(3);
     expect(acrStore.getRepresentation)
-      .toHaveBeenCalledWith(acrStrategy.getAuxiliaryIdentifier(target1), { type: { [INTERNAL_QUADS]: 1 }});
+      .toHaveBeenCalledWith(
+        acrStrategy.getAuxiliaryIdentifier(target1),
+        { type: { [INTERNAL_QUADS]: 1 }},
+      );
     expect(acrStore.getRepresentation)
-      .toHaveBeenCalledWith(acrStrategy.getAuxiliaryIdentifier(target2), { type: { [INTERNAL_QUADS]: 1 }});
+      .toHaveBeenCalledWith(
+        acrStrategy.getAuxiliaryIdentifier(target2),
+        { type: { [INTERNAL_QUADS]: 1 }},
+      );
     expect(acrStore.getRepresentation)
-      .toHaveBeenCalledWith(acrStrategy.getAuxiliaryIdentifier({ path: baseUrl }), { type: { [INTERNAL_QUADS]: 1 }});
+      .toHaveBeenCalledWith(
+        acrStrategy.getAuxiliaryIdentifier({ path: baseUrl }),
+        { type: { [INTERNAL_QUADS]: 1 }},
+      );
+  });
+
+  it('uses exhaustive RDF hints for ACR reads.', async(): Promise<void> => {
+    const hintedStrategy = Object.assign(acrStrategy, {
+      getInputTypeHints: jest.fn().mockResolvedValue({ candidates: [ 'text/turtle' ], exhaustive: true }),
+    });
+    acpReader = new AcpReader(hintedStrategy, acrStore, identifierStrategy);
+    dataMap[baseUrl] = [];
+
+    const requestedModes = new IdentifierSetMultiMap([[{ path: baseUrl }, AccessMode.read ]]);
+    await acpReader.handle({ credentials, requestedModes });
+
+    expect(hintedStrategy.getInputTypeHints).toHaveBeenCalledWith({ type: { [INTERNAL_QUADS]: 1 }});
+    expect(acrStore.getRepresentation).toHaveBeenCalledWith(
+      acrStrategy.getAuxiliaryIdentifier({ path: baseUrl }),
+      { type: { [INTERNAL_QUADS]: 1 }},
+      undefined,
+      { contentType: { candidates: [ 'text/turtle' ], exhaustive: true }},
+    );
   });
 
   it('correctly puts the credentials in the context.', async(): Promise<void> => {
