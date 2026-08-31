@@ -1,6 +1,5 @@
 import type { Readable } from 'node:stream';
 import type { AuxiliaryIdentifierStrategy } from '../http/auxiliary/AuxiliaryIdentifierStrategy';
-import { BasicRepresentation } from '../http/representation/BasicRepresentation';
 import type { Patch } from '../http/representation/Patch';
 import type { Representation } from '../http/representation/Representation';
 import type { RepresentationPreferences } from '../http/representation/RepresentationPreferences';
@@ -204,7 +203,7 @@ export class LockingResourceStore implements AtomicResourceStore {
    * @param representation - The representation to wrap
    * @param maintainLock - Function to call to reset the timer.
    */
-  protected createExpiringRepresentation(representation: Representation, maintainLock: () => void): Representation {
+  protected createExpiringRepresentation<T extends Representation>(representation: T, maintainLock: () => void): T {
     const source = representation.data;
     // Spy on the source to maintain the lock upon reading.
     const data = Object.create(source, {
@@ -215,7 +214,14 @@ export class LockingResourceStore implements AtomicResourceStore {
         },
       },
     }) as Readable;
-    return new BasicRepresentation(data, representation.metadata, representation.binary);
+
+    // Preserve the representation type and any additional properties, such as those on an N3 or SPARQL patch.
+    const descriptors: PropertyDescriptorMap = Object.getOwnPropertyDescriptors(representation);
+    descriptors.data = {
+      ...descriptors.data,
+      value: data,
+    };
+    return Object.create(Reflect.getPrototypeOf(representation), descriptors) as T;
   }
 
   /**

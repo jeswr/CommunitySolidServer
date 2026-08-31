@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import type { AuxiliaryIdentifierStrategy } from '../../../src/http/auxiliary/AuxiliaryIdentifierStrategy';
-import type { Patch } from '../../../src/http/representation/Patch';
+import type { N3Patch } from '../../../src/http/representation/N3Patch';
 import type { Representation } from '../../../src/http/representation/Representation';
 import type { ResourceIdentifier } from '../../../src/http/representation/ResourceIdentifier';
 import { LockingResourceStore } from '../../../src/storage/LockingResourceStore';
@@ -150,15 +150,28 @@ describe('A LockingResourceStore', (): void => {
   });
 
   it('acquires a lock on the resource when modifying its representation.', async(): Promise<void> => {
-    await store.modifyResource(subjectId, data as Patch);
+    const patch: N3Patch = {
+      ...data,
+      deletes: [],
+      inserts: [],
+      conditions: [],
+    };
+
+    await store.modifyResource(subjectId, patch);
     expect(locker.withWriteLock).toHaveBeenCalledTimes(1);
     expect(locker.withWriteLock.mock.calls[0][0]).toEqual(subjectId);
     expect(source.modifyResource).toHaveBeenCalledTimes(1);
-    expect(source.modifyResource).toHaveBeenLastCalledWith(subjectId, expect.any(Object), undefined);
+    const expiringPatch = jest.mocked(source.modifyResource).mock.calls[0][1] as N3Patch;
+    expect(source.modifyResource).toHaveBeenLastCalledWith(subjectId, expiringPatch, undefined);
+    expect(expiringPatch).not.toBe(patch);
+    expect(expiringPatch.data).not.toBe(patch.data);
+    expect(expiringPatch.deletes).toBe(patch.deletes);
+    expect(expiringPatch.inserts).toBe(patch.inserts);
+    expect(expiringPatch.conditions).toBe(patch.conditions);
     expect(order).toEqual([ 'lock write', 'modifyResource', 'unlock write' ]);
 
     order = [];
-    await expect(store.modifyResource(auxiliaryId, data as Patch)).resolves.toBeUndefined();
+    await expect(store.modifyResource(auxiliaryId, patch)).resolves.toBeUndefined();
     expect(locker.withWriteLock).toHaveBeenCalledTimes(2);
     expect(locker.withWriteLock.mock.calls[1][0]).toEqual(subjectId);
     expect(source.modifyResource).toHaveBeenCalledTimes(2);
