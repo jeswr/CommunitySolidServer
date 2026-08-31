@@ -103,7 +103,7 @@ describe('A LockingResourceStore', (): void => {
     expect(locker.withWriteLock).toHaveBeenCalledTimes(1);
     expect(locker.withWriteLock.mock.calls[0][0]).toEqual(subjectId);
     expect(source.addResource).toHaveBeenCalledTimes(1);
-    expect(source.addResource).toHaveBeenLastCalledWith(subjectId, data, undefined);
+    expect(source.addResource).toHaveBeenLastCalledWith(subjectId, expect.any(Object), undefined);
     expect(order).toEqual([ 'lock write', 'addResource', 'unlock write' ]);
 
     order = [];
@@ -111,7 +111,7 @@ describe('A LockingResourceStore', (): void => {
     expect(locker.withWriteLock).toHaveBeenCalledTimes(2);
     expect(locker.withWriteLock.mock.calls[1][0]).toEqual(subjectId);
     expect(source.addResource).toHaveBeenCalledTimes(2);
-    expect(source.addResource).toHaveBeenLastCalledWith(auxiliaryId, data, undefined);
+    expect(source.addResource).toHaveBeenLastCalledWith(auxiliaryId, expect.any(Object), undefined);
     expect(order).toEqual([ 'lock write', 'addResource', 'unlock write' ]);
   });
 
@@ -120,7 +120,7 @@ describe('A LockingResourceStore', (): void => {
     expect(locker.withWriteLock).toHaveBeenCalledTimes(1);
     expect(locker.withWriteLock.mock.calls[0][0]).toEqual(subjectId);
     expect(source.setRepresentation).toHaveBeenCalledTimes(1);
-    expect(source.setRepresentation).toHaveBeenLastCalledWith(subjectId, data, undefined);
+    expect(source.setRepresentation).toHaveBeenLastCalledWith(subjectId, expect.any(Object), undefined);
     expect(order).toEqual([ 'lock write', 'setRepresentation', 'unlock write' ]);
 
     order = [];
@@ -128,7 +128,7 @@ describe('A LockingResourceStore', (): void => {
     expect(locker.withWriteLock).toHaveBeenCalledTimes(2);
     expect(locker.withWriteLock.mock.calls[1][0]).toEqual(subjectId);
     expect(source.setRepresentation).toHaveBeenCalledTimes(2);
-    expect(source.setRepresentation).toHaveBeenLastCalledWith(auxiliaryId, data, undefined);
+    expect(source.setRepresentation).toHaveBeenLastCalledWith(auxiliaryId, expect.any(Object), undefined);
     expect(order).toEqual([ 'lock write', 'setRepresentation', 'unlock write' ]);
   });
 
@@ -154,7 +154,7 @@ describe('A LockingResourceStore', (): void => {
     expect(locker.withWriteLock).toHaveBeenCalledTimes(1);
     expect(locker.withWriteLock.mock.calls[0][0]).toEqual(subjectId);
     expect(source.modifyResource).toHaveBeenCalledTimes(1);
-    expect(source.modifyResource).toHaveBeenLastCalledWith(subjectId, data, undefined);
+    expect(source.modifyResource).toHaveBeenLastCalledWith(subjectId, expect.any(Object), undefined);
     expect(order).toEqual([ 'lock write', 'modifyResource', 'unlock write' ]);
 
     order = [];
@@ -162,7 +162,7 @@ describe('A LockingResourceStore', (): void => {
     expect(locker.withWriteLock).toHaveBeenCalledTimes(2);
     expect(locker.withWriteLock.mock.calls[1][0]).toEqual(subjectId);
     expect(source.modifyResource).toHaveBeenCalledTimes(2);
-    expect(source.modifyResource).toHaveBeenLastCalledWith(auxiliaryId, data, undefined);
+    expect(source.modifyResource).toHaveBeenLastCalledWith(auxiliaryId, expect.any(Object), undefined);
     expect(order).toEqual([ 'lock write', 'modifyResource', 'unlock write' ]);
   });
 
@@ -184,10 +184,13 @@ describe('A LockingResourceStore', (): void => {
     await store.setRepresentation(subjectId, data);
     expect(locker.withWriteLock).toHaveBeenCalledTimes(1);
     expect(source.setRepresentation).toHaveBeenCalledTimes(1);
-    expect(source.setRepresentation).toHaveBeenLastCalledWith(subjectId, data, undefined);
+    const expiringRepresentation = jest.mocked(source.setRepresentation).mock.calls[0][1];
+    expect(source.setRepresentation).toHaveBeenLastCalledWith(subjectId, expiringRepresentation, undefined);
+    expect(expiringRepresentation).not.toBe(data);
+    expect(expiringRepresentation.data).not.toBe(data.data);
     expect(maintainLock).toHaveBeenCalledTimes(2);
 
-    // The original read function is restored once the write is finished
+    // The original stream is not adapted
     expect(data.data.read).toBe(originalRead);
     data.data.read();
     expect(maintainLock).toHaveBeenCalledTimes(2);
