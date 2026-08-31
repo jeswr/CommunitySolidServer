@@ -215,7 +215,8 @@ export class LockingResourceStore implements AtomicResourceStore {
       },
     }) as Readable;
 
-    // Preserve the representation type and any additional properties, such as those on an N3 or SPARQL patch.
+    // Write inputs can be specialized representations, such as N3 or SPARQL patches.
+    // Preserve their prototype and properties while replacing only the data stream used to maintain the lock.
     const descriptors: PropertyDescriptorMap = Object.getOwnPropertyDescriptors(representation);
     descriptors.data.value = data;
     return Object.create(Reflect.getPrototypeOf(representation), descriptors) as T;
