@@ -2,6 +2,7 @@ import type { KeyValueStorage } from '../../../../src/storage/keyvalue/KeyValueS
 import type { Expires } from '../../../../src/storage/keyvalue/WrappedExpiringStorage';
 import { WrappedExpiringStorage } from '../../../../src/storage/keyvalue/WrappedExpiringStorage';
 import { InternalServerError } from '../../../../src/util/errors/InternalServerError';
+import { flushPromises } from '../../../util/Util';
 import clearAllTimers = jest.clearAllTimers;
 
 type Internal = Expires<string>;
@@ -176,6 +177,40 @@ describe('A WrappedExpiringStorage', (): void => {
 
       expect(source.delete).toHaveBeenCalledTimes(1);
       expect(source.delete).toHaveBeenLastCalledWith('key2');
+    });
+
+    it('deletes expired entries in bounded batches.', async(): Promise<void> => {
+      storage = new WrappedExpiringStorage(source, 1, 0, 2);
+      let resolveFirst!: (value: boolean) => void;
+      let resolveSecond!: (value: boolean) => void;
+      const first = new Promise<boolean>((resolve): void => {
+        resolveFirst = resolve;
+      });
+      const second = new Promise<boolean>((resolve): void => {
+        resolveSecond = resolve;
+      });
+      source.entries.mockImplementationOnce(function* (): any {
+        yield [ 'key1', createExpires('data1', yesterday) ];
+        yield [ 'key2', createExpires('data2', yesterday) ];
+        yield [ 'key3', createExpires('data3', yesterday) ];
+      });
+      source.delete.mockImplementationOnce(async(): Promise<boolean> => first)
+        .mockImplementationOnce(async(): Promise<boolean> => second)
+        .mockResolvedValue(true);
+
+      const cleanup = (mockInterval.mock.calls[0][0] as () => Promise<void>)();
+      await flushPromises();
+      expect(source.delete).toHaveBeenCalledTimes(2);
+
+      resolveFirst(true);
+      resolveSecond(true);
+      await cleanup;
+      expect(source.delete).toHaveBeenCalledTimes(3);
+    });
+
+    it.each([ 0, -1, 1.5, Number.NaN ])('rejects invalid batch size %p.', (batchSize): void => {
+      expect((): WrappedExpiringStorage<string, string> =>
+        new WrappedExpiringStorage(source, 1, 0, batchSize)).toThrow(TypeError);
     });
 
     it('clears the timer on finalize.', async(): Promise<void> => {

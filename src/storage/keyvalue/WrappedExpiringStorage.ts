@@ -19,14 +19,25 @@ export class WrappedExpiringStorage<TKey, TValue> implements ExpiringStorage<TKe
   protected readonly logger = getLoggerFor(this);
   private readonly source: KeyValueStorage<TKey, Expires<TValue>>;
   private readonly timer: NodeJS.Timeout;
+  private readonly batchSize: number;
 
   /**
    * @param source - KeyValueStorage to actually store the data.
    * @param timeout - How often the expired data needs to be checked in minutes.
    * @param jitter - Maximum fraction of the timeout that is randomly added to the interval. `0` disables jitter.
+   * @param batchSize - Maximum number of expired entries deleted concurrently.
    */
-  public constructor(source: KeyValueStorage<TKey, Expires<TValue>>, timeout = 60, jitter = 0.15) {
+  public constructor(
+    source: KeyValueStorage<TKey, Expires<TValue>>,
+    timeout = 60,
+    jitter = 0.15,
+    batchSize = 32,
+  ) {
+    if (!Number.isSafeInteger(batchSize) || batchSize < 1) {
+      throw new TypeError('The expired-entry deletion batch size must be a positive integer.');
+    }
     this.source = source;
+    this.batchSize = batchSize;
     const period = timeout * 60 * 1000;
     const jitterMs = Math.floor(Math.random() * period * jitter);
     this.timer = setSafeInterval(
@@ -83,7 +94,10 @@ export class WrappedExpiringStorage<TKey, TValue> implements ExpiringStorage<TKe
         expired.push(key);
       }
     }
-    await Promise.all(expired.map(async(key): Promise<boolean> => this.source.delete(key)));
+    for (let index = 0; index < expired.length; index += this.batchSize) {
+      await Promise.all(expired.slice(index, index + this.batchSize)
+        .map(async(key): Promise<boolean> => this.source.delete(key)));
+    }
     this.logger.debug('Finished removing expired entries');
   }
 

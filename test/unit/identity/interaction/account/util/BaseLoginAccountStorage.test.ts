@@ -66,6 +66,15 @@ describe('A BaseLoginAccountStorage', (): void => {
     expect(source.delete).toHaveBeenLastCalledWith(ACCOUNT_TYPE, 'id');
   });
 
+  it('contains storage errors raised while cleaning up an abandoned account.', async(): Promise<void> => {
+    source.get.mockRejectedValueOnce(new Error('temporary lock failure'));
+
+    await expect(storage.create(ACCOUNT_TYPE, { test: 'data' })).resolves.toEqual({ test: 'data', id: 'id' });
+    await expect(jest.advanceTimersByTimeAsync(30 * 60 * 1000)).resolves.toBeUndefined();
+
+    expect(source.delete).not.toHaveBeenCalled();
+  });
+
   it('does not delete an account after the set timeout if it has a login method.', async(): Promise<void> => {
     source.get.mockResolvedValueOnce({ id: 'id', linkedLoginsCount: 1 });
     await expect(storage.create(ACCOUNT_TYPE, { test: 'data' })).resolves.toEqual({ test: 'data', id: 'id' });
