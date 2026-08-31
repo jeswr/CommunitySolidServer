@@ -217,10 +217,7 @@ export class LockingResourceStore implements AtomicResourceStore {
 
     // Preserve the representation type and any additional properties, such as those on an N3 or SPARQL patch.
     const descriptors: PropertyDescriptorMap = Object.getOwnPropertyDescriptors(representation);
-    descriptors.data = {
-      ...descriptors.data,
-      value: data,
-    };
+    descriptors.data.value = data;
     return Object.create(Reflect.getPrototypeOf(representation), descriptors) as T;
   }
 
