@@ -276,6 +276,9 @@ describe('A LockingResourceStore', (): void => {
   });
 
   it('preserves the source stream identity while maintaining the lock.', async(): Promise<void> => {
+    // Capture the exact method reference to verify it is restored after unlocking.
+    // eslint-disable-next-line jest/unbound-method
+    const originalRead = readable.read;
     const representation = await store.getRepresentation(subjectId, {});
 
     expect(representation.data).toBe(readable);
@@ -284,6 +287,7 @@ describe('A LockingResourceStore', (): void => {
 
     representation.data.destroy();
     await flushPromises();
+    expect(readable.read).toBe(originalRead);
     const renewalsAfterClose = maintainLock.mock.calls.length;
     readable.read();
     expect(maintainLock).toHaveBeenCalledTimes(renewalsAfterClose);

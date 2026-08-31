@@ -132,7 +132,9 @@ export class LockingResourceStore implements AtomicResourceStore {
       // Make the resource time out to ensure that the lock is always released eventually.
       this.locks.withReadLock(identifier, async(maintainLock): Promise<void> => {
         representation = await whileLocked();
-        const originalRead = representation.data.read.bind(representation.data);
+        // This exact function reference is restored after the lock is released.
+        // eslint-disable-next-line @typescript-eslint/unbound-method
+        const originalRead = representation.data.read;
         resolve(this.createExpiringRepresentation(representation, maintainLock));
 
         // Release the lock when an error occurs or the data finished streaming
@@ -223,10 +225,12 @@ export class LockingResourceStore implements AtomicResourceStore {
     // Spy on the source to maintain the lock upon reading.
     // Keep the same stream object: stream implementations store internal event state on the instance,
     // so inheriting from it with Object.create can cause listeners to run with the wrong receiver.
-    const originalRead = source.read.bind(source);
+    // Preserve the exact function so repeated reads do not accumulate bound wrappers.
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const originalRead = source.read;
     source.read = (size?: number): unknown => {
       maintainLock();
-      return originalRead(size);
+      return originalRead.call(source, size);
     };
     return new BasicRepresentation(source, representation.metadata, representation.binary);
   }
