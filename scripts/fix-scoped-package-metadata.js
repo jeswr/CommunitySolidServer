@@ -2,6 +2,7 @@ const { readFileSync, readdirSync, statSync, writeFileSync } = require('node:fs'
 const { join } = require('node:path');
 
 const distributionPath = join(__dirname, '..', 'dist');
+const moduleMetadataPath = join(distributionPath, 'components', 'components.jsonld');
 const scopedPrefix = 'npmd:@jeswr/community-solid-server/^7.0.0/';
 const upstreamPrefix = 'npmd:@solid/community-server/^7.0.0/';
 const scopedContext =
@@ -39,9 +40,14 @@ function canonicalizeMetadata(value) {
 // Keep the scoped URL as a package-level lookup alias, but canonicalize every
 // generated component to the single upstream context and identifier set. This
 // also removes empty constructor aliases emitted by the 3.x generator, which
-// are invalid JSON-LD terms. The module's requireName remains the scoped npm
-// package, so runtime imports still load @jeswr/community-solid-server.
+// are invalid JSON-LD terms. The package is consumed through npm's
+// @solid/community-server alias, so Components.js must require that installed
+// alias rather than the package's scoped publication name.
 for (const file of jsonLdFiles(distributionPath)) {
   const metadata = JSON.parse(readFileSync(file, 'utf8'));
-  writeFileSync(file, `${JSON.stringify(canonicalizeMetadata(metadata), null, 2)}\n`);
+  const canonicalMetadata = canonicalizeMetadata(metadata);
+  if (file === moduleMetadataPath) {
+    canonicalMetadata.requireName = '@solid/community-server';
+  }
+  writeFileSync(file, `${JSON.stringify(canonicalMetadata, null, 2)}\n`);
 }
