@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import type { Readable } from 'node:stream';
 import type { AuxiliaryIdentifierStrategy } from '../../../src/http/auxiliary/AuxiliaryIdentifierStrategy';
 import type { Patch } from '../../../src/http/representation/Patch';
 import type { Representation } from '../../../src/http/representation/Representation';
@@ -25,6 +26,8 @@ describe('A LockingResourceStore', (): void => {
   let auxiliaryStrategy: AuxiliaryIdentifierStrategy;
   let order: string[];
   let timeoutTrigger: EventEmitter;
+  let readable: Readable;
+  let maintainLock: jest.Mock;
 
   beforeEach(async(): Promise<void> => {
     order = [];
@@ -35,7 +38,7 @@ describe('A LockingResourceStore', (): void => {
 
     data = { data: guardedStreamFrom([ 1, 2, 3 ]) } as any;
 
-    const readable = guardedStreamFrom([ 1, 2, 3 ]);
+    readable = guardedStreamFrom([ 1, 2, 3 ]);
     const destroy = readable.destroy.bind(readable);
     jest.spyOn(readable, 'destroy').mockImplementation((error): any => destroy.call(readable, error));
     source = {
@@ -48,6 +51,7 @@ describe('A LockingResourceStore', (): void => {
     };
 
     timeoutTrigger = new EventEmitter();
+    maintainLock = jest.fn();
 
     locker = {
       withReadLock: jest.fn(async <T>(
@@ -61,7 +65,7 @@ describe('A LockingResourceStore', (): void => {
             order.push('timeout');
             reject(new Error('timeout'));
           }));
-          return await Promise.race([ Promise.resolve(whileLocked(emptyFn)), timeout ]);
+          return await Promise.race([ Promise.resolve(whileLocked(maintainLock)), timeout ]);
         } finally {
           order.push('unlock read');
         }
@@ -269,6 +273,20 @@ describe('A LockingResourceStore', (): void => {
     expect(source.getRepresentation).toHaveBeenCalledTimes(1);
     expect(source.getRepresentation).toHaveBeenLastCalledWith(subjectId, {}, undefined);
     expect(order).toEqual([ 'lock read', 'getRepresentation', 'end', 'unlock read' ]);
+  });
+
+  it('preserves the source stream identity while maintaining the lock.', async(): Promise<void> => {
+    const representation = await store.getRepresentation(subjectId, {});
+
+    expect(representation.data).toBe(readable);
+    representation.data.read();
+    expect(maintainLock).toHaveBeenCalledTimes(1);
+
+    representation.data.destroy();
+    await flushPromises();
+    const renewalsAfterClose = maintainLock.mock.calls.length;
+    readable.read();
+    expect(maintainLock).toHaveBeenCalledTimes(renewalsAfterClose);
   });
 
   it('acquires the lock on the subject resource when reading an auxiliary resource.', async(): Promise<void> => {

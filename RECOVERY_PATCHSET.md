@@ -1,4 +1,4 @@
-# solidcommunity.net recovery alpha
+# solidcommunity.net recovery alpha.1
 
 This branch backports the CSS changes used by the stable single-worker
 `solidcommunity.net` deployment onto Community Solid Server 7.1.9.
@@ -8,10 +8,22 @@ This branch backports the CSS changes used by the stable single-worker
 - Correctness and bounded-resource fixes: #52, #55, #68, #75, #77, #79,
   #86, and #87.
 - Hot-path improvements: #31, #49, #58, #59, #90, #101, #103, and #105.
+- Container listing streaming from upstream PR #2211, including cleanup when a
+  consumer closes an unread listing.
+- Write-lock renewal from upstream PR #2217 and dedicated persistent OIDC
+  client-registration storage from upstream PR #2218.
+- The extension-mapper lookup optimization deployed on `solidcommunity.net`.
+- Bounded in-memory lock acquisition, reader-count rollback when acquisition
+  fails, and preservation of readable-stream identity while renewing locks.
 
 The Redis changes (#68, #75, and #77) were present in the deployed build but
 remain inactive when the normal single-worker file configuration uses its file
 resource locker.
+
+The two OIDC adapter storages are named independently. Deployments can override
+`IdpAdapterExpiringStorage` with memory storage while leaving
+`IdpClientAdapterExpiringStorage` persistent, so dynamic client registrations
+survive restarts without persisting high-frequency transient provider state.
 
 ## Deliberate exclusions
 

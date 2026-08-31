@@ -118,6 +118,7 @@ describe('An InMemoryDataAccessor', (): void => {
       expect(firstQuads).toHaveBeenCalledTimes(1);
       expect(secondQuads).not.toHaveBeenCalled();
     });
+
     it('adds stored metadata when requesting document metadata.', async(): Promise<void> => {
       const identifier = { path: `${base}resource` };
       const inputMetadata = new RepresentationMetadata(identifier, {

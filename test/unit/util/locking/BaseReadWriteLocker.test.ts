@@ -49,6 +49,10 @@ class SimpleReadWriteLocker extends BaseReadWriteLocker {
     this.countMap.set(identifier.path, count);
     return count;
   }
+
+  public getCount(identifier: ResourceIdentifier): number {
+    return this.countMap.get(identifier.path) ?? 0;
+  }
 }
 
 /* eslint-disable @typescript-eslint/no-floating-promises */
@@ -68,6 +72,19 @@ describe('A BaseReadWriteLocker', (): void => {
 
   it('does not block single read operations.', async(): Promise<void> => {
     await expect(locker.withReadLock(resourceId, (): number => 5)).resolves.toBe(5);
+  });
+
+  it('rolls back the reader count if the main lock cannot be acquired.', async(): Promise<void> => {
+    const error = new Error('lock acquisition failed');
+    resourceLocker = {
+      acquire: jest.fn().mockRejectedValue(error),
+      release: jest.fn(),
+    };
+    const testLocker = new SimpleReadWriteLocker(resourceLocker, countLocker);
+
+    await expect(testLocker.withReadLock(resourceId, (): number => 5)).rejects.toThrow(error);
+    expect(testLocker.getCount(resourceId)).toBe(0);
+    expect(resourceLocker.release).not.toHaveBeenCalled();
   });
 
   it('does not block single write operations.', async(): Promise<void> => {

@@ -1,8 +1,11 @@
 {
   "name": "@jeswr/community-solid-server",
-  "version": "7.1.10-alpha.0",
+  "version": "7.1.10-alpha.1",
   "description": "Community Solid Server: an open and modular implementation of the Solid specifications",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "homepage": "https://github.com/jeswr/CommunitySolidServer#readme",
   "repository": "git@github.com:jeswr/CommunitySolidServer.git",
   "bugs": {

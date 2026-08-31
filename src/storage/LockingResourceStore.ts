@@ -132,10 +132,15 @@ export class LockingResourceStore implements AtomicResourceStore {
       // Make the resource time out to ensure that the lock is always released eventually.
       this.locks.withReadLock(identifier, async(maintainLock): Promise<void> => {
         representation = await whileLocked();
+        const originalRead = representation.data.read.bind(representation.data);
         resolve(this.createExpiringRepresentation(representation, maintainLock));
 
         // Release the lock when an error occurs or the data finished streaming
-        await this.waitForStreamToEnd(representation.data);
+        try {
+          await this.waitForStreamToEnd(representation.data);
+        } finally {
+          representation.data.read = originalRead;
+        }
       }).catch((error: unknown): void => {
         // Destroy the source stream in case the lock times out
         representation?.data.destroy(error as Error);
@@ -216,15 +221,14 @@ export class LockingResourceStore implements AtomicResourceStore {
   protected createExpiringRepresentation(representation: Representation, maintainLock: () => void): Representation {
     const source = representation.data;
     // Spy on the source to maintain the lock upon reading.
-    const data = Object.create(source, {
-      read: {
-        value(size: number): unknown {
-          maintainLock();
-          return source.read(size);
-        },
-      },
-    }) as Readable;
-    return new BasicRepresentation(data, representation.metadata, representation.binary);
+    // Keep the same stream object: stream implementations store internal event state on the instance,
+    // so inheriting from it with Object.create can cause listeners to run with the wrong receiver.
+    const originalRead = source.read.bind(source);
+    source.read = (size?: number): unknown => {
+      maintainLock();
+      return originalRead(size);
+    };
+    return new BasicRepresentation(source, representation.metadata, representation.binary);
   }
 
   /**
