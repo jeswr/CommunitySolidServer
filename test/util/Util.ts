@@ -15,6 +15,7 @@ const portNames = [
   'GlobalQuota',
   'Identity',
   'LegacyWebSocketsProtocol',
+  'LinkedWebStorage',
   'LpdHandlerWithAuth',
   'LpdHandlerWithoutAuth',
   'Middleware',
