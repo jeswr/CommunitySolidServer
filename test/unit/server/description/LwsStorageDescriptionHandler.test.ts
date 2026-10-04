@@ -1,5 +1,6 @@
 import type { Operation } from '../../../../src/http/Operation';
 import { BasicRepresentation } from '../../../../src/http/representation/BasicRepresentation';
+import type { LwsStorageDescriber } from '../../../../src/server/description/LwsStorageDescriber';
 import type { LwsStorageDescriptionHandlerArgs } from '../../../../src/server/description/LwsStorageDescriptionHandler';
 import { LwsStorageDescriptionHandler } from '../../../../src/server/description/LwsStorageDescriptionHandler';
 import type { StorageLocationStrategy } from '../../../../src/server/description/StorageLocationStrategy';
@@ -163,6 +164,42 @@ describe('A LwsStorageDescriptionHandler', (): void => {
         ],
         capability: [{ type: 'JsonMergePatch' }],
       });
+    });
+
+    it('lets the describers extend the storage description.', async(): Promise<void> => {
+      const describer1: jest.Mocked<LwsStorageDescriber> = {
+        handleSafe: jest.fn(async({ description }): Promise<void> => {
+          description.service.push({ type: 'Extra', serviceEndpoint: 'http://example.com/extra' });
+        }),
+      } as any;
+      const describer2: jest.Mocked<LwsStorageDescriber> = {
+        handleSafe: jest.fn(async({ description }): Promise<void> => {
+          description.verificationMethod = [{ id: 'key' }];
+        }),
+      } as any;
+      handler = new LwsStorageDescriptionHandler({ ...args, describers: [ describer1, describer2 ]});
+      const result = await handler.handle({ request, response, operation });
+      expect(JSON.parse(await readableToString(result.data!))).toEqual({
+        '@context': [ 'https://www.w3.org/ns/cid/v1', 'https://www.w3.org/ns/lws/v1' ],
+        id: storage.path,
+        type: 'Storage',
+        service: [
+          { type: 'StorageRoot', serviceEndpoint: storage.path },
+          { type: 'Extra', serviceEndpoint: 'http://example.com/extra' },
+        ],
+        verificationMethod: [{ id: 'key' }],
+      });
+      expect(describer1.handleSafe).toHaveBeenCalledTimes(1);
+      expect(describer1.handleSafe.mock.calls[0][0].storage).toBe(storage);
+      expect(describer2.handleSafe).toHaveBeenCalledTimes(1);
+    });
+
+    it('fails if a describer fails.', async(): Promise<void> => {
+      const describer: jest.Mocked<LwsStorageDescriber> = {
+        handleSafe: jest.fn().mockRejectedValue(new Error('bad data')),
+      } as any;
+      handler = new LwsStorageDescriptionHandler({ ...args, describers: [ describer ]});
+      await expect(handler.handle({ request, response, operation })).rejects.toThrow('bad data');
     });
 
     it('returns no data for HEAD requests.', async(): Promise<void> => {

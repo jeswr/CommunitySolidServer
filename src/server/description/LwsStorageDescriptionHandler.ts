@@ -11,6 +11,7 @@ import { APPLICATION_LWS_CID } from '../../util/ContentTypes';
 import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpError';
 import type { OperationHttpHandlerInput } from '../OperationHttpHandler';
 import { OperationHttpHandler } from '../OperationHttpHandler';
+import type { LwsStorageDescriber, LwsStorageDescriberInput } from './LwsStorageDescriber';
 import type { StorageLocationStrategy } from './StorageLocationStrategy';
 
 /**
@@ -36,6 +37,10 @@ export interface LwsStorageDescriptionHandlerArgs {
    * Capabilities to include in every storage description.
    */
   capabilities?: LwsStorageEntry[];
+  /**
+   * Describers that can add entries to every storage description, such as additional services.
+   */
+  describers?: LwsStorageDescriber[];
   /**
    * Whether a request that only accepts `*` + `/` + `*` should also receive the storage description.
    * Requests without an Accept header always receive the description.
@@ -69,6 +74,7 @@ export class LwsStorageDescriptionHandler extends OperationHttpHandler {
   private readonly resourceSet: ResourceSet;
   private readonly services: LwsStorageEntry[];
   private readonly capabilities: LwsStorageEntry[];
+  private readonly describers: LwsStorageDescriber[];
   private readonly wildcardDescribes: boolean;
 
   public constructor(args: LwsStorageDescriptionHandlerArgs) {
@@ -77,6 +83,7 @@ export class LwsStorageDescriptionHandler extends OperationHttpHandler {
     this.resourceSet = args.resourceSet;
     this.services = args.services ?? [];
     this.capabilities = args.capabilities ?? [];
+    this.describers = args.describers ?? [];
     this.wildcardDescribes = args.wildcardDescribes ?? true;
   }
 
@@ -95,7 +102,7 @@ export class LwsStorageDescriptionHandler extends OperationHttpHandler {
   public async handle({ operation: { method, target }}: OperationHttpHandlerInput):
   Promise<ResponseDescription> {
     const representation = new BasicRepresentation(
-      JSON.stringify(this.describe(target)),
+      JSON.stringify(await this.describe(target)),
       target,
       APPLICATION_LWS_CID,
     );
@@ -109,12 +116,12 @@ export class LwsStorageDescriptionHandler extends OperationHttpHandler {
   /**
    * Generates the storage description for the given storage.
    */
-  protected describe(storage: ResourceIdentifier): Record<string, unknown> {
+  protected async describe(storage: ResourceIdentifier): Promise<Record<string, unknown>> {
     const services: LwsStorageEntry[] = [
       { type: 'StorageRoot', serviceEndpoint: storage.path },
       ...this.services.map((service): LwsStorageEntry => this.resolveEndpoint(service, storage)),
     ];
-    const description: Record<string, unknown> = {
+    const description: LwsStorageDescriberInput['description'] = {
       '@context': [ 'https://www.w3.org/ns/cid/v1', 'https://www.w3.org/ns/lws/v1' ],
       id: storage.path,
       type: 'Storage',
@@ -122,6 +129,9 @@ export class LwsStorageDescriptionHandler extends OperationHttpHandler {
     };
     if (this.capabilities.length > 0) {
       description.capability = this.capabilities;
+    }
+    for (const describer of this.describers) {
+      await describer.handleSafe({ storage, description });
     }
     return description;
   }

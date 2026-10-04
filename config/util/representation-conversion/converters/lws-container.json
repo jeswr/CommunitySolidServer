@@ -5,6 +5,7 @@
       "comment": "Converts containers to the LWS container representation. This is the default representation of containers, and is used for all of application/lws+json, application/ld+json, and application/json.",
       "@id": "urn:solid-server:default:ContainerToLwsJsonConverter",
       "@type": "ContainerToLwsJsonConverter",
+      "options_pageSize": 1000,
       "options_outputPreferences": [
         {
           "ContainerToLwsJsonConverter:_options_outputPreferences_key": "application/lws+json",

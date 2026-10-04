@@ -7,6 +7,8 @@
 - The server can be configured to serve the [Linked Web Storage](https://w3c.github.io/lws-protocol/lws10-core/) protocol,
   either on its own or together with the Solid Protocol,
   using WAC or ACP for authorization.
+  This includes container pagination, access requests and grants, webhook notifications,
+  recursive deletes, and problem details for errors.
   See the [documentation](https://communitysolidserver.github.io/CommunitySolidServer/latest/usage/linked-web-storage/).
 - Expiring read/write lockers can enforce an optional maximum hold duration,
   independent of activity-based lock renewals.

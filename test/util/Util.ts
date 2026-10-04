@@ -17,6 +17,7 @@ const portNames = [
   'Identity',
   'LegacyWebSocketsProtocol',
   'LinkedWebStorage',
+  'LinkedWebStorageInbox',
   'LpdHandlerWithAuth',
   'LpdHandlerWithoutAuth',
   'Middleware',

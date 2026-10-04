@@ -2,7 +2,7 @@
   "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
   "@graph": [
     {
-      "comment": "Caches the requested modes based on the incoming operation. Also supports the JSON Merge Patch documents required by LWS.",
+      "comment": "Caches the requested modes based on the incoming operation. Also supports the JSON Merge Patch documents and recursive deletes of LWS.",
       "@id": "urn:solid-server:default:ModesExtractor",
       "@type": "CachedHandler",
       "source": {
@@ -10,7 +10,13 @@
         "@type": "IntermediateCreateExtractor",
         "resourceSet": { "@id": "urn:solid-server:default:CachedResourceSet" },
         "strategy": { "@id": "urn:solid-server:default:IdentifierStrategy" },
-        "source": { "@id": "urn:solid-server:default:HttpModesExtractor" }
+        "source": {
+          "comment": "Requires delete permissions on all members of a container that is deleted recursively.",
+          "@type": "RecursiveDeleteModesExtractor",
+          "resourceSet": { "@id": "urn:solid-server:default:CachedResourceSet" },
+          "store": { "@id": "urn:solid-server:default:ResourceStore" },
+          "source": { "@id": "urn:solid-server:default:HttpModesExtractor" }
+        }
       }
     },
     {

@@ -8,6 +8,7 @@
     "css:config/util/representation-conversion/converters/solid-lws-container.json",
     "css:config/util/representation-conversion/converters/lws-linkset.json",
     "css:config/util/representation-conversion/converters/markdown.json",
+    "css:config/util/representation-conversion/converters/problem-json.json",
     "css:config/util/representation-conversion/converters/quad-to-rdf.json",
     "css:config/util/representation-conversion/converters/rdf-to-quad.json"
   ],
@@ -29,6 +30,7 @@
             { "@id": "urn:solid-server:default:QuadToRdfConverter" },
             { "@id": "urn:solid-server:default:QuadToLinksetConverter" },
             { "@id": "urn:solid-server:default:ContainerToTemplateConverter" },
+            { "@id": "urn:solid-server:default:ErrorToProblemJsonConverter" },
             { "@id": "urn:solid-server:default:ErrorToJsonConverter" },
             { "@id": "urn:solid-server:default:ErrorToQuadConverter" },
             { "@id": "urn:solid-server:default:ErrorToTemplateConverter" },

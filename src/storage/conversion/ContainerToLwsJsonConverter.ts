@@ -1,11 +1,15 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import type { NamedNode, Quad, Term } from '@rdfjs/types';
+import { DataFactory } from 'n3';
+import { LWS_PAGE_UNIT } from '../../http/input/preferences/LwsPagePreferenceParser';
 import { BasicRepresentation } from '../../http/representation/BasicRepresentation';
 import type { Representation } from '../../http/representation/Representation';
 import { RepresentationMetadata } from '../../http/representation/RepresentationMetadata';
 import type { ValuePreferences } from '../../http/representation/RepresentationPreferences';
 import { APPLICATION_JSON, APPLICATION_LD_JSON, APPLICATION_LWS_JSON, INTERNAL_QUADS } from '../../util/ContentTypes';
+import { NotFoundHttpError } from '../../util/errors/NotFoundHttpError';
 import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpError';
+import { IANA_RELATION_NAMESPACE } from '../../util/LinksetUtil';
 import { isContainerPath } from '../../util/PathUtil';
 import { readableToQuads } from '../../util/StreamUtil';
 import { CONTENT_TYPE, CONTENT_TYPE_TERM, DC, IANA, LDP, POSIX, RDF } from '../../util/Vocabularies';
@@ -17,6 +21,16 @@ import type { RepresentationConverterArgs } from './RepresentationConverter';
  * The JSON-LD context of LWS container representations.
  */
 export const LWS_CONTEXT = 'https://www.w3.org/ns/lws/v1';
+
+/**
+ * The link relations used for pagination links, as IANA relation URIs.
+ */
+export const PAGINATION_RELATIONS = {
+  first: DataFactory.namedNode(`${IANA_RELATION_NAMESPACE}first`),
+  last: DataFactory.namedNode(`${IANA_RELATION_NAMESPACE}last`),
+  next: DataFactory.namedNode(`${IANA_RELATION_NAMESPACE}next`),
+  prev: DataFactory.namedNode(`${IANA_RELATION_NAMESPACE}prev`),
+};
 
 /**
  * A contained resource description as defined by the LWS container representation.
@@ -62,15 +76,31 @@ export interface LwsContainerRepresentation {
  *    if one of the media types it can produce is explicitly requested,
  *    so requests that only match through wildcards are rejected.
  *    This allows servers to keep a different default representation for containers.
+ *
+ * Containers with more members than the `pageSize` are paginated, as described in LWS, §Pagination.
+ * Pagination links to the other pages are added to the metadata, using IANA relation URIs as predicates.
+ * The requested page is determined by range preferences with the {@link LWS_PAGE_UNIT} unit.
  */
 export class ContainerToLwsJsonConverter extends BaseTypedRepresentationConverter {
   private readonly strictPreferences: boolean;
   private readonly requireExplicit: boolean;
+  private readonly pageSize: number;
+  private readonly pageParameter: string;
 
+  /**
+   * @param options - Options for the converter.
+   * @param options.outputPreferences - The produced media types and their weights.
+   * @param options.strictPreferences - Whether explicitly preferred types this converter can not produce win.
+   * @param options.requireExplicit - Whether one of the produced types needs to be explicitly requested.
+   * @param options.pageSize - The maximum number of items on a page. Defaults to 1000.
+   * @param options.pageParameter - The query parameter used in page URIs. Defaults to `page`.
+   */
   public constructor(options: {
     outputPreferences?: Record<string, number>;
     strictPreferences?: boolean;
     requireExplicit?: boolean;
+    pageSize?: number;
+    pageParameter?: string;
   } = {}) {
     super(INTERNAL_QUADS, options.outputPreferences ?? {
       [APPLICATION_LWS_JSON]: 1,
@@ -79,6 +109,8 @@ export class ContainerToLwsJsonConverter extends BaseTypedRepresentationConverte
     });
     this.strictPreferences = options.strictPreferences ?? false;
     this.requireExplicit = options.requireExplicit ?? false;
+    this.pageSize = options.pageSize ?? 1000;
+    this.pageParameter = options.pageParameter ?? 'page';
   }
 
   public async canHandle(args: RepresentationConverterArgs): Promise<void> {
@@ -114,19 +146,60 @@ export class ContainerToLwsJsonConverter extends BaseTypedRepresentationConverte
     const children = store.getObjects(container, LDP.terms.contains, null)
       .map((child): string => child.value)
       .sort();
-    const items = children.map((child): LwsContainedResource =>
+
+    const metadata = new RepresentationMetadata(representation.metadata, { [CONTENT_TYPE]: contentType });
+    const pageChildren = this.paginate(container, children, metadata, preferences.range);
+    const items = pageChildren.map((child): LwsContainedResource =>
       this.describeChild(child, store.getQuads(child, null, null, null)));
 
     const result: LwsContainerRepresentation = {
       '@context': LWS_CONTEXT,
       id: container,
       type: 'Container',
-      totalItems: items.length,
+      totalItems: children.length,
       items,
     };
 
-    const metadata = new RepresentationMetadata(representation.metadata, { [CONTENT_TYPE]: contentType });
     return new BasicRepresentation(JSON.stringify(result), metadata);
+  }
+
+  /**
+   * Returns the children on the requested page, and adds the pagination links to the metadata.
+   * Containers with at most `pageSize` children are not paginated.
+   */
+  protected paginate(
+    container: string,
+    children: string[],
+    metadata: RepresentationMetadata,
+    range?: RepresentationConverterArgs['preferences']['range'],
+  ): string[] {
+    const page = range?.unit === LWS_PAGE_UNIT ? range.parts[0].start : 1;
+    if (children.length <= this.pageSize) {
+      if (page > 1) {
+        throw new NotFoundHttpError(`Page ${page} of ${container} does not exist.`);
+      }
+      return children;
+    }
+
+    const pageCount = Math.ceil(children.length / this.pageSize);
+    if (page > pageCount) {
+      throw new NotFoundHttpError(`Page ${page} of ${container} does not exist.`);
+    }
+    const pageUri = (index: number): NamedNode => {
+      const url = new URL(container);
+      url.searchParams.set(this.pageParameter, `${index}`);
+      return DataFactory.namedNode(url.href);
+    };
+    // "rel="first": The URI of the first page of results. MUST be present on paginated responses."
+    metadata.add(PAGINATION_RELATIONS.first, pageUri(1));
+    metadata.add(PAGINATION_RELATIONS.last, pageUri(pageCount));
+    if (page > 1) {
+      metadata.add(PAGINATION_RELATIONS.prev, pageUri(page - 1));
+    }
+    if (page < pageCount) {
+      metadata.add(PAGINATION_RELATIONS.next, pageUri(page + 1));
+    }
+    return children.slice((page - 1) * this.pageSize, page * this.pageSize);
   }
 
   /**

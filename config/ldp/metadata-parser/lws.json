@@ -11,12 +11,13 @@
   ],
   "@graph": [
     {
-      "comment": "Converts request metadata (e.g. headers) to RDF metadata. Also supports the LWS container type.",
+      "comment": "Converts request metadata (e.g. headers) to RDF metadata. Also supports the LWS container type and the Depth header.",
       "@id": "urn:solid-server:default:MetadataParser",
       "@type": "ParallelHandler",
       "handlers": [
         { "@id": "urn:solid-server:default:AuthorizationParser" },
         { "@id": "urn:solid-server:default:CookieParser" },
+        { "@type": "DepthParser" },
         { "@id": "urn:solid-server:default:ContentTypeParser" },
         { "@id": "urn:solid-server:default:LinkRelParser" },
         { "@id": "urn:solid-server:default:LwsContainerTypeParser" },
