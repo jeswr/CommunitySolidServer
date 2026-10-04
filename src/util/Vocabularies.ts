@@ -165,6 +165,8 @@ export const SOLID_HTTP = createVocabulary(
   'accountCookie',
   // When the above cookie expires, expects an ISO date string
   'accountCookieExpiration',
+  // Set to `infinity` when the request has a `Depth: infinity` header
+  'depth',
   // Unit, start, and end are used for range headers
   'end',
   'location',

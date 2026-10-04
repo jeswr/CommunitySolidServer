@@ -1,4 +1,5 @@
 import { getLoggerFor } from '../../../logging/LogUtil';
+import { PAGINATION_RELATIONS } from '../../../storage/conversion/ContainerToLwsJsonConverter';
 import type { StorageLocationStrategy } from '../../../server/description/StorageLocationStrategy';
 import type { HttpResponse } from '../../../server/HttpResponse';
 import { APPLICATION_LINKSET_JSON, APPLICATION_LWS_CID } from '../../../util/ContentTypes';
@@ -19,6 +20,7 @@ import { MetadataWriter } from './MetadataWriter';
  *  * `rel="up"`, pointing to the parent container, unless the resource is a storage root.
  *  * `rel="type"`, with value `lws:Container` or `lws:DataResource`.
  *  * `rel="linkset"`, pointing to the linkset resource of the resource.
+ *  * `rel="first"`, `rel="last"`, `rel="prev"`, and `rel="next"` for paginated container listings.
  *
  * Auxiliary resources only receive the storage link as they are not part of the containment hierarchy.
  * The storage description, and error responses which have a target, such as 401 responses,
@@ -101,6 +103,13 @@ export class LwsLinkMetadataWriter extends MetadataWriter {
 
     const linkset = this.linksetStrategy.getAuxiliaryIdentifier(identifier);
     addHeader(response, 'Link', `<${linkset.path}>; rel="linkset"; type="${APPLICATION_LINKSET_JSON}"`);
+
+    // Pagination links of paginated container listings
+    for (const [ rel, predicate ] of Object.entries(PAGINATION_RELATIONS)) {
+      for (const page of metadata.getAll(predicate)) {
+        addHeader(response, 'Link', `<${page.value}>; rel="${rel}"`);
+      }
+    }
   }
 
   private async findStorage(identifier: ResourceIdentifier): Promise<ResourceIdentifier | undefined> {

@@ -9,10 +9,16 @@ export * from './authentication/UnionCredentialsExtractor';
 export * from './authentication/UnsecureConstantCredentialsExtractor';
 export * from './authentication/UnsecureWebIdExtractor';
 
+// Authorization/LWS
+export * from './authorization/lws/AccessGrantIndex';
+export * from './authorization/lws/AccessGrantReader';
+export * from './authorization/lws/AccessGrantUtil';
+
 // Authorization/Permissions
 export * from './authorization/permissions/CreateModesExtractor';
 export * from './authorization/permissions/IntermediateCreateExtractor';
 export * from './authorization/permissions/ModesExtractor';
+export * from './authorization/permissions/RecursiveDeleteModesExtractor';
 export * from './authorization/permissions/JsonMergePatchModesExtractor';
 export * from './authorization/permissions/MethodModesExtractor';
 export * from './authorization/permissions/N3PatchModesExtractor';
@@ -65,6 +71,7 @@ export * from './http/input/metadata/AuthorizationParser';
 export * from './http/input/metadata/ContentLengthParser';
 export * from './http/input/metadata/ContentTypeParser';
 export * from './http/input/metadata/CookieParser';
+export * from './http/input/metadata/DepthParser';
 export * from './http/input/metadata/LinkRelParser';
 export * from './http/input/metadata/LwsContainerTypeParser';
 export * from './http/input/metadata/MetadataParser';
@@ -73,13 +80,19 @@ export * from './http/input/metadata/SlugParser';
 
 // HTTP/Input/Preferences
 export * from './http/input/preferences/AcceptPreferenceParser';
+export * from './http/input/preferences/LwsPagePreferenceParser';
 export * from './http/input/preferences/PreferenceParser';
 export * from './http/input/preferences/RangePreferenceParser';
+export * from './http/input/preferences/StaticTypePreferenceParser';
 export * from './http/input/preferences/UnionPreferenceParser';
 
 // HTTP/Input
 export * from './http/input/BasicRequestParser';
 export * from './http/input/RequestParser';
+
+// HTTP/LDP/LWS
+export * from './http/ldp/lws/AccessContainerInitializingHandler';
+export * from './http/ldp/lws/AccessDocumentOperationHandler';
 
 // HTTP/LDP
 export * from './http/ldp/DeleteOperationHandler';
@@ -90,11 +103,13 @@ export * from './http/ldp/OperationHandler';
 export * from './http/ldp/PatchOperationHandler';
 export * from './http/ldp/PostOperationHandler';
 export * from './http/ldp/PutOperationHandler';
+export * from './http/ldp/RecursiveDeleteOperationHandler';
 
 // HTTP/Output/Error
 export * from './http/output/error/ConvertingErrorHandler';
 export * from './http/output/error/EmptyErrorHandler';
 export * from './http/output/error/ErrorHandler';
+export * from './http/output/error/FallbackErrorHandler';
 export * from './http/output/error/RedirectingErrorHandler';
 export * from './http/output/error/SafeErrorHandler';
 export * from './http/output/error/TargetExtractorErrorHandler';
@@ -364,6 +379,9 @@ export * from './server/WebSocketHandler';
 export * from './server/WebSocketServerConfigurator';
 
 // Server/Description
+export * from './server/description/AccessServiceDescriber';
+export * from './server/description/LwsNotificationServiceDescriber';
+export * from './server/description/LwsStorageDescriber';
 export * from './server/description/LwsStorageDescriptionHandler';
 export * from './server/description/PodStorageLocationStrategy';
 export * from './server/description/RootStorageLocationStrategy';
@@ -385,6 +403,14 @@ export * from './server/notifications/generate/AddRemoveNotificationGenerator';
 export * from './server/notifications/generate/DeleteNotificationGenerator';
 export * from './server/notifications/generate/NotificationGenerator';
 export * from './server/notifications/generate/StateNotificationGenerator';
+
+// Server/Notifications/LWS
+export * from './server/notifications/lws/HttpMessageSigner';
+export * from './server/notifications/lws/LwsNotificationListener';
+export * from './server/notifications/lws/LwsNotificationSender';
+export * from './server/notifications/lws/LwsSubscriptionHttpHandler';
+export * from './server/notifications/lws/LwsSubscriptionStorage';
+export * from './server/notifications/lws/WebhookLwsNotificationSender';
 
 // Server/Notifications/Serialize
 export * from './server/notifications/serialize/ConvertingNotificationSerializer';
@@ -465,6 +491,7 @@ export * from './storage/conversion/ContentTypeReplacer';
 export * from './storage/conversion/ConversionUtil';
 export * from './storage/conversion/DynamicJsonToTemplateConverter';
 export * from './storage/conversion/ErrorToJsonConverter';
+export * from './storage/conversion/ErrorToProblemJsonConverter';
 export * from './storage/conversion/ErrorToQuadConverter';
 export * from './storage/conversion/ErrorToTemplateConverter';
 export * from './storage/conversion/FormToJsonConverter';
@@ -538,6 +565,7 @@ export * from './storage/BaseResourceStore';
 export * from './storage/BinarySliceResourceStore';
 export * from './storage/CachedResourceSet';
 export * from './storage/CachedResourceStore';
+export * from './storage/ContainerUtil';
 export * from './storage/DataAccessorBasedStore';
 export * from './storage/IndexRepresentationStore';
 export * from './storage/LockingResourceStore';

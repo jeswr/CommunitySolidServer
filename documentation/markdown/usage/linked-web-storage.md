@@ -89,11 +89,88 @@ so access can be granted to a `did:key` identifier the same way as to a WebID.
 In the dual configurations, Solid-OIDC DPoP and Bearer tokens are also accepted.
 Bearer tokens that have a `webid` claim are treated as Solid-OIDC tokens.
 
+## Pagination
+
+Container listings with more than 1000 members are split into pages.
+Every page has `first` and `last` links, and `prev` and `next` links where applicable.
+The page URIs have a `page` query parameter, but clients should only follow the links.
+The `items` of a page only contain the members on that page, while `totalItems` is the number of all members.
+The page size can be changed with the `options_pageSize` parameter of the `ContainerToLwsJsonConverter`
+in `config/util/representation-conversion/converters/lws-container.json`.
+
+## Recursive deletes
+
+A `DELETE` request with a `Depth: infinity` header deletes a container together with all resources in it.
+This requires the `delete` permission on all those resources.
+The deletion is not atomic: if a resource can not be deleted, the resources deleted before it stay deleted.
+
+## Errors
+
+Errors are described with [problem details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`),
+unless the client prefers a media type the error can be converted to, such as HTML or Turtle.
+
+## Access requests and grants
+
+Every storage has an access request container at `.lws/requests/`
+and an access grant container at `.lws/grants/`, relative to the storage URI.
+Both are advertised in the storage description with the `https://www.w3.org/ns/lws#AccessProfile` profile.
+The containers are created when the first request for a resource in the storage arrives.
+
+* Any authenticated agent can create an access request by posting it to the access request container.
+* Access grants are created by posting them to the access grant container.
+  They grant access next to the WAC or ACP policies, so a grant can only add permissions.
+  Deleting a grant revokes it.
+* The containers themselves are protected by the WAC or ACP policies of the storage,
+  so by default only the owner of the storage can read the requests and create grants.
+  Make sure the policies of the `.lws/` container do not give other agents access to these containers.
+
+The posted documents are validated against the Access Profile of LWS,
+and can not be modified afterwards: only `GET`, `HEAD`, and `DELETE` are allowed on them.
+
+The policies of a grant are interpreted as follows:
+
+* The `assignee` is compared with the WebID or other identifier of the agent.
+  `http://xmlns.com/foaf/0.1/Agent` grants access to everyone, including unauthenticated agents.
+* A policy only applies to the resources listed in its `target`, so targets are not recursive.
+  The target `type` limits the resources to containers (`Container`), data resources (`DataResource`),
+  or both (`StorageResource`). A policy without a target does not grant anything.
+  Grants can not target the `.lws/` container or its contents.
+* The `read`, `modify`, and `delete` actions correspond to reading, modifying, and deleting the target.
+  The `create` action on a container allows creating resources directly in that container.
+* All constraints need to be satisfied: `client` is compared with the client identifier of the request,
+  `format` with the media type of the resource, `type` with its types, and `dateTime` with the current time.
+  `purpose` constraints are always considered to be satisfied,
+  as the server can not verify the purpose of a request.
+
+When a grant with an `inbox` is created, a notification is sent to that inbox.
+The grants are cached in memory, so this feature does not work on a server with multiple worker threads.
+
+## Notifications
+
+The server supports the [LWS Webhook notification suite](https://w3c.github.io/lws-protocol/lws10-notifications-webhook/).
+Its subscription endpoint is `/.notifications/lws/`, which is advertised in the storage description.
+
+* A `POST` request with a `WebhookSubscription` creates a subscription,
+  if the subscriber can read all resources in its `topic` array.
+  Subscriptions to a container also cover all resources contained in it, recursively.
+* A `GET` request on the endpoint lists the subscriptions of the authenticated subscriber,
+  and a subscription can be read and deleted by its subscriber.
+* Notifications about creating, updating, and deleting resources are sent to the `inbox` of the subscription,
+  but only if the subscriber can still read the resource when the change happens.
+  The notifications do not contain the agent that made the change.
+* Notifications are signed with [HTTP Message Signatures](https://www.rfc-editor.org/rfc/rfc9421).
+  The key is in the `verificationMethod` of the storage description.
+* Deliveries that fail with a `5xx` response or a network error are tried again twice.
+  Subscriptions are removed after 5 failed deliveries in a row, or when the inbox answers with `410 Gone`.
+
+Like the access grants, the subscriptions are cached in memory,
+so this feature does not work on a server with multiple worker threads.
+The Solid notification channels remain available next to the LWS notifications.
+
 ## Not supported
 
 The following parts of LWS are not supported yet:
 
-* Pagination of containers.
-* Access requests and grants.
-* LWS webhook notifications. The Solid notification channels are still available.
-* Recursive deletion with the `Depth` header.
+* Notifications to the storage controller when an access request is created,
+  as LWS does not define how the inbox of the storage controller is found.
+* The SAML authentication suite.

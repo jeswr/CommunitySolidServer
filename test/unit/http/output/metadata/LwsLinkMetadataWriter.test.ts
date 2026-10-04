@@ -5,6 +5,7 @@ import { RepresentationMetadata } from '../../../../../src/http/representation/R
 import type { ResourceIdentifier } from '../../../../../src/http/representation/ResourceIdentifier';
 import type { StorageLocationStrategy } from '../../../../../src/server/description/StorageLocationStrategy';
 import type { HttpResponse } from '../../../../../src/server/HttpResponse';
+import { PAGINATION_RELATIONS } from '../../../../../src/storage/conversion/ContainerToLwsJsonConverter';
 import { NotFoundHttpError } from '../../../../../src/util/errors/NotFoundHttpError';
 import type { IdentifierStrategy } from '../../../../../src/util/identifiers/IdentifierStrategy';
 import { LDP, LWS, RDF, SOLID_ERROR, SOLID_HTTP } from '../../../../../src/util/Vocabularies';
@@ -153,5 +154,24 @@ describe('A LwsLinkMetadataWriter', (): void => {
     const metadata = new RepresentationMetadata({ path: 'http://example.com/' }, 'application/lws+cid');
     await expect(writer.handle({ response, metadata })).resolves.toBeUndefined();
     expect(links()).toEqual([ `<http://example.com/>; rel="${LWS.storage}"` ]);
+  });
+
+  it('adds pagination links for paginated container listings.', async(): Promise<void> => {
+    const metadata = resourceMetadata('http://example.com/foo/');
+    metadata.add(PAGINATION_RELATIONS.first, 'http://example.com/foo/?page=1');
+    metadata.add(PAGINATION_RELATIONS.last, 'http://example.com/foo/?page=3');
+    metadata.add(PAGINATION_RELATIONS.prev, 'http://example.com/foo/?page=1');
+    metadata.add(PAGINATION_RELATIONS.next, 'http://example.com/foo/?page=3');
+    await expect(writer.handle({ response, metadata })).resolves.toBeUndefined();
+    expect(links()).toEqual([
+      `<http://example.com/>; rel="${LWS.storage}"`,
+      '<http://example.com/>; rel="up"',
+      `<${LWS.Container}>; rel="type"`,
+      '<http://example.com/foo/.linkset>; rel="linkset"; type="application/linkset+json"',
+      '<http://example.com/foo/?page=1>; rel="first"',
+      '<http://example.com/foo/?page=3>; rel="last"',
+      '<http://example.com/foo/?page=3>; rel="next"',
+      '<http://example.com/foo/?page=1>; rel="prev"',
+    ]);
   });
 });

@@ -5,12 +5,18 @@ import type { RepresentationPreferences } from '../../../../src/http/representat
 import {
   ContainerToLwsJsonConverter,
   LWS_CONTEXT,
+  PAGINATION_RELATIONS,
 } from '../../../../src/storage/conversion/ContainerToLwsJsonConverter';
+import { NotFoundHttpError } from '../../../../src/util/errors/NotFoundHttpError';
 import { NotImplementedHttpError } from '../../../../src/util/errors/NotImplementedHttpError';
 import { readableToString } from '../../../../src/util/StreamUtil';
 import { CONTENT_TYPE_TERM, DC, IANA, LDP, POSIX, RDF } from '../../../../src/util/Vocabularies';
 
 const { namedNode: nn, literal, quad } = DataFactory;
+
+function itemIds(json: any): string[] {
+  return json.items.map((item: any): string => item.id);
+}
 
 describe('A ContainerToLwsJsonConverter', (): void => {
   const container = { path: 'http://test.com/container/' };
@@ -178,6 +184,156 @@ describe('A ContainerToLwsJsonConverter', (): void => {
         preferences: { type: { 'text/html': 1 }},
       });
       expect(result.metadata.contentType).toBe('application/lws+json');
+    });
+  });
+
+  describe('pagination', (): void => {
+    const c = container.path;
+    const members = [ 'a', 'b', 'c', 'd', 'e' ].map((name): string => `${c}${name}`);
+    const preferences: RepresentationPreferences = { type: { 'application/lws+json': 1 }};
+
+    function createRepresentation(): Representation {
+      return new BasicRepresentation(
+        members.map((member): any => quad(nn(c), LDP.terms.contains, nn(member))),
+        'internal/quads',
+        false,
+      );
+    }
+
+    function pageRange(page: number): RepresentationPreferences['range'] {
+      return { unit: 'lws-page', parts: [{ start: page }]};
+    }
+
+    beforeEach(async(): Promise<void> => {
+      converter = new ContainerToLwsJsonConverter({ pageSize: 2 });
+    });
+
+    it('does not paginate containers with at most pageSize members.', async(): Promise<void> => {
+      converter = new ContainerToLwsJsonConverter({ pageSize: 5 });
+      const result = await converter.handle({
+        identifier: container,
+        representation: createRepresentation(),
+        preferences,
+      });
+      const json = JSON.parse(await readableToString(result.data));
+      expect(json.totalItems).toBe(5);
+      expect(itemIds(json)).toEqual(members);
+      expect(result.metadata.get(PAGINATION_RELATIONS.first)).toBeUndefined();
+      expect(result.metadata.get(PAGINATION_RELATIONS.last)).toBeUndefined();
+    });
+
+    it('accepts the first page of containers that are not paginated.', async(): Promise<void> => {
+      converter = new ContainerToLwsJsonConverter({ pageSize: 5 });
+      const result = await converter.handle({
+        identifier: container,
+        representation: createRepresentation(),
+        preferences: { ...preferences, range: pageRange(1) },
+      });
+      const json = JSON.parse(await readableToString(result.data));
+      expect(itemIds(json)).toEqual(members);
+    });
+
+    it('throws a 404 for other pages of containers that are not paginated.', async(): Promise<void> => {
+      converter = new ContainerToLwsJsonConverter({ pageSize: 5 });
+      const promise = converter.handle({
+        identifier: container,
+        representation: createRepresentation(),
+        preferences: { ...preferences, range: pageRange(2) },
+      });
+      await expect(promise).rejects.toThrow(NotFoundHttpError);
+      await expect(promise).rejects.toThrow(`Page 2 of ${c} does not exist.`);
+    });
+
+    it('returns the first page by default.', async(): Promise<void> => {
+      const result = await converter.handle({
+        identifier: container,
+        representation: createRepresentation(),
+        preferences,
+      });
+      const json = JSON.parse(await readableToString(result.data));
+      expect(json.totalItems).toBe(5);
+      expect(itemIds(json)).toEqual([ `${c}a`, `${c}b` ]);
+      expect(result.metadata.contentType).toBe('application/lws+json');
+      expect(result.metadata.get(PAGINATION_RELATIONS.first)?.value).toBe(`${c}?page=1`);
+      expect(result.metadata.get(PAGINATION_RELATIONS.last)?.value).toBe(`${c}?page=3`);
+      expect(result.metadata.get(PAGINATION_RELATIONS.prev)).toBeUndefined();
+      expect(result.metadata.get(PAGINATION_RELATIONS.next)?.value).toBe(`${c}?page=2`);
+    });
+
+    it('ignores ranges with a different unit.', async(): Promise<void> => {
+      const result = await converter.handle({
+        identifier: container,
+        representation: createRepresentation(),
+        preferences: { ...preferences, range: { unit: 'bytes', parts: [{ start: 3 }]}},
+      });
+      const json = JSON.parse(await readableToString(result.data));
+      expect(itemIds(json)).toEqual([ `${c}a`, `${c}b` ]);
+    });
+
+    it('returns the requested middle page.', async(): Promise<void> => {
+      const result = await converter.handle({
+        identifier: container,
+        representation: createRepresentation(),
+        preferences: { ...preferences, range: pageRange(2) },
+      });
+      const json = JSON.parse(await readableToString(result.data));
+      expect(json.totalItems).toBe(5);
+      expect(itemIds(json)).toEqual([ `${c}c`, `${c}d` ]);
+      expect(result.metadata.get(PAGINATION_RELATIONS.first)?.value).toBe(`${c}?page=1`);
+      expect(result.metadata.get(PAGINATION_RELATIONS.last)?.value).toBe(`${c}?page=3`);
+      expect(result.metadata.get(PAGINATION_RELATIONS.prev)?.value).toBe(`${c}?page=1`);
+      expect(result.metadata.get(PAGINATION_RELATIONS.next)?.value).toBe(`${c}?page=3`);
+    });
+
+    it('returns the requested last page.', async(): Promise<void> => {
+      const result = await converter.handle({
+        identifier: container,
+        representation: createRepresentation(),
+        preferences: { ...preferences, range: pageRange(3) },
+      });
+      const json = JSON.parse(await readableToString(result.data));
+      expect(json.totalItems).toBe(5);
+      expect(itemIds(json)).toEqual([ `${c}e` ]);
+      expect(result.metadata.get(PAGINATION_RELATIONS.prev)?.value).toBe(`${c}?page=2`);
+      expect(result.metadata.get(PAGINATION_RELATIONS.next)).toBeUndefined();
+    });
+
+    it('throws a 404 for pages that are out of range.', async(): Promise<void> => {
+      const promise = converter.handle({
+        identifier: container,
+        representation: createRepresentation(),
+        preferences: { ...preferences, range: pageRange(4) },
+      });
+      await expect(promise).rejects.toThrow(NotFoundHttpError);
+      await expect(promise).rejects.toThrow(`Page 4 of ${c} does not exist.`);
+    });
+
+    it('can use a different page parameter.', async(): Promise<void> => {
+      converter = new ContainerToLwsJsonConverter({ pageSize: 2, pageParameter: 'p' });
+      const result = await converter.handle({
+        identifier: container,
+        representation: createRepresentation(),
+        preferences,
+      });
+      expect(result.metadata.get(PAGINATION_RELATIONS.first)?.value).toBe(`${c}?p=1`);
+      expect(result.metadata.get(PAGINATION_RELATIONS.next)?.value).toBe(`${c}?p=2`);
+    });
+
+    it('defaults to a page size of 1000.', async(): Promise<void> => {
+      converter = new ContainerToLwsJsonConverter();
+      const quads = [];
+      for (let i = 0; i < 1001; i++) {
+        quads.push(quad(nn(c), LDP.terms.contains, nn(`${c}${String(i).padStart(4, '0')}`)));
+      }
+      const result = await converter.handle({
+        identifier: container,
+        representation: new BasicRepresentation(quads, 'internal/quads', false),
+        preferences: { ...preferences, range: pageRange(2) },
+      });
+      const json = JSON.parse(await readableToString(result.data));
+      expect(json.totalItems).toBe(1001);
+      expect(itemIds(json)).toEqual([ `${c}1000` ]);
+      expect(result.metadata.get(PAGINATION_RELATIONS.last)?.value).toBe(`${c}?page=2`);
     });
   });
 });
