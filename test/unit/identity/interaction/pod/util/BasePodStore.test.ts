@@ -36,6 +36,7 @@ describe('A BasePodStore', (): void => {
 
     manager = {
       createPod: jest.fn(),
+      deletePod: jest.fn(),
     };
 
     store = new BasePodStore(storage, manager);
@@ -182,6 +183,28 @@ describe('A BasePodStore', (): void => {
     await expect(store.removeOwner(id, webId)).rejects.toThrow(BadRequestHttpError);
     expect(storage.find).toHaveBeenCalledTimes(1);
     expect(storage.find).toHaveBeenLastCalledWith(OWNER_TYPE, { podId: id });
+    expect(storage.delete).toHaveBeenCalledTimes(0);
+  });
+
+  it('deletes the pod data before removing the pod from the account.', async(): Promise<void> => {
+    await expect(store.delete(id)).resolves.toBeUndefined();
+    expect(manager.deletePod).toHaveBeenCalledTimes(1);
+    expect(manager.deletePod).toHaveBeenLastCalledWith({ path: baseUrl });
+    expect(storage.delete).toHaveBeenCalledTimes(1);
+    expect(storage.delete).toHaveBeenLastCalledWith(STORAGE_TYPE, id);
+    expect(manager.deletePod.mock.invocationCallOrder[0]).toBeLessThan(storage.delete.mock.invocationCallOrder[0]);
+  });
+
+  it('keeps the pod in the account if deleting the data fails.', async(): Promise<void> => {
+    manager.deletePod.mockRejectedValueOnce(new Error('bad data'));
+    await expect(store.delete(id)).rejects.toThrow('bad data');
+    expect(storage.delete).toHaveBeenCalledTimes(0);
+  });
+
+  it('does nothing when deleting an unknown pod.', async(): Promise<void> => {
+    storage.get.mockResolvedValueOnce(undefined);
+    await expect(store.delete(id)).resolves.toBeUndefined();
+    expect(manager.deletePod).toHaveBeenCalledTimes(0);
     expect(storage.delete).toHaveBeenCalledTimes(0);
   });
 });

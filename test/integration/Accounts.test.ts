@@ -40,7 +40,7 @@ describe.each(stores)('A server with account management using %s', (name, { conf
   const indexUrl = joinUrl(baseUrl, '.account/');
   let controls: {
     main: Record<'index' | 'logins', string>;
-    account: Record<'create' | 'logout' | 'pod' | 'webId' | 'clientCredentials', string>;
+    account: Record<'create' | 'logout' | 'pod' | 'webId' | 'clientCredentials' | 'account', string>;
     password: Record<'login' | 'forgot' | 'create', string>;
   };
   let passwordResource: string;
@@ -127,6 +127,7 @@ describe.each(stores)('A server with account management using %s', (name, { conf
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.controls.account.logout).toBeDefined();
+    expect(json.controls.account.account).toBeDefined();
     expect(json.controls.account.pod).toBeDefined();
     expect(json.controls.account.webId).toBeDefined();
     expect(json.controls.account.clientCredentials).toBeDefined();
@@ -607,5 +608,76 @@ describe.each(stores)('A server with account management using %s', (name, { conf
     });
     expect(res.status).toBe(200);
     expect(res.headers.get('set-cookie')).toBeDefined();
+  });
+
+  it('can delete a pod with all its data.', async(): Promise<void> => {
+    let res = await fetch(controls.account.pod, {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'deleted' }),
+    });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const nested = { path: joinUrl(json.pod, 'nested/container/resource.txt') };
+    await store.setRepresentation(nested, new BasicRepresentation('data', 'text/plain'));
+
+    res = await fetch(json.podResource, { method: 'DELETE', headers: { cookie }});
+    expect(res.status).toBe(200);
+
+    await expect(store.hasResource({ path: json.pod })).resolves.toBe(false);
+    await expect(store.hasResource({ path: joinUrl(json.pod, '.acl') })).resolves.toBe(false);
+    await expect(store.hasResource(nested)).resolves.toBe(false);
+
+    // The pod and its WebID are removed from the account
+    res = await fetch(controls.account.pod, { headers: { cookie }});
+    expect((await res.json()).pods[json.pod]).toBeUndefined();
+    res = await fetch(controls.account.webId, { headers: { cookie }});
+    expect((await res.json()).webIdLinks[json.webId]).toBeUndefined();
+    expect((await fetch(json.podResource, { headers: { cookie }})).status).toBe(404);
+
+    // The name can be used again
+    res = await fetch(controls.account.pod, {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'deleted' }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('can delete the account together with its pods.', async(): Promise<void> => {
+    let res = await fetch(controls.account.pod, { headers: { cookie }});
+    const pods = Object.keys((await res.json()).pods);
+    expect(pods.length).toBeGreaterThan(0);
+
+    res = await fetch(controls.account.account, { method: 'DELETE', headers: { cookie }});
+    expect(res.status).toBe(200);
+    const cookies = parse(splitCookiesString(res.headers.get('set-cookie')!));
+    expect(cookies[0].expires).toEqual(new Date(0));
+
+    for (const podUrl of pods) {
+      await expect(store.hasResource({ path: podUrl })).resolves.toBe(false);
+    }
+
+    // The account can no longer be used
+    expect((await fetch(controls.account.pod, { headers: { cookie }})).status).toBe(401);
+    res = await fetch(controls.password.login, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    expect(res.status).toBe(403);
+
+    // The email address can be used for a new account
+    res = await fetch(controls.account.create, { method: 'POST' });
+    const newCookie = `${parse(splitCookiesString(res.headers.get('set-cookie')!))[0].name}=${
+      parse(splitCookiesString(res.headers.get('set-cookie')!))[0].value}`;
+    res = await fetch(indexUrl, { headers: { cookie: newCookie }});
+    const newControls: typeof controls = (await res.json()).controls;
+    res = await fetch(newControls.password.create, {
+      method: 'POST',
+      headers: { cookie: newCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    expect(res.status).toBe(200);
   });
 });

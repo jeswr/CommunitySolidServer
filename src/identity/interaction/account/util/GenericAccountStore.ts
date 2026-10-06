@@ -64,4 +64,9 @@ export class GenericAccountStore<TDesc extends MinimalAccountSettings>
   Promise<void> {
     await this.storage.setField(ACCOUNT_TYPE, id, setting, value);
   }
+
+  public async delete(id: string): Promise<void> {
+    await this.storage.delete(ACCOUNT_TYPE, id);
+    this.logger.debug(`Deleted account ${id}`);
+  }
 }

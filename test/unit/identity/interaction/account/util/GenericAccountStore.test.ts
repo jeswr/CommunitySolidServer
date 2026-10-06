@@ -25,6 +25,7 @@ describe('A GenericAccountStore', (): void => {
       create: jest.fn().mockResolvedValue({ id }),
       get: jest.fn().mockResolvedValue({ id, [ACCOUNT_SETTINGS_REMEMBER_LOGIN]: true }),
       setField: jest.fn(),
+      delete: jest.fn(),
     } satisfies Partial<AccountLoginStorage<any>> as any;
 
     store = new GenericAccountStore(storage, { [ACCOUNT_SETTINGS_REMEMBER_LOGIN]: 'boolean?' });
@@ -72,5 +73,11 @@ describe('A GenericAccountStore', (): void => {
     await expect(store.updateSetting(id, ACCOUNT_SETTINGS_REMEMBER_LOGIN, true)).resolves.toBeUndefined();
     expect(storage.setField).toHaveBeenCalledTimes(1);
     expect(storage.setField).toHaveBeenLastCalledWith(ACCOUNT_TYPE, id, ACCOUNT_SETTINGS_REMEMBER_LOGIN, true);
+  });
+
+  it('can delete an account.', async(): Promise<void> => {
+    await expect(store.delete(id)).resolves.toBeUndefined();
+    expect(storage.delete).toHaveBeenCalledTimes(1);
+    expect(storage.delete).toHaveBeenLastCalledWith(ACCOUNT_TYPE, id);
   });
 });

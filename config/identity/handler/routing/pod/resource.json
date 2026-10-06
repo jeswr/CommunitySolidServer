@@ -2,7 +2,7 @@
   "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
   "@graph": [
     {
-      "comment": "Handles updating pod settings.",
+      "comment": "Handles updating pod settings and deleting pods.",
       "@id": "urn:solid-server:default:AccountPodIdRouter",
       "@type": "AuthorizedRouteHandler",
       "route": {
@@ -11,13 +11,29 @@
         "base": { "@id": "urn:solid-server:default:AccountPodRoute" }
       },
       "source": {
-        "@type": "ViewInteractionHandler",
-        "source": {
-          "@id": "urn:solid-server:default:PodResourceHandler",
-          "@type": "UpdateOwnerHandler",
-          "podStore": { "@id": "urn:solid-server:default:PodStore" },
-          "podRoute": { "@id": "urn:solid-server:default:AccountPodIdRoute" }
-        }
+        "@type": "WaterfallHandler",
+        "handlers": [
+          {
+            "@type": "MethodFilterHandler",
+            "methods": [ "DELETE" ],
+            "source": {
+              "@id": "urn:solid-server:default:DeletePodHandler",
+              "@type": "DeletePodHandler",
+              "podStore": { "@id": "urn:solid-server:default:PodStore" },
+              "podRoute": { "@id": "urn:solid-server:default:AccountPodIdRoute" },
+              "webIdStore": { "@id": "urn:solid-server:default:WebIdStore" }
+            }
+          },
+          {
+            "@type": "ViewInteractionHandler",
+            "source": {
+              "@id": "urn:solid-server:default:PodResourceHandler",
+              "@type": "UpdateOwnerHandler",
+              "podStore": { "@id": "urn:solid-server:default:PodStore" },
+              "podRoute": { "@id": "urn:solid-server:default:AccountPodIdRoute" }
+            }
+          }
+        ]
       }
     },
 

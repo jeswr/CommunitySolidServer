@@ -162,6 +162,7 @@ export * from './identity/interaction/account/util/LoginStorage';
 // Identity/Interaction/Account
 export * from './identity/interaction/account/AccountIdRoute';
 export * from './identity/interaction/account/CreateAccountHandler';
+export * from './identity/interaction/account/DeleteAccountHandler';
 
 // Identity/Interaction/Client-Credentials/Util
 export * from './identity/interaction/client-credentials/util/BaseClientCredentialsStore';
@@ -212,6 +213,7 @@ export * from './identity/interaction/pod/util/PodStore';
 
 // Identity/Interaction/Pod
 export * from './identity/interaction/pod/CreatePodHandler';
+export * from './identity/interaction/pod/DeletePodHandler';
 export * from './identity/interaction/pod/PodIdRoute';
 export * from './identity/interaction/pod/UpdateOwnerHandler';
 

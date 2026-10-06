@@ -5,6 +5,7 @@ import type { Resource, ResourcesGenerator } from '../../../src/pods/generate/Re
 import type { PodSettings } from '../../../src/pods/settings/PodSettings';
 import type { KeyValueStorage } from '../../../src/storage/keyvalue/KeyValueStorage';
 import type { ResourceStore } from '../../../src/storage/ResourceStore';
+import { NotImplementedHttpError } from '../../../src/util/errors/NotImplementedHttpError';
 
 describe('A ConfigPodManager', (): void => {
   let settings: PodSettings;
@@ -64,5 +65,9 @@ describe('A ConfigPodManager', (): void => {
     expect(initStore.setRepresentation).toHaveBeenCalledWith({ path: '/path/' }, '/');
     expect(initStore.setRepresentation).toHaveBeenLastCalledWith({ path: '/path/foo' }, '/foo');
     await expect(routingStorage.get(identifier.path)).resolves.toBe(store);
+  });
+
+  it('does not support deleting pods.', async(): Promise<void> => {
+    await expect(manager.deletePod({ path: `${base}alice/` })).rejects.toThrow(NotImplementedHttpError);
   });
 });
