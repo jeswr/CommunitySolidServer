@@ -193,10 +193,11 @@ function validatePasswordConfirmation(passwordId, formId = 'mainForm', confirmPa
  * @param fetchParams - Parameters to pass to the fetch request that would remove the resource.
  * @param confirmMsg - Message to show to confirm that the resource needs to be deleted.
  * @param finishMsg - Optional message to show in the error field when the resource was removed.
+ * @param onDeleted - Optional function to call after the resource was removed.
  *
  * @returns The HTML object representing the `(delete)` link.
  */
-function createUrlDeleteElement(parent, url, fetchParams, confirmMsg, finishMsg) {
+function createUrlDeleteElement(parent, url, fetchParams, confirmMsg, finishMsg, onDeleted) {
   const del = document.createElement('a');
   del.textContent = '(delete)';
   del.href = '#';
@@ -214,6 +215,9 @@ function createUrlDeleteElement(parent, url, fetchParams, confirmMsg, finishMsg)
       parent.remove();
       if (finishMsg) {
         setError(finishMsg);
+      }
+      if (onDeleted) {
+        onDeleted();
       }
     }
   });

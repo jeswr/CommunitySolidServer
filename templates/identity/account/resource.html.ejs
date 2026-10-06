@@ -81,7 +81,10 @@
       updateElement('createPod', controls.html.account.createPod, { href: true });
       showAccountInfo(elements.podEntries, pods, true, true,
         'Are you sure you want to delete this pod? This will delete all the data in the pod, ' +
-        'including any WebID it contains. This can not be undone.');
+        'including any WebID it contains. This can not be undone.',
+        undefined,
+        // Deleting a pod also unlinks its WebIDs, so the page needs to be refreshed
+        () => location.reload());
     }
 
     // Update WebID entries
@@ -110,7 +113,7 @@
   })();
 
   // Adds account info to the UI
-  function showAccountInfo(rootElement, data, addUpdate, addDel, confirmMsg, finishMsg) {
+  function showAccountInfo(rootElement, data, addUpdate, addDel, confirmMsg, finishMsg, onDeleted) {
     for (const [ key, url ] of Object.entries(data)) {
       const li = document.createElement('li');
 
@@ -128,7 +131,7 @@
 
 
       if (addDel) {
-        const del = createUrlDeleteElement(li, url, { method: 'DELETE' }, confirmMsg, finishMsg);
+        const del = createUrlDeleteElement(li, url, { method: 'DELETE' }, confirmMsg, finishMsg, onDeleted);
         li.append(' ');
         li.append(del);
       }
