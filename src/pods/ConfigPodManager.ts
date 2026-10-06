@@ -1,8 +1,6 @@
-import type { ResourceIdentifier } from '../http/representation/ResourceIdentifier';
 import { getLoggerFor } from '../logging/LogUtil';
 import type { KeyValueStorage } from '../storage/keyvalue/KeyValueStorage';
 import type { ResourceStore } from '../storage/ResourceStore';
-import { NotImplementedHttpError } from '../util/errors/NotImplementedHttpError';
 import { addGeneratedResources } from './generate/GenerateUtil';
 import type { PodGenerator } from './generate/PodGenerator';
 import type { ResourcesGenerator } from './generate/ResourcesGenerator';
@@ -17,8 +15,6 @@ import type { PodSettings } from './settings/PodSettings';
  *  1. Calls a PodGenerator to instantiate a new resource store for the pod.
  *  2. Generates the pod resources based on the templates as usual.
  *  3. Adds the created pod to the routing storage, which is used for linking pod identifiers to their resource stores.
- *
- * Deleting dynamic pods is not supported.
  *
  * @see {@link TemplatedPodGenerator}, {@link ConfigPodInitializer}, {@link BaseUrlRouterRule}
  */
@@ -57,9 +53,5 @@ export class ConfigPodManager implements PodManager {
     const count = await addGeneratedResources(settings, this.resourcesGenerator, this.store);
 
     this.logger.info(`Added ${count} resources to ${settings.base.path}`);
-  }
-
-  public async deletePod(base: ResourceIdentifier): Promise<void> {
-    throw new NotImplementedHttpError(`Deleting dynamic pods is not supported, unable to delete ${base.path}.`);
   }
 }

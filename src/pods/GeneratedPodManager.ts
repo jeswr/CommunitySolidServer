@@ -8,6 +8,7 @@ import type { ResourceStore } from '../storage/ResourceStore';
 import { INTERNAL_QUADS } from '../util/ContentTypes';
 import { ConflictHttpError } from '../util/errors/ConflictHttpError';
 import { MethodNotAllowedHttpError } from '../util/errors/MethodNotAllowedHttpError';
+import { NotImplementedHttpError } from '../util/errors/NotImplementedHttpError';
 import { isContainerIdentifier } from '../util/PathUtil';
 import { LDP, PIM, RDF } from '../util/Vocabularies';
 import { addGeneratedResources } from './generate/GenerateUtil';
@@ -22,26 +23,27 @@ import type { PodSettings } from './settings/PodSettings';
  * Pods are deleted by removing all their resources through the store,
  * so the store behaviour, such as locking and notifications, still applies.
  * A pod at the server base URL can not be deleted.
+ * Deleting pods is only supported if the `metadataStrategy` and `baseUrl` are provided.
  */
 export class GeneratedPodManager implements PodManager {
   protected readonly logger = getLoggerFor(this);
 
   private readonly store: ResourceStore;
   private readonly resourcesGenerator: ResourcesGenerator;
-  private readonly metadataStrategy: AuxiliaryIdentifierStrategy;
-  private readonly baseUrl: string;
+  private readonly metadataStrategy?: AuxiliaryIdentifierStrategy;
+  private readonly baseUrl?: string;
 
   /**
    * @param store - Store to write the pod resources to.
    * @param resourcesGenerator - Generates the initial pod resources.
-   * @param metadataStrategy - Strategy to find the metadata resource of the pod root.
-   * @param baseUrl - Base URL of the server.
+   * @param metadataStrategy - Strategy to find the metadata resource of the pod root. Needed to delete pods.
+   * @param baseUrl - Base URL of the server. Needed to delete pods.
    */
   public constructor(
     store: ResourceStore,
     resourcesGenerator: ResourcesGenerator,
-    metadataStrategy: AuxiliaryIdentifierStrategy,
-    baseUrl: string,
+    metadataStrategy?: AuxiliaryIdentifierStrategy,
+    baseUrl?: string,
   ) {
     this.store = store;
     this.resourcesGenerator = resourcesGenerator;
@@ -64,6 +66,9 @@ export class GeneratedPodManager implements PodManager {
   }
 
   public async deletePod(base: ResourceIdentifier): Promise<void> {
+    if (!this.metadataStrategy || !this.baseUrl) {
+      throw new NotImplementedHttpError('Deleting pods requires the metadataStrategy and baseUrl to be configured.');
+    }
     if (base.path === this.baseUrl) {
       throw new MethodNotAllowedHttpError([ 'DELETE' ], 'The pod at the root of the server can not be deleted.');
     }

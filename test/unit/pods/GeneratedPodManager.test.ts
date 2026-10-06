@@ -11,6 +11,7 @@ import type { ResourceStore } from '../../../src/storage/ResourceStore';
 import { INTERNAL_QUADS } from '../../../src/util/ContentTypes';
 import { ConflictHttpError } from '../../../src/util/errors/ConflictHttpError';
 import { MethodNotAllowedHttpError } from '../../../src/util/errors/MethodNotAllowedHttpError';
+import { NotImplementedHttpError } from '../../../src/util/errors/NotImplementedHttpError';
 import { LDP, PIM, RDF } from '../../../src/util/Vocabularies';
 
 const { namedNode, quad } = DataFactory;
@@ -130,6 +131,12 @@ describe('A GeneratedPodManager', (): void => {
     it('does nothing if the pod does not exist.', async(): Promise<void> => {
       store.hasResource.mockResolvedValueOnce(false);
       await expect(manager.deletePod({ path: pod })).resolves.toBeUndefined();
+      expect(store.deleteResource).toHaveBeenCalledTimes(0);
+    });
+
+    it('does not support deleting pods without a metadata strategy and base URL.', async(): Promise<void> => {
+      manager = new GeneratedPodManager(store, resGenerator);
+      await expect(manager.deletePod({ path: pod })).rejects.toThrow(NotImplementedHttpError);
       expect(store.deleteResource).toHaveBeenCalledTimes(0);
     });
 

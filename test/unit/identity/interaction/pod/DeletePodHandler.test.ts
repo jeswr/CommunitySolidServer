@@ -3,12 +3,14 @@ import type { PodIdRoute } from '../../../../../src/identity/interaction/pod/Pod
 import type { PodStore } from '../../../../../src/identity/interaction/pod/util/PodStore';
 import type { WebIdStore } from '../../../../../src/identity/interaction/webid/util/WebIdStore';
 import { NotFoundHttpError } from '../../../../../src/util/errors/NotFoundHttpError';
+import { NotImplementedHttpError } from '../../../../../src/util/errors/NotImplementedHttpError';
 
 describe('A DeletePodHandler', (): void => {
   const id = 'id';
   const accountId = 'accountId';
   const target = { path: 'http://example.com/.account/pod/id/' };
   const baseUrl = 'http://example.com/pod/';
+  let deletePod: jest.Mock;
   let podStore: jest.Mocked<PodStore>;
   let route: jest.Mocked<PodIdRoute>;
   let webIdStore: jest.Mocked<WebIdStore>;
@@ -17,7 +19,7 @@ describe('A DeletePodHandler', (): void => {
   beforeEach(async(): Promise<void> => {
     podStore = {
       get: jest.fn().mockResolvedValue({ baseUrl, accountId }),
-      delete: jest.fn(),
+      delete: deletePod = jest.fn(),
     } satisfies Partial<PodStore> as any;
 
     route = {
@@ -51,8 +53,14 @@ describe('A DeletePodHandler', (): void => {
     expect(webIdStore.delete).toHaveBeenCalledTimes(0);
   });
 
+  it('errors if the store does not support deleting pods.', async(): Promise<void> => {
+    delete podStore.delete;
+    await expect(handler.handle({ target, accountId } as any)).rejects.toThrow(NotImplementedHttpError);
+    expect(webIdStore.delete).toHaveBeenCalledTimes(0);
+  });
+
   it('does not unlink WebIDs if deleting the pod fails.', async(): Promise<void> => {
-    podStore.delete.mockRejectedValueOnce(new Error('bad data'));
+    deletePod.mockRejectedValueOnce(new Error('bad data'));
     await expect(handler.handle({ target, accountId } as any)).rejects.toThrow('bad data');
     expect(webIdStore.delete).toHaveBeenCalledTimes(0);
   });

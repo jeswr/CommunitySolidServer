@@ -4,6 +4,7 @@ import type { AccountStore } from '../../../../../src/identity/interaction/accou
 import type { CookieStore } from '../../../../../src/identity/interaction/account/util/CookieStore';
 import type { PodStore } from '../../../../../src/identity/interaction/pod/util/PodStore';
 import { NotFoundHttpError } from '../../../../../src/util/errors/NotFoundHttpError';
+import { NotImplementedHttpError } from '../../../../../src/util/errors/NotImplementedHttpError';
 import { SOLID_HTTP } from '../../../../../src/util/Vocabularies';
 
 describe('A DeleteAccountHandler', (): void => {
@@ -11,6 +12,8 @@ describe('A DeleteAccountHandler', (): void => {
   const cookie = 'cookie';
   const target = { path: 'http://example.com/.account/account/accountId/' };
   let metadata: RepresentationMetadata;
+  let deleteAccount: jest.Mock;
+  let deletePod: jest.Mock;
   let accountStore: jest.Mocked<AccountStore>;
   let podStore: jest.Mocked<PodStore>;
   let cookieStore: jest.Mocked<CookieStore>;
@@ -20,7 +23,7 @@ describe('A DeleteAccountHandler', (): void => {
     metadata = new RepresentationMetadata({ [SOLID_HTTP.accountCookie]: cookie });
 
     accountStore = {
-      delete: jest.fn(),
+      delete: deleteAccount = jest.fn(),
     } satisfies Partial<AccountStore> as any;
 
     podStore = {
@@ -28,7 +31,7 @@ describe('A DeleteAccountHandler', (): void => {
         { id: 'pod1', baseUrl: 'http://example.com/pod1/' },
         { id: 'pod2', baseUrl: 'http://example.com/pod2/' },
       ]),
-      delete: jest.fn(),
+      delete: deletePod = jest.fn(),
     } satisfies Partial<PodStore> as any;
 
     cookieStore = {
@@ -49,16 +52,30 @@ describe('A DeleteAccountHandler', (): void => {
     expect(podStore.delete).toHaveBeenNthCalledWith(2, 'pod2');
     expect(accountStore.delete).toHaveBeenCalledTimes(1);
     expect(accountStore.delete).toHaveBeenLastCalledWith(accountId);
-    expect(podStore.delete.mock.invocationCallOrder[1]).toBeLessThan(accountStore.delete.mock.invocationCallOrder[0]);
+    expect(deletePod.mock.invocationCallOrder[1]).toBeLessThan(deleteAccount.mock.invocationCallOrder[0]);
 
     expect(cookieStore.delete).toHaveBeenLastCalledWith(cookie);
     expect(outputMetadata?.get(SOLID_HTTP.terms.accountCookieExpiration)?.value).toBe(new Date(0).toISOString());
   });
 
   it('keeps the account if deleting a pod fails.', async(): Promise<void> => {
-    podStore.delete.mockRejectedValueOnce(new Error('bad data'));
+    deletePod.mockRejectedValueOnce(new Error('bad data'));
     await expect(handler.handle({ target, metadata, accountId } as any)).rejects.toThrow('bad data');
     expect(accountStore.delete).toHaveBeenCalledTimes(0);
+    expect(cookieStore.delete).toHaveBeenCalledTimes(0);
+  });
+
+  it('errors if the account store does not support deletion.', async(): Promise<void> => {
+    delete accountStore.delete;
+    await expect(handler.handle({ target, metadata, accountId } as any)).rejects.toThrow(NotImplementedHttpError);
+    expect(deletePod).toHaveBeenCalledTimes(0);
+    expect(cookieStore.delete).toHaveBeenCalledTimes(0);
+  });
+
+  it('errors if the pod store does not support deletion.', async(): Promise<void> => {
+    delete podStore.delete;
+    await expect(handler.handle({ target, metadata, accountId } as any)).rejects.toThrow(NotImplementedHttpError);
+    expect(deleteAccount).toHaveBeenCalledTimes(0);
     expect(cookieStore.delete).toHaveBeenCalledTimes(0);
   });
 

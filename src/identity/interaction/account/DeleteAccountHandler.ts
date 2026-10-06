@@ -1,3 +1,4 @@
+import { NotImplementedHttpError } from '../../../util/errors/NotImplementedHttpError';
 import type { EmptyObject } from '../../../util/map/MapUtil';
 import type { JsonRepresentation } from '../InteractionUtil';
 import type { JsonInteractionHandlerInput } from '../JsonInteractionHandler';
@@ -24,11 +25,16 @@ export class DeleteAccountHandler extends LogoutHandler {
   public async handle(input: JsonInteractionHandlerInput): Promise<JsonRepresentation<EmptyObject>> {
     const { accountId } = input;
     assertAccountId(accountId);
+    const deleteAccount = this.accountStore.delete?.bind(this.accountStore);
+    const deletePod = this.podStore.delete?.bind(this.podStore);
+    if (!deleteAccount || !deletePod) {
+      throw new NotImplementedHttpError('Deleting accounts is not supported by this server.');
+    }
 
     for (const { id } of await this.podStore.findPods(accountId)) {
-      await this.podStore.delete(id);
+      await deletePod(id);
     }
-    await this.accountStore.delete(accountId);
+    await deleteAccount(accountId);
 
     return super.handle(input);
   }

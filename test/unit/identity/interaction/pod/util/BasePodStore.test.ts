@@ -9,6 +9,7 @@ import type { PodManager } from '../../../../../../src/pods/PodManager';
 import type { PodSettings } from '../../../../../../src/pods/settings/PodSettings';
 import { BadRequestHttpError } from '../../../../../../src/util/errors/BadRequestHttpError';
 import { InternalServerError } from '../../../../../../src/util/errors/InternalServerError';
+import { NotImplementedHttpError } from '../../../../../../src/util/errors/NotImplementedHttpError';
 
 const STORAGE_TYPE = 'pod';
 const OWNER_TYPE = 'owner';
@@ -20,6 +21,7 @@ describe('A BasePodStore', (): void => {
   const webId = 'http://example.com/card#me';
   const settings: PodSettings = { webId, base: { path: baseUrl }};
   let storage: jest.Mocked<AccountLoginStorage<any>>;
+  let deletePod: jest.Mock;
   let manager: jest.Mocked<PodManager>;
   let store: BasePodStore;
 
@@ -36,7 +38,7 @@ describe('A BasePodStore', (): void => {
 
     manager = {
       createPod: jest.fn(),
-      deletePod: jest.fn(),
+      deletePod: deletePod = jest.fn(),
     };
 
     store = new BasePodStore(storage, manager);
@@ -192,12 +194,18 @@ describe('A BasePodStore', (): void => {
     expect(manager.deletePod).toHaveBeenLastCalledWith({ path: baseUrl });
     expect(storage.delete).toHaveBeenCalledTimes(1);
     expect(storage.delete).toHaveBeenLastCalledWith(STORAGE_TYPE, id);
-    expect(manager.deletePod.mock.invocationCallOrder[0]).toBeLessThan(storage.delete.mock.invocationCallOrder[0]);
+    expect(deletePod.mock.invocationCallOrder[0]).toBeLessThan(storage.delete.mock.invocationCallOrder[0]);
   });
 
   it('keeps the pod in the account if deleting the data fails.', async(): Promise<void> => {
-    manager.deletePod.mockRejectedValueOnce(new Error('bad data'));
+    deletePod.mockRejectedValueOnce(new Error('bad data'));
     await expect(store.delete(id)).rejects.toThrow('bad data');
+    expect(storage.delete).toHaveBeenCalledTimes(0);
+  });
+
+  it('can not delete pods if the manager does not support it.', async(): Promise<void> => {
+    delete manager.deletePod;
+    await expect(store.delete(id)).rejects.toThrow(NotImplementedHttpError);
     expect(storage.delete).toHaveBeenCalledTimes(0);
   });
 

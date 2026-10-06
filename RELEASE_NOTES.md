@@ -13,16 +13,11 @@
 
 - There is a new opt-in `util/resource-locker/file-capped.json` configuration that caps file-based locks at one hour.
   Existing resource locker configurations remain uncapped.
-- `GeneratedPodManager` requires a `metadataStrategy` and `baseUrl` parameter.
 - The account and pod resource routes accept DELETE requests,
   see `identity/handler/routing/account/delete.json` and `identity/handler/routing/pod/resource.json`.
-
-### Interface changes
-
-These changes are relevant if you wrote custom modules for the server that depend on existing interfaces.
-
-- `PodManager` has a new `deletePod` function.
-- `PodStore` and `AccountStore` have a new `delete` function.
+  `GeneratedPodManager` has new optional `metadataStrategy` and `baseUrl` parameters, which are needed to delete pods.
+  `PodManager`, `PodStore` and `AccountStore` have new optional deletion functions;
+  custom implementations without them keep working, but deleting returns a 501 error.
 
 ## v7.0.0
 

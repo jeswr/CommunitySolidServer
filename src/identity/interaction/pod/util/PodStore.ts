@@ -68,8 +68,9 @@ export interface PodStore {
 
   /**
    * Deletes the pod, including all its data, and removes it from the account that created it.
+   * Optional: stores that do not implement this do not support deleting pods.
    *
    * @param id - ID of the pod.
    */
-  delete: (id: string) => Promise<void>;
+  delete?: (id: string) => Promise<void>;
 }

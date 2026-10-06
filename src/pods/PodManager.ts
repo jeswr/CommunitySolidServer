@@ -16,8 +16,9 @@ export interface PodManager {
 
   /**
    * Deletes the pod with the given base identifier, including all the resources it contains.
+   * Optional: managers that do not implement this do not support deleting pods.
    *
    * @param base - Base identifier of the pod.
    */
-  deletePod: (base: ResourceIdentifier) => Promise<void>;
+  deletePod?: (base: ResourceIdentifier) => Promise<void>;
 }

@@ -59,8 +59,9 @@ export interface AccountStore<TSettings extends GenericAccountSettings = Minimal
    * Deletes the account with the given identifier, together with all data linked to it,
    * such as login methods, WebID links, and pod registrations.
    * This does not delete the data in the pods themselves.
+   * Optional: stores that do not implement this do not support deleting accounts.
    *
    * @param id - The account identifier.
    */
-  delete: (id: string) => Promise<void>;
+  delete?: (id: string) => Promise<void>;
 }

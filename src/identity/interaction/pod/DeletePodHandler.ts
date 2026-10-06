@@ -1,3 +1,4 @@
+import { NotImplementedHttpError } from '../../../util/errors/NotImplementedHttpError';
 import type { EmptyObject } from '../../../util/map/MapUtil';
 import { parsePath, verifyAccountId } from '../account/util/AccountUtil';
 import type { JsonRepresentation } from '../InteractionUtil';
@@ -28,6 +29,9 @@ export class DeletePodHandler extends JsonInteractionHandler<EmptyObject> {
     const { podId } = parsePath(this.podRoute, target.path);
     const pod = await this.podStore.get(podId);
     verifyAccountId(accountId, pod?.accountId);
+    if (!this.podStore.delete) {
+      throw new NotImplementedHttpError('Deleting pods is not supported by this server.');
+    }
 
     await this.podStore.delete(podId);
 
