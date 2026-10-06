@@ -1,8 +1,9 @@
+import type { ResourceIdentifier } from '../http/representation/ResourceIdentifier';
 import type { PodSettings } from './settings/PodSettings';
 
 /**
  * Covers all functions related to pod management.
- * In the future this should also include delete, and potentially recovery functions.
+ * In the future this should also include recovery functions.
  */
 export interface PodManager {
   /**
@@ -12,4 +13,12 @@ export interface PodManager {
    * @param overwrite - If the creation should proceed if there already is a resource there.
    */
   createPod: (settings: PodSettings, overwrite: boolean) => Promise<void>;
+
+  /**
+   * Deletes the pod with the given base identifier, including all the resources it contains.
+   * Optional: managers that do not implement this do not support deleting pods.
+   *
+   * @param base - Base identifier of the pod.
+   */
+  deletePod?: (base: ResourceIdentifier) => Promise<void>;
 }

@@ -65,4 +65,12 @@ export interface PodStore {
    * @param webId - WebID of the owner.
    */
   removeOwner: (id: string, webId: string) => Promise<void>;
+
+  /**
+   * Deletes the pod, including all its data, and removes it from the account that created it.
+   * Optional: stores that do not implement this do not support deleting pods.
+   *
+   * @param id - ID of the pod.
+   */
+  delete?: (id: string) => Promise<void>;
 }

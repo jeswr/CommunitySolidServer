@@ -5,6 +5,7 @@ import type { PodSettings } from '../../../../pods/settings/PodSettings';
 import { BadRequestHttpError } from '../../../../util/errors/BadRequestHttpError';
 import { createErrorMessage } from '../../../../util/errors/ErrorUtil';
 import { InternalServerError } from '../../../../util/errors/InternalServerError';
+import { NotImplementedHttpError } from '../../../../util/errors/NotImplementedHttpError';
 import { ACCOUNT_TYPE } from '../../account/util/LoginStorage';
 import type { AccountLoginStorage } from '../../account/util/LoginStorage';
 import type { PodStore } from './PodStore';
@@ -138,5 +139,20 @@ export class BasePodStore extends Initializer implements PodStore {
       throw new BadRequestHttpError('Unable to remove the last owner of a pod.');
     }
     await this.storage.delete(OWNER_STORAGE_TYPE, match.id);
+  }
+
+  public async delete(id: string): Promise<void> {
+    const pod = await this.storage.get(POD_STORAGE_TYPE, id);
+    if (!pod) {
+      return;
+    }
+    if (!this.manager.deletePod) {
+      throw new NotImplementedHttpError('Deleting pods is not supported by this server.');
+    }
+    // Data first, so the pod can still be found to try again if this fails.
+    // Deleting the pod also deletes its owners as those are stored as part of the pod.
+    await this.manager.deletePod({ path: pod.baseUrl });
+    await this.storage.delete(POD_STORAGE_TYPE, id);
+    this.logger.debug(`Deleted pod ${pod.baseUrl} of account ${pod.accountId}`);
   }
 }

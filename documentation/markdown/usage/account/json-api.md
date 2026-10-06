@@ -85,6 +85,13 @@ This account will expire after some time if no login method is added.
 Logs the account out on an empty POST request.
 Invalidates the cookie that was used.
 
+#### controls.account.account
+
+The resource URL of the account.
+A DELETE request deletes the account, together with all the pods it created and all the data in them,
+and logs the account out.
+This can not be undone.
+
 #### controls.account.webId
 
 GET requests return all WebIDs linked to this account in the following format:
@@ -129,6 +136,10 @@ You can send a POST request to this resource with a `webId` and `visible: boolea
 to add/update an owner and set its visibility.
 Visibility determines whether the owner is exposed through a link header when requesting the pod.
 You can also send a POST request to this resource with a `webId` and `remove: true` field to remove the owner.
+A DELETE request to this resource deletes the pod and all the data in it,
+and unlinks the WebIDs in the pod from the account.
+This can not be undone.
+Pods at the root of the server, and pods containing another pod, can not be deleted.
 
 ```json
 {
@@ -280,6 +291,7 @@ Below is an example of a controls object in a response.
   },
   "account": {
     "create": "http://localhost:3000/.account/account/",
+    "account": "http://localhost:3000/.account/account/ade5c046-e882-4b56-80f4-18cb16433360/",
     "logout": "http://localhost:3000/.account/account/ade5c046-e882-4b56-80f4-18cb16433360/logout/",
     "webId": "http://localhost:3000/.account/account/ade5c046-e882-4b56-80f4-18cb16433360/webid/",
     "pod": "http://localhost:3000/.account/account/ade5c046-e882-4b56-80f4-18cb16433360/pod/",

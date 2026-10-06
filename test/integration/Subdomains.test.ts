@@ -157,5 +157,20 @@ describe.each(stores)('A subdomain server with %s', (name, { storeConfig, teardo
       expect(res.status).toBe(400);
       await expect(res.text()).resolves.toContain(`There already is a resource at ${podUrl}`);
     });
+
+    it('can delete the pod.', async(): Promise<void> => {
+      let res = await fetch(controls.account.pod, { headers: { authorization }});
+      const podResource = (await res.json()).pods[podUrl];
+      res = await fetch(podResource, { method: 'DELETE', headers: { authorization }});
+      expect(res.status).toBe(200);
+
+      // A pod with the same name can be created again
+      res = await fetch(controls.account.pod, {
+        method: 'POST',
+        headers: { authorization, 'content-type': 'application/json' },
+        body: JSON.stringify({ name: user.podName }),
+      });
+      expect(res.status).toBe(200);
+    });
   });
 });

@@ -30,10 +30,11 @@
 <p class="actions">
   <button class="hidden" type="button" id="oidc">Continue authentication</button>
   <button type="button" id="logout" name="logout">Log out</button>
+  <button type="button" id="deleteAccount" name="deleteAccount">Delete account</button>
 </p>
 
 <script>
-  const elements = getElements('passwordLoginEntries', 'podEntries', 'webIdEntries', 'clientCredentialsEntries', 'oidc', 'logout');
+  const elements = getElements('passwordLoginEntries', 'podEntries', 'webIdEntries', 'clientCredentialsEntries', 'oidc', 'logout', 'deleteAccount');
 
   // Retrieve and display client information
   (async() => {
@@ -52,6 +53,20 @@
       location.href = controls.html.main.login;
     });
 
+    elements.deleteAccount.addEventListener('click', async() => {
+      if (!confirm('Are you sure you want to delete your account? ' +
+        'This will also delete all your pods and all the data in them. This can not be undone.')) {
+        return;
+      }
+      const res = await fetch(controls.account.account, { method: 'DELETE' });
+      if (res.status >= 400) {
+        const error = await res.json();
+        setError(error.message);
+      } else {
+        location.href = controls.html.main.login;
+      }
+    });
+
     // Update email/password entries
     const { passwordLogins } = await fetchJson(controls.password.create);
     updateElement('createPasswordLogin', controls.password.create, { href: true });
@@ -64,7 +79,12 @@
       setVisibility('pods', false);
     } else {
       updateElement('createPod', controls.html.account.createPod, { href: true });
-      showAccountInfo(elements.podEntries, pods, true, false);
+      showAccountInfo(elements.podEntries, pods, true, true,
+        'Are you sure you want to delete this pod? This will delete all the data in the pod, ' +
+        'including any WebID it contains. This can not be undone.',
+        undefined,
+        // Deleting a pod also unlinks its WebIDs, so the page needs to be refreshed
+        () => location.reload());
     }
 
     // Update WebID entries
@@ -93,7 +113,7 @@
   })();
 
   // Adds account info to the UI
-  function showAccountInfo(rootElement, data, addUpdate, addDel, confirmMsg, finishMsg) {
+  function showAccountInfo(rootElement, data, addUpdate, addDel, confirmMsg, finishMsg, onDeleted) {
     for (const [ key, url ] of Object.entries(data)) {
       const li = document.createElement('li');
 
@@ -111,7 +131,7 @@
 
 
       if (addDel) {
-        const del = createUrlDeleteElement(li, url, { method: 'DELETE' }, confirmMsg, finishMsg);
+        const del = createUrlDeleteElement(li, url, { method: 'DELETE' }, confirmMsg, finishMsg, onDeleted);
         li.append(' ');
         li.append(del);
       }

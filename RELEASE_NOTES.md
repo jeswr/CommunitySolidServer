@@ -6,11 +6,18 @@
 
 - Expiring read/write lockers can enforce an optional maximum hold duration,
   independent of activity-based lock renewals.
+- Users can delete their own pods, and their own account together with all its pods,
+  through the account API and the account HTML pages.
 
 ### Configuration changes
 
 - There is a new opt-in `util/resource-locker/file-capped.json` configuration that caps file-based locks at one hour.
   Existing resource locker configurations remain uncapped.
+- The account and pod resource routes accept DELETE requests,
+  see `identity/handler/routing/account/delete.json` and `identity/handler/routing/pod/resource.json`.
+  `GeneratedPodManager` has new optional `metadataStrategy` and `baseUrl` parameters, which are needed to delete pods.
+  `PodManager`, `PodStore` and `AccountStore` have new optional deletion functions;
+  custom implementations without them keep working, but deleting returns a 501 error.
 
 ## v7.0.0
 
