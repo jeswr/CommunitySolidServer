@@ -1,15 +1,15 @@
+import { PERMISSIONS } from '@solidlab/policy-engine';
+import { getLoggerFor } from 'global-logger-factory';
+import { StaticHandler } from 'asynchronous-handlers';
+import type { VocabularyTerm } from 'rdf-vocabulary';
 import type { Credentials } from '../../../authentication/Credentials';
 import type { PermissionReader } from '../../../authorization/PermissionReader';
-import { AccessMode } from '../../../authorization/permissions/Permissions';
 import type { ResourceIdentifier } from '../../../http/representation/ResourceIdentifier';
-import { getLoggerFor } from '../../../logging/LogUtil';
 import { createErrorMessage } from '../../../util/errors/ErrorUtil';
-import { StaticHandler } from '../../../util/handlers/StaticHandler';
 import type { IdentifierStrategy } from '../../../util/identifiers/IdentifierStrategy';
 import { IdentifierSetMultiMap } from '../../../util/map/IdentifierMap';
 import { isContainerPath } from '../../../util/PathUtil';
 import { AS } from '../../../util/Vocabularies';
-import type { VocabularyTerm } from '../../../util/Vocabularies';
 import type { StorageLocationStrategy } from '../../description/StorageLocationStrategy';
 import type { ActivityEmitter } from '../ActivityEmitter';
 import type { LwsActivity, LwsNotificationSender } from './LwsNotificationSender';
@@ -170,10 +170,10 @@ export class LwsNotificationListener extends StaticHandler {
     if (subscription.clientId) {
       credentials.client = { clientId: subscription.clientId };
     }
-    const requestedModes = new IdentifierSetMultiMap<AccessMode>([[ resource, AccessMode.read ]]);
+    const requestedModes = new IdentifierSetMultiMap<string>([[ resource, PERMISSIONS.Read ]]);
     try {
       const permissions = await this.permissionReader.handleSafe({ credentials, requestedModes });
-      return permissions.get(resource)?.read === true;
+      return permissions.get(resource)?.[PERMISSIONS.Read] === true;
     } catch (error: unknown) {
       this.logger.warn(`Unable to determine permissions on ${resource.path}: ${createErrorMessage(error)}`);
       return false;

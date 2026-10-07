@@ -1,9 +1,8 @@
 import type { Quad } from '@rdfjs/types';
-import arrayifyStream from 'arrayify-stream';
+import { getLoggerFor } from 'global-logger-factory';
 import type { AuxiliaryIdentifierStrategy } from '../../http/auxiliary/AuxiliaryIdentifierStrategy';
 import { BasicRepresentation } from '../../http/representation/BasicRepresentation';
 import type { Representation } from '../../http/representation/Representation';
-import { getLoggerFor } from '../../logging/LogUtil';
 import { APPLICATION_MERGE_PATCH_JSON, INTERNAL_QUADS } from '../../util/ContentTypes';
 import { ConflictHttpError } from '../../util/errors/ConflictHttpError';
 import { InternalServerError } from '../../util/errors/InternalServerError';
@@ -11,6 +10,7 @@ import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpErr
 import { applyJsonMergePatch } from '../../util/JsonMergePatch';
 import { linksetToLinks, linksToLinkset } from '../../util/LinksetUtil';
 import type { LinksetMapper } from '../conversion/LinksetMapper';
+import { arrayifyStream } from '../../util/StreamUtil';
 import { readJsonMergePatch } from './JsonMergePatcher';
 import type { RepresentationPatcherInput } from './RepresentationPatcher';
 import { RepresentationPatcher } from './RepresentationPatcher';

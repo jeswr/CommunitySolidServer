@@ -1,20 +1,18 @@
 import { EventEmitter } from 'node:events';
-import { DataFactory } from 'n3';
+import { DataFactory as DF } from 'n3';
+import type { Logger } from 'global-logger-factory';
+import { getLoggerFor } from 'global-logger-factory';
 import { AccessGrantIndex } from '../../../../src/authorization/lws/AccessGrantIndex';
 import { LWS_CONTEXT_URI } from '../../../../src/authorization/lws/AccessGrantUtil';
 import { BasicRepresentation } from '../../../../src/http/representation/BasicRepresentation';
 import type { ResourceIdentifier } from '../../../../src/http/representation/ResourceIdentifier';
-import type { Logger } from '../../../../src/logging/Logger';
-import { getLoggerFor } from '../../../../src/logging/LogUtil';
 import type { ActivityEmitter } from '../../../../src/server/notifications/ActivityEmitter';
 import type { ResourceStore } from '../../../../src/storage/ResourceStore';
 import { INTERNAL_QUADS } from '../../../../src/util/ContentTypes';
 import { NotFoundHttpError } from '../../../../src/util/errors/NotFoundHttpError';
 import { AS, LDP } from '../../../../src/util/Vocabularies';
 
-const { namedNode, quad } = DataFactory;
-
-jest.mock('../../../../src/logging/LogUtil', (): any => {
+jest.mock('global-logger-factory', (): any => {
   const logger: Logger = { warn: jest.fn() } as any;
   return { getLoggerFor: (): Logger => logger };
 });
@@ -53,7 +51,7 @@ describe('An AccessGrantIndex', (): void => {
       getRepresentation: jest.fn(async(identifier: ResourceIdentifier): Promise<BasicRepresentation> => {
         if (identifier.path === container) {
           const quads = Object.keys(resources).map((member): any =>
-            quad(namedNode(container), LDP.terms.contains, namedNode(member)));
+            DF.quad(DF.namedNode(container), LDP.terms.contains, DF.namedNode(member)));
           return new BasicRepresentation(quads, identifier, INTERNAL_QUADS);
         }
         if (!resources[identifier.path]) {
@@ -93,7 +91,7 @@ describe('An AccessGrantIndex', (): void => {
   });
 
   it('ignores grants that can not be read.', async(): Promise<void> => {
-    const missing = quad(namedNode(container), LDP.terms.contains, namedNode(`${container}missing`));
+    const missing = DF.quad(DF.namedNode(container), LDP.terms.contains, DF.namedNode(`${container}missing`));
     store.getRepresentation.mockImplementationOnce(async(identifier): Promise<BasicRepresentation> =>
       new BasicRepresentation([ missing ], identifier, INTERNAL_QUADS));
     await expect(index.getGrants(storage)).resolves.toEqual([]);

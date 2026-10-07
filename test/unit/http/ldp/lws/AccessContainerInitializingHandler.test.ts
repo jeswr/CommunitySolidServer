@@ -1,3 +1,5 @@
+import type { Logger } from 'global-logger-factory';
+import { getLoggerFor } from 'global-logger-factory';
 import {
   AccessContainerInitializingHandler,
 } from '../../../../../src/http/ldp/lws/AccessContainerInitializingHandler';
@@ -5,8 +7,6 @@ import type { Operation } from '../../../../../src/http/Operation';
 import type { ResponseDescription } from '../../../../../src/http/output/response/ResponseDescription';
 import { BasicRepresentation } from '../../../../../src/http/representation/BasicRepresentation';
 import type { ResourceIdentifier } from '../../../../../src/http/representation/ResourceIdentifier';
-import type { Logger } from '../../../../../src/logging/Logger';
-import { getLoggerFor } from '../../../../../src/logging/LogUtil';
 import type { StorageLocationStrategy } from '../../../../../src/server/description/StorageLocationStrategy';
 import type { HttpRequest } from '../../../../../src/server/HttpRequest';
 import type { HttpResponse } from '../../../../../src/server/HttpResponse';
@@ -16,7 +16,7 @@ import type { ResourceStore } from '../../../../../src/storage/ResourceStore';
 import { NotFoundHttpError } from '../../../../../src/util/errors/NotFoundHttpError';
 import { NotImplementedHttpError } from '../../../../../src/util/errors/NotImplementedHttpError';
 
-jest.mock('../../../../../src/logging/LogUtil', (): any => {
+jest.mock('global-logger-factory', (): any => {
   const logger: Logger = { info: jest.fn(), warn: jest.fn() } as any;
   return { getLoggerFor: (): Logger => logger };
 });

@@ -1,4 +1,4 @@
-import { getLoggerFor } from '../../../logging/LogUtil';
+import { getLoggerFor } from 'global-logger-factory';
 import { createErrorMessage } from '../../../util/errors/ErrorUtil';
 import type { ResponseDescription } from '../response/ResponseDescription';
 import type { ErrorHandlerArgs } from './ErrorHandler';

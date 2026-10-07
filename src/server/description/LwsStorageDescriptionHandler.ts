@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/naming-convention */
+import { getLoggerFor } from 'global-logger-factory';
 import { OkResponseDescription } from '../../http/output/response/OkResponseDescription';
 import type { ResponseDescription } from '../../http/output/response/ResponseDescription';
 import { BasicRepresentation } from '../../http/representation/BasicRepresentation';
 import type { ValuePreferences } from '../../http/representation/RepresentationPreferences';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
-import { getLoggerFor } from '../../logging/LogUtil';
 import type { ResourceSet } from '../../storage/ResourceSet';
 import { getTypeWeight } from '../../storage/conversion/ConversionUtil';
 import { APPLICATION_LWS_CID } from '../../util/ContentTypes';

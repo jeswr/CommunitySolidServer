@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { AsyncHandler } from '../../../util/handlers/AsyncHandler';
+import { AsyncHandler } from 'asynchronous-handlers';
 
 /**
  * An Activity Streams 2.0 activity of an LWS notification.

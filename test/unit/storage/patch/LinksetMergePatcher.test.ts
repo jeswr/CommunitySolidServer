@@ -1,6 +1,5 @@
 import 'jest-rdf';
 import type { Quad } from '@rdfjs/types';
-import arrayifyStream from 'arrayify-stream';
 import { DataFactory } from 'n3';
 import { BasicRepresentation } from '../../../../src/http/representation/BasicRepresentation';
 import type { Patch } from '../../../../src/http/representation/Patch';
@@ -13,8 +12,7 @@ import { UnprocessableEntityHttpError } from '../../../../src/util/errors/Unproc
 import { SingleRootIdentifierStrategy } from '../../../../src/util/identifiers/SingleRootIdentifierStrategy';
 import { DC, LDP, RDF } from '../../../../src/util/Vocabularies';
 import { SimpleSuffixStrategy } from '../../../util/SimpleSuffixStrategy';
-
-const { literal, namedNode, quad } = DataFactory;
+import { arrayifyStream } from '../../../../src/util/StreamUtil';
 
 function getPatch(body: unknown, contentType = 'application/merge-patch+json'): Patch {
   return new BasicRepresentation(JSON.stringify(body), contentType);
@@ -26,9 +24,9 @@ describe('A LinksetMergePatcher', (): void => {
   const metadataStrategy = new SimpleSuffixStrategy('.meta');
   const mapper = new LinksetMapper(metadataStrategy, new SingleRootIdentifierStrategy('http://test.com/'));
   const original = [
-    quad(namedNode(subject), RDF.terms.type, LDP.terms.Resource),
-    quad(namedNode(subject), RDF.terms.type, namedNode('http://example.com/Old')),
-    quad(namedNode(subject), DC.terms.modified, literal('2024-01-01T00:00:00Z')),
+    DataFactory.quad(DataFactory.namedNode(subject), RDF.terms.type, LDP.terms.Resource),
+    DataFactory.quad(DataFactory.namedNode(subject), RDF.terms.type, DataFactory.namedNode('http://example.com/Old')),
+    DataFactory.quad(DataFactory.namedNode(subject), DC.terms.modified, DataFactory.literal('2024-01-01T00:00:00Z')),
   ];
   let patch: Patch;
   let representation: Representation;
@@ -66,7 +64,7 @@ describe('A LinksetMergePatcher', (): void => {
       expect(quads).toEqualRdfQuadArray([
         original[0],
         original[2],
-        quad(namedNode(subject), RDF.terms.type, namedNode('http://example.com/New')),
+        DataFactory.quad(DataFactory.namedNode(subject), RDF.terms.type, DataFactory.namedNode('http://example.com/New')),
       ]);
     });
 

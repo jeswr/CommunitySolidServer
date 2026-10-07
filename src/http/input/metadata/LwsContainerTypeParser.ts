@@ -1,4 +1,4 @@
-import { getLoggerFor } from '../../../logging/LogUtil';
+import { getLoggerFor } from 'global-logger-factory';
 import type { HttpRequest } from '../../../server/HttpRequest';
 import { parseLinkHeader } from '../../../util/HeaderUtil';
 import { LDP, LWS, RDF } from '../../../util/Vocabularies';

@@ -1,11 +1,11 @@
 import { fetch } from 'cross-fetch';
 import type { JWTPayload, JWTVerifyGetKey } from 'jose';
 import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'jose';
+import { getLoggerFor } from 'global-logger-factory';
 import type { TargetExtractor } from '../http/input/identifier/TargetExtractor';
 import { RepresentationMetadata } from '../http/representation/RepresentationMetadata';
 import { ASYMMETRIC_ALGORITHMS } from '../identity/lws/JwtCredentialUtil';
 import type { LwsAccessTokenIssuer } from '../identity/lws/LwsAccessTokenIssuer';
-import { getLoggerFor } from '../logging/LogUtil';
 import type { StorageLocationStrategy } from '../server/description/StorageLocationStrategy';
 import type { HttpRequest } from '../server/HttpRequest';
 import { createErrorMessage } from '../util/errors/ErrorUtil';

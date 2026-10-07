@@ -1,4 +1,4 @@
-import { DataFactory } from 'n3';
+import { DataFactory as DF } from 'n3';
 import type { Operation } from '../../../src/http/Operation';
 import { BasicRepresentation } from '../../../src/http/representation/BasicRepresentation';
 import type { ResourceIdentifier } from '../../../src/http/representation/ResourceIdentifier';
@@ -6,8 +6,6 @@ import { findDescendants, isRecursiveDelete } from '../../../src/storage/Contain
 import type { ResourceStore } from '../../../src/storage/ResourceStore';
 import { INTERNAL_QUADS } from '../../../src/util/ContentTypes';
 import { LDP, SOLID_HTTP } from '../../../src/util/Vocabularies';
-
-const { namedNode, quad } = DataFactory;
 
 describe('ContainerUtil', (): void => {
   describe('#isRecursiveDelete', (): void => {
@@ -58,7 +56,7 @@ describe('ContainerUtil', (): void => {
       store = {
         getRepresentation: jest.fn(async(identifier: ResourceIdentifier): Promise<BasicRepresentation> => {
           const quads = children[identifier.path].map((child): any =>
-            quad(namedNode(identifier.path), LDP.terms.contains, namedNode(child)));
+            DF.quad(DF.namedNode(identifier.path), LDP.terms.contains, DF.namedNode(child)));
           return new BasicRepresentation(quads, identifier, INTERNAL_QUADS);
         }),
       } as any;

@@ -1,6 +1,6 @@
+import { PERMISSIONS } from '@solidlab/policy-engine';
 import { JsonMergePatchModesExtractor } from '../../../../src/authorization/permissions/JsonMergePatchModesExtractor';
 import type { AccessMap } from '../../../../src/authorization/permissions/Permissions';
-import { AccessMode } from '../../../../src/authorization/permissions/Permissions';
 import type { Operation } from '../../../../src/http/Operation';
 import { BasicRepresentation } from '../../../../src/http/representation/BasicRepresentation';
 import type { ResourceIdentifier } from '../../../../src/http/representation/ResourceIdentifier';
@@ -15,8 +15,8 @@ describe('A JsonMergePatchModesExtractor', (): void => {
   let resourceSet: jest.Mocked<ResourceSet>;
   let extractor: JsonMergePatchModesExtractor;
 
-  function getMap(modes: AccessMode[]): AccessMap {
-    return new IdentifierSetMultiMap(modes.map((mode): [ResourceIdentifier, AccessMode] => [ target, mode ]));
+  function getMap(modes: string[]): AccessMap {
+    return new IdentifierSetMultiMap(modes.map((mode): [ResourceIdentifier, string] => [ target, mode ]));
   }
 
   beforeEach(async(): Promise<void> => {
@@ -42,12 +42,15 @@ describe('A JsonMergePatchModesExtractor', (): void => {
   });
 
   it('requires read and write access.', async(): Promise<void> => {
-    compareMaps(await extractor.handle(operation), getMap([ AccessMode.read, AccessMode.write ]));
+    compareMaps(await extractor.handle(operation), getMap([ PERMISSIONS.Read, PERMISSIONS.Modify ]));
     expect(resourceSet.hasResource).toHaveBeenLastCalledWith(target);
   });
 
   it('also requires create access if the resource does not exist.', async(): Promise<void> => {
     resourceSet.hasResource.mockResolvedValueOnce(false);
-    compareMaps(await extractor.handle(operation), getMap([ AccessMode.read, AccessMode.write, AccessMode.create ]));
+    compareMaps(
+      await extractor.handle(operation),
+      getMap([ PERMISSIONS.Read, PERMISSIONS.Modify, PERMISSIONS.Create ]),
+    );
   });
 });

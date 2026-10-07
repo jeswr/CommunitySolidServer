@@ -1,4 +1,4 @@
-import { AsyncHandler } from '../../util/handlers/AsyncHandler';
+import { AsyncHandler } from 'asynchronous-handlers';
 
 /**
  * Token type URI of a JSON Web Token, used for self-issued `did:key` credentials.

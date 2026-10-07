@@ -1,5 +1,5 @@
 {
-  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^8.0.0/components/context.jsonld",
   "@graph": [
     {
       "comment": "The LWS authorization server of this server. Its identifier is the base URL of the server.",
@@ -24,7 +24,7 @@
     {
       "comment": "Validates the subject tokens presented at the token endpoint, one handler per supported LWS authentication suite.",
       "@id": "urn:solid-server:default:SubjectTokenVerifier",
-      "@type": "WaterfallHandler",
+      "@type": "StatusWaterfallHandler",
       "handlers": [
         {
           "comment": "LWS 1.0 Authentication Suite: Self-signed Identifiers using did:key.",
@@ -47,7 +47,7 @@
     {
       "comment": "The endpoints of the LWS authorization server: the metadata, the token endpoint, and the JWKS.",
       "@id": "urn:solid-server:default:LwsAuthorizationServerHandler",
-      "@type": "WaterfallHandler",
+      "@type": "StatusWaterfallHandler",
       "handlers": [
         {
           "@type": "RouterHandler",

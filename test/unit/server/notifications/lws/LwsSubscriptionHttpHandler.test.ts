@@ -1,8 +1,8 @@
 import 'jest-rdf';
+import { PERMISSIONS } from '@solidlab/policy-engine';
 import type { Credentials } from '../../../../../src/authentication/Credentials';
 import type { CredentialsExtractor } from '../../../../../src/authentication/CredentialsExtractor';
 import type { PermissionReader } from '../../../../../src/authorization/PermissionReader';
-import { AccessMode } from '../../../../../src/authorization/permissions/Permissions';
 import type { Operation } from '../../../../../src/http/Operation';
 import { BasicRepresentation } from '../../../../../src/http/representation/BasicRepresentation';
 import type { HttpRequest } from '../../../../../src/server/HttpRequest';
@@ -69,7 +69,7 @@ describe('A LwsSubscriptionHttpHandler', (): void => {
     } as any;
     permissionReader = {
       handleSafe: jest.fn(async({ requestedModes }): Promise<any> => new IdentifierMap(
-        [ ...requestedModes.distinctKeys() ].map((id): any => [ id, { read: true }]),
+        [ ...requestedModes.distinctKeys() ].map((id): any => [ id, { [PERMISSIONS.Read]: true }]),
       )),
     } as any;
     storage = {
@@ -131,7 +131,7 @@ describe('A LwsSubscriptionHttpHandler', (): void => {
       expect(permissionReader.handleSafe).toHaveBeenCalledTimes(1);
       const { requestedModes, credentials: usedCredentials } = permissionReader.handleSafe.mock.calls[0][0];
       expect(usedCredentials).toBe(credentials);
-      expect([ ...requestedModes.get({ path: topic })! ]).toEqual([ AccessMode.read ]);
+      expect([ ...requestedModes.get({ path: topic })! ]).toEqual([ PERMISSIONS.Read ]);
     });
 
     it('creates a subscription for an anonymous subscriber with an expiration.', async(): Promise<void> => {
@@ -212,7 +212,9 @@ describe('A LwsSubscriptionHttpHandler', (): void => {
     });
 
     it('throws a 403 if an authenticated subscriber can not read a topic.', async(): Promise<void> => {
-      permissionReader.handleSafe.mockResolvedValueOnce(new IdentifierMap([[{ path: topic }, { read: false }]]));
+      permissionReader.handleSafe.mockResolvedValueOnce(
+        new IdentifierMap([[{ path: topic }, { [PERMISSIONS.Read]: false }]]),
+      );
       const result = handler.handle({ request, response, operation });
       await expect(result).rejects.toThrow(ForbiddenHttpError);
       await expect(result).rejects.toThrow(`No read access to ${topic}.`);

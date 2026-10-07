@@ -1,10 +1,11 @@
 import { EventEmitter } from 'node:events';
+import { PERMISSIONS } from '@solidlab/policy-engine';
+import type { Logger } from 'global-logger-factory';
+import { getLoggerFor } from 'global-logger-factory';
+import type { VocabularyTerm } from 'rdf-vocabulary';
 import type { PermissionReader } from '../../../../../src/authorization/PermissionReader';
-import { AccessMode } from '../../../../../src/authorization/permissions/Permissions';
 import { RepresentationMetadata } from '../../../../../src/http/representation/RepresentationMetadata';
 import type { ResourceIdentifier } from '../../../../../src/http/representation/ResourceIdentifier';
-import type { Logger } from '../../../../../src/logging/Logger';
-import { getLoggerFor } from '../../../../../src/logging/LogUtil';
 import type { StorageLocationStrategy } from '../../../../../src/server/description/StorageLocationStrategy';
 import type { ActivityEmitter } from '../../../../../src/server/notifications/ActivityEmitter';
 import { LwsNotificationListener } from '../../../../../src/server/notifications/lws/LwsNotificationListener';
@@ -17,10 +18,9 @@ import type {
 import { SingleRootIdentifierStrategy } from '../../../../../src/util/identifiers/SingleRootIdentifierStrategy';
 import { IdentifierMap } from '../../../../../src/util/map/IdentifierMap';
 import { AS } from '../../../../../src/util/Vocabularies';
-import type { VocabularyTerm } from '../../../../../src/util/Vocabularies';
 import { flushPromises } from '../../../../util/Util';
 
-jest.mock('../../../../../src/logging/LogUtil', (): any => {
+jest.mock('global-logger-factory', (): any => {
   const logger: Logger = { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() } as any;
   return { getLoggerFor: (): Logger => logger };
 });
@@ -76,7 +76,7 @@ describe('A LwsNotificationListener', (): void => {
 
     permissionReader = {
       handleSafe: jest.fn(async({ requestedModes }): Promise<any> => new IdentifierMap(
-        [ ...requestedModes.distinctKeys() ].map((id): any => [ id, { read: true }]),
+        [ ...requestedModes.distinctKeys() ].map((id): any => [ id, { [PERMISSIONS.Read]: true }]),
       )),
     } as any;
 
@@ -181,7 +181,7 @@ describe('A LwsNotificationListener', (): void => {
     expect(permissionReader.handleSafe).toHaveBeenCalledTimes(1);
     const { credentials, requestedModes } = permissionReader.handleSafe.mock.calls[0][0];
     expect(credentials).toEqual({ agent: { webId }, client: { clientId: 'http://client.example/id' }});
-    expect([ ...requestedModes.get(resource)! ]).toEqual([ AccessMode.read ]);
+    expect([ ...requestedModes.get(resource)! ]).toEqual([ PERMISSIONS.Read ]);
   });
 
   it('uses empty credentials for anonymous subscribers.', async(): Promise<void> => {
@@ -195,7 +195,7 @@ describe('A LwsNotificationListener', (): void => {
   it('does not notify subscribers that can not read the resource.', async(): Promise<void> => {
     const other = { ...subscription, id: 'http://example.com/.notifications/lws/other', inbox: 'https://other/' };
     storage.getAll.mockResolvedValue([ subscription, other ]);
-    permissionReader.handleSafe.mockResolvedValueOnce(new IdentifierMap([[ resource, { read: false }]]));
+    permissionReader.handleSafe.mockResolvedValueOnce(new IdentifierMap([[ resource, { [PERMISSIONS.Read]: false }]]));
     permissionReader.handleSafe.mockResolvedValueOnce(new IdentifierMap());
     await emit(resource, AS.terms.Update);
     expect(permissionReader.handleSafe).toHaveBeenCalledTimes(2);
@@ -233,7 +233,7 @@ describe('A LwsNotificationListener', (): void => {
   });
 
   it('resets the failure count after a successful delivery.', async(): Promise<void> => {
-    emitter.removeAllListeners();
+    emitter.removeAllListeners('changed');
     createListener(2);
     sender.handleSafe.mockRejectedValueOnce(new Error('failed'));
     await emit(resource, AS.terms.Update);

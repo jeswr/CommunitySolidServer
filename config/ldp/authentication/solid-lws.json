@@ -1,5 +1,8 @@
 {
-  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@context": [
+    "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^8.0.0/components/context.jsonld",
+    "https://linkedsoftwaredependencies.org/bundles/npm/asynchronous-handlers/^1.0.0/components/context.jsonld"
+  ],
   "@graph": [
     {
       "comment": "Caches the credentials based on the incoming request.",
@@ -8,7 +11,7 @@
       "source": {
         "comment": "Supports LWS access tokens, Solid-OIDC DPoP and Bearer access tokens, or no credentials.",
         "@id": "urn:solid-server:default:WaterfallCredentialsExtractor",
-        "@type": "WaterfallHandler",
+        "@type": "StatusWaterfallHandler",
         "handlers": [
           {
             "comment": [
@@ -29,7 +32,7 @@
             "extractors": [
               {
                 "@id": "urn:solid-server:default:AccessTokenExtractor",
-                "@type": "WaterfallHandler",
+                "@type": "StatusWaterfallHandler",
                 "handlers": [
                   {
                     "@id": "urn:solid-server:default:DPoPWebIdExtractor",

@@ -1,5 +1,8 @@
 {
-  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@context": [
+    "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^8.0.0/components/context.jsonld",
+    "https://linkedsoftwaredependencies.org/bundles/npm/asynchronous-handlers/^1.0.0/components/context.jsonld"
+  ],
   "@graph": [
     {
       "comment": "Caches the credentials based on the incoming request.",
@@ -11,7 +14,7 @@
           "Requests with an invalid access token are rejected with a 401 response, as required by LWS, instead of being treated as unauthenticated."
         ],
         "@id": "urn:solid-server:default:WaterfallCredentialsExtractor",
-        "@type": "WaterfallHandler",
+        "@type": "StatusWaterfallHandler",
         "handlers": [
           {
             "@id": "urn:solid-server:default:LwsAccessTokenExtractor",

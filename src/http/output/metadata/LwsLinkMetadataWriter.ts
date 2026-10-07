@@ -1,4 +1,4 @@
-import { getLoggerFor } from '../../../logging/LogUtil';
+import { getLoggerFor } from 'global-logger-factory';
 import { PAGINATION_RELATIONS } from '../../../storage/conversion/ContainerToLwsJsonConverter';
 import type { StorageLocationStrategy } from '../../../server/description/StorageLocationStrategy';
 import type { HttpResponse } from '../../../server/HttpResponse';

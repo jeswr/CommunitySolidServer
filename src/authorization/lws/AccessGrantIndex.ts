@@ -1,5 +1,5 @@
+import { getLoggerFor } from 'global-logger-factory';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
-import { getLoggerFor } from '../../logging/LogUtil';
 import type { ActivityEmitter } from '../../server/notifications/ActivityEmitter';
 import type { ResourceStore } from '../../storage/ResourceStore';
 import { INTERNAL_QUADS } from '../../util/ContentTypes';

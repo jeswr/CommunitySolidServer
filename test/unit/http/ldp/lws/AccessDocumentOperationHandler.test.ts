@@ -1,3 +1,5 @@
+import type { Logger } from 'global-logger-factory';
+import { getLoggerFor } from 'global-logger-factory';
 import type { OperationHandler } from '../../../../../src/http/ldp/OperationHandler';
 import type {
   AccessDocumentOperationHandlerArgs,
@@ -7,8 +9,6 @@ import type { Operation } from '../../../../../src/http/Operation';
 import type { ResponseDescription } from '../../../../../src/http/output/response/ResponseDescription';
 import { BasicRepresentation } from '../../../../../src/http/representation/BasicRepresentation';
 import { RepresentationMetadata } from '../../../../../src/http/representation/RepresentationMetadata';
-import type { Logger } from '../../../../../src/logging/Logger';
-import { getLoggerFor } from '../../../../../src/logging/LogUtil';
 import type { StorageLocationStrategy } from '../../../../../src/server/description/StorageLocationStrategy';
 import type { LwsNotificationSender } from '../../../../../src/server/notifications/lws/LwsNotificationSender';
 import { BadRequestHttpError } from '../../../../../src/util/errors/BadRequestHttpError';
@@ -20,7 +20,7 @@ import { readableToString } from '../../../../../src/util/StreamUtil';
 import { SOLID_HTTP } from '../../../../../src/util/Vocabularies';
 import { flushPromises } from '../../../../util/Util';
 
-jest.mock('../../../../../src/logging/LogUtil', (): any => {
+jest.mock('global-logger-factory', (): any => {
   const logger: Logger = { warn: jest.fn() } as any;
   return { getLoggerFor: (): Logger => logger };
 });

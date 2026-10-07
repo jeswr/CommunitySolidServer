@@ -1,10 +1,10 @@
+import { PERMISSIONS } from '@solidlab/policy-engine';
 import type { Credentials } from '../../../../src/authentication/Credentials';
 import type { AccessGrantIndex, StoredAccessGrant } from '../../../../src/authorization/lws/AccessGrantIndex';
 import { AccessGrantReader } from '../../../../src/authorization/lws/AccessGrantReader';
 import type { AccessConstraint, AccessPolicy } from '../../../../src/authorization/lws/AccessGrantUtil';
 import { LWS_CONTEXT_URI } from '../../../../src/authorization/lws/AccessGrantUtil';
 import type { AccessMap } from '../../../../src/authorization/permissions/Permissions';
-import { AccessMode } from '../../../../src/authorization/permissions/Permissions';
 import { BasicRepresentation } from '../../../../src/http/representation/BasicRepresentation';
 import type { ResourceIdentifier } from '../../../../src/http/representation/ResourceIdentifier';
 import type { StorageLocationStrategy } from '../../../../src/server/description/StorageLocationStrategy';
@@ -53,7 +53,7 @@ describe('An AccessGrantReader', (): void => {
     };
   }
 
-  function request(identifier: ResourceIdentifier, ...modes: AccessMode[]): void {
+  function request(identifier: ResourceIdentifier, ...modes: string[]): void {
     requestedModes.set(identifier, new Set(modes));
   }
 
@@ -86,7 +86,7 @@ describe('An AccessGrantReader', (): void => {
 
   it('grants nothing if there are no grants.', async(): Promise<void> => {
     index.getGrants.mockResolvedValueOnce([]);
-    request(document, AccessMode.read);
+    request(document, PERMISSIONS.Read);
     const result = await reader.handle({ credentials, requestedModes });
     expect(result.size).toBe(0);
     expect(index.getGrants).toHaveBeenLastCalledWith(storage);
@@ -95,7 +95,7 @@ describe('An AccessGrantReader', (): void => {
   it('grants nothing if the storage can not be determined.', async(): Promise<void> => {
     storageStrategy.getStorageIdentifier.mockRejectedValueOnce(new NotFoundHttpError());
     policies.push(createPolicy([ 'read' ], 'DataResource', [ document ]));
-    request(document, AccessMode.read);
+    request(document, PERMISSIONS.Read);
     const result = await reader.handle({ credentials, requestedModes });
     expect(result.size).toBe(0);
     expect(index.getGrants).toHaveBeenCalledTimes(0);
@@ -103,49 +103,54 @@ describe('An AccessGrantReader', (): void => {
 
   it('only uses policies of which the agent is the assignee.', async(): Promise<void> => {
     policies.push(createPolicy([ 'read' ], 'DataResource', [ document ], undefined, otherWebId));
-    request(document, AccessMode.read);
+    request(document, PERMISSIONS.Read);
     expect((await reader.handle({ credentials, requestedModes })).size).toBe(0);
 
     policies.push(createPolicy([ 'read' ], 'DataResource', [ document ]));
     const result = await reader.handle({ credentials, requestedModes });
-    expect(result.get(document)).toEqual({ read: true });
+    expect(result.get(document)).toEqual({ [PERMISSIONS.Read]: true });
   });
 
   it('grants access to everyone with the foaf:Agent assignee.', async(): Promise<void> => {
     policies.push(createPolicy([ 'read' ], 'DataResource', [ document ], undefined, FOAF.Agent));
-    request(document, AccessMode.read);
+    request(document, PERMISSIONS.Read);
     const result = await reader.handle({ credentials: {}, requestedModes });
-    expect(result.get(document)).toEqual({ read: true });
+    expect(result.get(document)).toEqual({ [PERMISSIONS.Read]: true });
   });
 
   it('maps the actions to access modes.', async(): Promise<void> => {
     policies.push(createPolicy([ 'read', 'modify', 'create', 'delete' ], 'DataResource', [ document ]));
-    request(document, AccessMode.read);
+    request(document, PERMISSIONS.Read);
     const result = await reader.handle({ credentials, requestedModes });
-    expect(result.get(document)).toEqual({ read: true, write: true, append: true, delete: true });
+    expect(result.get(document)).toEqual({
+      [PERMISSIONS.Read]: true,
+      [PERMISSIONS.Modify]: true,
+      [PERMISSIONS.Append]: true,
+      [PERMISSIONS.Delete]: true,
+    });
   });
 
   it('ignores unknown actions.', async(): Promise<void> => {
     policies.push(createPolicy([ 'unknown' ], 'DataResource', [ document ]));
-    request(document, AccessMode.read);
+    request(document, PERMISSIONS.Read);
     const result = await reader.handle({ credentials, requestedModes });
     expect(result.size).toBe(0);
   });
 
   it('only applies policies to the exact targets.', async(): Promise<void> => {
     policies.push(createPolicy([ 'read' ], 'Container', [ container ]));
-    request(container, AccessMode.read);
-    request(document, AccessMode.read);
-    request(nested, AccessMode.read);
+    request(container, PERMISSIONS.Read);
+    request(document, PERMISSIONS.Read);
+    request(nested, PERMISSIONS.Read);
     const result = await reader.handle({ credentials, requestedModes });
-    expect(result.get(container)).toEqual({ read: true });
+    expect(result.get(container)).toEqual({ [PERMISSIONS.Read]: true });
     expect(result.get(document)).toBeUndefined();
     expect(result.get(nested)).toBeUndefined();
   });
 
   it('ignores policies without a target.', async(): Promise<void> => {
     policies.push({ type: 'AccessPolicy', action: [ 'read' ], assignee: webId });
-    request(document, AccessMode.read);
+    request(document, PERMISSIONS.Read);
     const result = await reader.handle({ credentials, requestedModes });
     expect(result.size).toBe(0);
   });
@@ -154,43 +159,43 @@ describe('An AccessGrantReader', (): void => {
     policies.push(createPolicy([ 'read' ], 'Container', [ document ]));
     policies.push(createPolicy([ 'delete' ], 'DataResource', [ container ]));
     policies.push(createPolicy([ 'modify' ], `${LWS.namespace}DataResource`, [ document ]));
-    request(container, AccessMode.read);
-    request(document, AccessMode.read);
+    request(container, PERMISSIONS.Read);
+    request(document, PERMISSIONS.Read);
     const result = await reader.handle({ credentials, requestedModes });
     expect(result.get(container)).toBeUndefined();
-    expect(result.get(document)).toEqual({ write: true, append: true });
+    expect(result.get(document)).toEqual({ [PERMISSIONS.Modify]: true, [PERMISSIONS.Append]: true });
   });
 
   it('matches both containers and documents with the StorageResource type.', async(): Promise<void> => {
     policies.push(createPolicy([ 'read' ], 'StorageResource', [ container, document ]));
-    request(container, AccessMode.read);
-    request(document, AccessMode.read);
+    request(container, PERMISSIONS.Read);
+    request(document, PERMISSIONS.Read);
     const result = await reader.handle({ credentials, requestedModes });
-    expect(result.get(container)).toEqual({ read: true });
-    expect(result.get(document)).toEqual({ read: true });
+    expect(result.get(container)).toEqual({ [PERMISSIONS.Read]: true });
+    expect(result.get(document)).toEqual({ [PERMISSIONS.Read]: true });
   });
 
   it('grants create on the direct children of a container with the create action.', async(): Promise<void> => {
     policies.push(createPolicy([ 'create' ], 'Container', [ container ]));
-    request(container, AccessMode.append);
-    request(document, AccessMode.create);
-    request(nested, AccessMode.create);
+    request(container, PERMISSIONS.Append);
+    request(document, PERMISSIONS.Create);
+    request(nested, PERMISSIONS.Create);
     const result = await reader.handle({ credentials, requestedModes });
-    expect(result.get(container)).toEqual({ append: true });
-    expect(result.get(document)).toEqual({ create: true });
+    expect(result.get(container)).toEqual({ [PERMISSIONS.Append]: true });
+    expect(result.get(document)).toEqual({ [PERMISSIONS.Create]: true });
     expect(result.get(nested)).toBeUndefined();
   });
 
   it('only grants create on children if the create mode is requested.', async(): Promise<void> => {
     policies.push(createPolicy([ 'create' ], 'Container', [ container ]));
-    request(document, AccessMode.read);
+    request(document, PERMISSIONS.Read);
     const result = await reader.handle({ credentials, requestedModes });
     expect(result.get(document)).toBeUndefined();
   });
 
   it('does not grant create on children for other actions.', async(): Promise<void> => {
     policies.push(createPolicy([ 'read', 'modify' ], 'Container', [ container ]));
-    request(document, AccessMode.create);
+    request(document, PERMISSIONS.Create);
     const result = await reader.handle({ credentials, requestedModes });
     expect(result.get(document)).toBeUndefined();
   });
@@ -199,15 +204,15 @@ describe('An AccessGrantReader', (): void => {
     const root = { path: baseUrl };
     storageStrategy.getStorageIdentifier.mockResolvedValue(root);
     policies.push(createPolicy([ 'read', 'create' ], 'StorageResource', [ root ]));
-    request(root, AccessMode.read, AccessMode.create);
+    request(root, PERMISSIONS.Read, PERMISSIONS.Create);
     const result = await reader.handle({ credentials, requestedModes });
-    expect(result.get(root)).toEqual({ read: true, append: true });
+    expect(result.get(root)).toEqual({ [PERMISSIONS.Read]: true, [PERMISSIONS.Append]: true });
   });
 
   it('evaluates client constraints.', async(): Promise<void> => {
     policies.push(createPolicy([ 'read' ], 'DataResource', [ document ], [ constraint('client', 'eq', clientId) ]));
-    request(document, AccessMode.read);
-    expect((await reader.handle({ credentials, requestedModes })).get(document)).toEqual({ read: true });
+    request(document, PERMISSIONS.Read);
+    expect((await reader.handle({ credentials, requestedModes })).get(document)).toEqual({ [PERMISSIONS.Read]: true });
     credentials.client = { clientId: 'http://other.example/' };
     expect((await reader.handle({ credentials, requestedModes })).size).toBe(0);
     delete credentials.client;
@@ -217,12 +222,12 @@ describe('An AccessGrantReader', (): void => {
   it('evaluates format constraints.', async(): Promise<void> => {
     policies.push(createPolicy([ 'read' ], 'StorageResource', both, [ constraint('format', 'eq', 'text/turtle') ]));
     policies.push(createPolicy([ 'delete' ], 'StorageResource', both, [ constraint('format', 'eq', 'text/plain') ]));
-    request(container, AccessMode.read);
-    request(document, AccessMode.read);
+    request(container, PERMISSIONS.Read);
+    request(document, PERMISSIONS.Read);
     const result = await reader.handle({ credentials, requestedModes });
     // Containers have no format
     expect(result.get(container)).toBeUndefined();
-    expect(result.get(document)).toEqual({ read: true });
+    expect(result.get(document)).toEqual({ [PERMISSIONS.Read]: true });
     // The resource info is only requested once per resource
     expect(store.getRepresentation).toHaveBeenCalledTimes(2);
   });
@@ -232,21 +237,25 @@ describe('An AccessGrantReader', (): void => {
     policies.push(createPolicy([ 'read' ], 'StorageResource', both, [ typeConstraint ]));
     policies.push(createPolicy([ 'modify' ], 'StorageResource', both, [ constraint('type', 'eq', LWS.Container) ]));
     policies.push(createPolicy([ 'delete' ], 'StorageResource', both, [ constraint('type', 'eq', LWS.DataResource) ]));
-    request(container, AccessMode.read);
-    request(document, AccessMode.read);
+    request(container, PERMISSIONS.Read);
+    request(document, PERMISSIONS.Read);
     const result = await reader.handle({ credentials, requestedModes });
-    expect(result.get(container)).toEqual({ read: true, write: true, append: true });
-    expect(result.get(document)).toEqual({ read: true, delete: true });
+    expect(result.get(container)).toEqual({
+      [PERMISSIONS.Read]: true,
+      [PERMISSIONS.Modify]: true,
+      [PERMISSIONS.Append]: true,
+    });
+    expect(result.get(document)).toEqual({ [PERMISSIONS.Read]: true, [PERMISSIONS.Delete]: true });
   });
 
   it('evaluates the constraints on the new resource when creating it.', async(): Promise<void> => {
     const typeConstraint = constraint('type', 'eq', LWS.DataResource);
     policies.push(createPolicy([ 'create' ], 'Container', [ container ], [ typeConstraint ]));
     store.getRepresentation.mockRejectedValue(new NotFoundHttpError());
-    request(document, AccessMode.create);
-    request({ path: `${container.path}sub/` }, AccessMode.create);
+    request(document, PERMISSIONS.Create);
+    request({ path: `${container.path}sub/` }, PERMISSIONS.Create);
     const result = await reader.handle({ credentials, requestedModes });
-    expect(result.get(document)).toEqual({ create: true });
+    expect(result.get(document)).toEqual({ [PERMISSIONS.Create]: true });
     expect(result.get({ path: `${container.path}sub/` })).toBeUndefined();
   });
 
@@ -256,9 +265,9 @@ describe('An AccessGrantReader', (): void => {
     const formatConstraint = constraint('format', 'neq', 'text/turtle');
     policies.push(createPolicy([ 'delete' ], 'DataResource', [ document ], [ formatConstraint ]));
     store.getRepresentation.mockRejectedValue(new NotFoundHttpError());
-    request(document, AccessMode.read);
+    request(document, PERMISSIONS.Read);
     const result = await reader.handle({ credentials, requestedModes });
-    expect(result.get(document)).toEqual({ delete: true });
+    expect(result.get(document)).toEqual({ [PERMISSIONS.Delete]: true });
   });
 
   it('accepts purpose constraints and evaluates dateTime constraints.', async(): Promise<void> => {
@@ -269,9 +278,9 @@ describe('An AccessGrantReader', (): void => {
     policies.push(createPolicy([ 'delete' ], 'DataResource', [ document ], [
       { leftOperand: 'dateTime', operator: 'lt', rightOperand: new Date(Date.now() - 60_000).toISOString() },
     ]));
-    request(document, AccessMode.read);
+    request(document, PERMISSIONS.Read);
     const result = await reader.handle({ credentials, requestedModes });
-    expect(result.get(document)).toEqual({ read: true });
+    expect(result.get(document)).toEqual({ [PERMISSIONS.Read]: true });
     expect(store.getRepresentation).toHaveBeenCalledTimes(0);
   });
 
@@ -285,18 +294,18 @@ describe('An AccessGrantReader', (): void => {
     });
 
     it('allows authenticated agents to create access requests.', async(): Promise<void> => {
-      request(requestContainer, AccessMode.append);
-      request(requestResource, AccessMode.create);
-      request(document, AccessMode.create);
+      request(requestContainer, PERMISSIONS.Append);
+      request(requestResource, PERMISSIONS.Create);
+      request(document, PERMISSIONS.Create);
       const result = await reader.handle({ credentials, requestedModes });
-      expect(result.get(requestContainer)).toEqual({ append: true });
-      expect(result.get(requestResource)).toEqual({ create: true });
+      expect(result.get(requestContainer)).toEqual({ [PERMISSIONS.Append]: true });
+      expect(result.get(requestResource)).toEqual({ [PERMISSIONS.Create]: true });
       expect(result.get(document)).toBeUndefined();
     });
 
     it('does not allow unauthenticated agents to create access requests.', async(): Promise<void> => {
-      request(requestContainer, AccessMode.append);
-      request(requestResource, AccessMode.create);
+      request(requestContainer, PERMISSIONS.Append);
+      request(requestResource, PERMISSIONS.Create);
       const result = await reader.handle({ credentials: {}, requestedModes });
       expect(result.size).toBe(0);
     });
@@ -304,11 +313,11 @@ describe('An AccessGrantReader', (): void => {
     it('supports the root container.', async(): Promise<void> => {
       const root = { path: baseUrl };
       storageStrategy.getStorageIdentifier.mockResolvedValue(root);
-      request(root, AccessMode.append);
-      request({ path: `${baseUrl}.lws/requests/` }, AccessMode.append);
+      request(root, PERMISSIONS.Append);
+      request({ path: `${baseUrl}.lws/requests/` }, PERMISSIONS.Append);
       const result = await reader.handle({ credentials, requestedModes });
       expect(result.get(root)).toBeUndefined();
-      expect(result.get({ path: `${baseUrl}.lws/requests/` })).toEqual({ append: true });
+      expect(result.get({ path: `${baseUrl}.lws/requests/` })).toEqual({ [PERMISSIONS.Append]: true });
     });
   });
 });

@@ -1,3 +1,4 @@
+import { PERMISSIONS } from '@solidlab/policy-engine';
 import type { Operation } from '../../http/Operation';
 import type { ResourceSet } from '../../storage/ResourceSet';
 import { APPLICATION_MERGE_PATCH_JSON } from '../../util/ContentTypes';
@@ -5,7 +6,6 @@ import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpErr
 import { IdentifierSetMultiMap } from '../../util/map/IdentifierMap';
 import { ModesExtractor } from './ModesExtractor';
 import type { AccessMap } from './Permissions';
-import { AccessMode } from './Permissions';
 
 /**
  * Determines the required access modes for JSON Merge Patch (RFC 7386) requests.
@@ -31,10 +31,10 @@ export class JsonMergePatchModesExtractor extends ModesExtractor {
 
   public async handle({ target }: Operation): Promise<AccessMap> {
     const requiredModes: AccessMap = new IdentifierSetMultiMap();
-    requiredModes.add(target, AccessMode.read);
-    requiredModes.add(target, AccessMode.write);
+    requiredModes.add(target, PERMISSIONS.Read);
+    requiredModes.add(target, PERMISSIONS.Modify);
     if (!await this.resourceSet.hasResource(target)) {
-      requiredModes.add(target, AccessMode.create);
+      requiredModes.add(target, PERMISSIONS.Create);
     }
     return requiredModes;
   }

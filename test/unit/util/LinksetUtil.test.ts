@@ -1,5 +1,5 @@
 import 'jest-rdf';
-import { DataFactory } from 'n3';
+import { DataFactory as DF } from 'n3';
 import { UnprocessableEntityHttpError } from '../../../src/util/errors/UnprocessableEntityHttpError';
 import {
   IANA_RELATION_NAMESPACE,
@@ -11,8 +11,6 @@ import {
   relationToPredicate,
 } from '../../../src/util/LinksetUtil';
 import { LDP, RDF } from '../../../src/util/Vocabularies';
-
-const { blankNode, literal, namedNode, quad } = DataFactory;
 
 describe('LinksetUtil', (): void => {
   const subject = 'http://example.com/foo';
@@ -51,20 +49,20 @@ describe('LinksetUtil', (): void => {
 
   describe('#quadToLink', (): void => {
     it('converts quads with named nodes as subject and object.', async(): Promise<void> => {
-      expect(quadToLink(quad(namedNode(subject), RDF.terms.type, namedNode(target))))
+      expect(quadToLink(DF.quad(DF.namedNode(subject), RDF.terms.type, DF.namedNode(target))))
         .toEqual({ anchor: subject, rel: 'type', href: target });
     });
 
     it('returns undefined for other quads.', async(): Promise<void> => {
-      expect(quadToLink(quad(blankNode(), RDF.terms.type, namedNode(target)))).toBeUndefined();
-      expect(quadToLink(quad(namedNode(subject), RDF.terms.type, literal('a')))).toBeUndefined();
+      expect(quadToLink(DF.quad(DF.blankNode(), RDF.terms.type, DF.namedNode(target)))).toBeUndefined();
+      expect(quadToLink(DF.quad(DF.namedNode(subject), RDF.terms.type, DF.literal('a')))).toBeUndefined();
     });
   });
 
   describe('#linkToQuad', (): void => {
     it('converts a link to a quad.', async(): Promise<void> => {
       expect(linkToQuad({ anchor: subject, rel: 'next', href: target })).toEqualRdfQuad(
-        quad(namedNode(subject), namedNode(`${IANA_RELATION_NAMESPACE}next`), namedNode(target)),
+        DF.quad(DF.namedNode(subject), DF.namedNode(`${IANA_RELATION_NAMESPACE}next`), DF.namedNode(target)),
       );
     });
   });

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import fetch from 'cross-fetch';
+import { getLoggerFor } from 'global-logger-factory';
 import { LWS_CONTEXT_URI } from '../../../authorization/lws/AccessGrantUtil';
-import { getLoggerFor } from '../../../logging/LogUtil';
 import { createErrorMessage } from '../../../util/errors/ErrorUtil';
 import { APPLICATION_LWS_JSON } from '../../../util/ContentTypes';
 import type { HttpMessageSigner } from './HttpMessageSigner';

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/naming-convention */
+import { getLoggerFor } from 'global-logger-factory';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
-import { getLoggerFor } from '../../logging/LogUtil';
 import type { StorageLocationStrategy } from '../../server/description/StorageLocationStrategy';
 import type { HttpHandlerInput } from '../../server/HttpHandler';
 import { HttpHandler } from '../../server/HttpHandler';

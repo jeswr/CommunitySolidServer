@@ -1,6 +1,8 @@
+import type { PermissionMap } from '@solidlab/policy-engine';
+import { PERMISSIONS } from '@solidlab/policy-engine';
+import { getLoggerFor } from 'global-logger-factory';
 import type { Credentials } from '../../authentication/Credentials';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
-import { getLoggerFor } from '../../logging/LogUtil';
 import type { StorageLocationStrategy } from '../../server/description/StorageLocationStrategy';
 import type { ResourceStore } from '../../storage/ResourceStore';
 import type { IdentifierStrategy } from '../../util/identifiers/IdentifierStrategy';
@@ -9,8 +11,7 @@ import { isContainerPath, joinUrl } from '../../util/PathUtil';
 import { LWS, RDF } from '../../util/Vocabularies';
 import type { PermissionReaderInput } from '../PermissionReader';
 import { PermissionReader } from '../PermissionReader';
-import type { PermissionMap, PermissionSet } from '../permissions/Permissions';
-import { AccessMode } from '../permissions/Permissions';
+import type { MultiPermissionMap } from '../permissions/Permissions';
 import type { AccessGrantIndex } from './AccessGrantIndex';
 import type { AccessPolicy, ConstraintContext } from './AccessGrantUtil';
 import { ACTION_MODES, areConstraintsSatisfied, hasType, PUBLIC_ASSIGNEE } from './AccessGrantUtil';
@@ -30,9 +31,9 @@ interface ResourceInfo {
  *  * and all its constraints are satisfied.
  * Policies without a target do not apply to any resource.
  *
- * The `read`, `modify`, and `delete` actions correspond to the `read`, `write` + `append`, and `delete` modes.
- * The `create` action on a container corresponds to `append` on the container
- * and `create` on the resources directly inside it.
+ * The `read`, `modify`, and `delete` actions correspond to the `Read`, `Modify` + `Append`, and `Delete` permissions.
+ * The `create` action on a container corresponds to `Append` on the container
+ * and `Create` on the resources directly inside it.
  *
  * Additionally, authenticated agents can create access requests in the access request container of every storage,
  * as they need to be able to request access to resources they can not access yet.
@@ -72,8 +73,8 @@ export class AccessGrantReader extends PermissionReader {
     this.requestPath = requestPath;
   }
 
-  public async handle({ credentials, requestedModes }: PermissionReaderInput): Promise<PermissionMap> {
-    const result: PermissionMap = new IdentifierMap();
+  public async handle({ credentials, requestedModes }: PermissionReaderInput): Promise<MultiPermissionMap> {
+    const result: MultiPermissionMap = new IdentifierMap();
     const now = new Date();
     const infoCache = new Map<string, Promise<ResourceInfo>>();
     for (const [ identifier, modes ] of requestedModes.entrySets()) {
@@ -87,18 +88,18 @@ export class AccessGrantReader extends PermissionReader {
 
   private async getPermissions(
     identifier: ResourceIdentifier,
-    modes: ReadonlySet<AccessMode>,
+    modes: ReadonlySet<string>,
     credentials: Credentials,
     now: Date,
     infoCache: Map<string, Promise<ResourceInfo>>,
-  ): Promise<PermissionSet> {
+  ): Promise<PermissionMap> {
     let storage: ResourceIdentifier;
     try {
       storage = await this.storageStrategy.getStorageIdentifier(identifier);
     } catch {
       return {};
     }
-    const permissions: PermissionSet = {};
+    const permissions: PermissionMap = {};
     this.addRequestPermissions(identifier, storage, credentials, permissions);
 
     const policies = await this.getAgentPolicies(storage, credentials);
@@ -120,7 +121,7 @@ export class AccessGrantReader extends PermissionReader {
 
     for (const policy of policies) {
       const appliesToResource = this.matchesTarget(policy, identifier);
-      const appliesToParent = modes.has(AccessMode.create) && parent && policy.action.includes('create') &&
+      const appliesToParent = modes.has(PERMISSIONS.Create) && parent && policy.action.includes('create') &&
         this.matchesTarget(policy, parent);
       if (!appliesToResource && !appliesToParent) {
         continue;
@@ -142,7 +143,7 @@ export class AccessGrantReader extends PermissionReader {
         }
       }
       if (appliesToParent) {
-        permissions.create = true;
+        permissions[PERMISSIONS.Create] = true;
       }
     }
     return permissions;
@@ -155,17 +156,17 @@ export class AccessGrantReader extends PermissionReader {
     identifier: ResourceIdentifier,
     storage: ResourceIdentifier,
     credentials: Credentials,
-    permissions: PermissionSet,
+    permissions: PermissionMap,
   ): void {
     if (!this.requestPath || !credentials.agent?.webId) {
       return;
     }
     const requestContainer = joinUrl(storage.path, this.requestPath);
     if (identifier.path === requestContainer) {
-      permissions.append = true;
+      permissions[PERMISSIONS.Append] = true;
     } else if (!this.identifierStrategy.isRootContainer(identifier) &&
       this.identifierStrategy.getParentContainer(identifier).path === requestContainer) {
-      permissions.create = true;
+      permissions[PERMISSIONS.Create] = true;
     }
   }
 

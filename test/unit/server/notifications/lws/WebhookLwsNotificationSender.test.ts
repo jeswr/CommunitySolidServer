@@ -1,5 +1,5 @@
 import fetch from 'cross-fetch';
-import type { Logger } from '../../../../../src/logging/Logger';
+import type { Logger } from 'global-logger-factory';
 import type { HttpMessageSigner } from '../../../../../src/server/notifications/lws/HttpMessageSigner';
 import type { LwsActivity } from '../../../../../src/server/notifications/lws/LwsNotificationSender';
 import { LwsDeliveryError } from '../../../../../src/server/notifications/lws/LwsNotificationSender';
@@ -11,7 +11,7 @@ import { flushPromises } from '../../../../util/Util';
 
 jest.mock('cross-fetch');
 
-jest.mock('../../../../../src/logging/LogUtil', (): any => {
+jest.mock('global-logger-factory', (): any => {
   const logger: Logger = { debug: jest.fn() } as any;
   return { getLoggerFor: (): Logger => logger };
 });

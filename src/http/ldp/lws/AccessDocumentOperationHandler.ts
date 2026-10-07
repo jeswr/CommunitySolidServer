@@ -1,4 +1,4 @@
-import { getLoggerFor } from '../../../logging/LogUtil';
+import { getLoggerFor } from 'global-logger-factory';
 import type { StorageLocationStrategy } from '../../../server/description/StorageLocationStrategy';
 import type { LwsNotificationSender } from '../../../server/notifications/lws/LwsNotificationSender';
 import { createLwsActivity } from '../../../server/notifications/lws/LwsNotificationSender';

@@ -1,14 +1,14 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { randomUUID } from 'node:crypto';
+import { PERMISSIONS } from '@solidlab/policy-engine';
+import { getLoggerFor } from 'global-logger-factory';
 import type { Credentials } from '../../../authentication/Credentials';
 import type { CredentialsExtractor } from '../../../authentication/CredentialsExtractor';
 import { isAbsoluteUri, LWS_CONTEXT_URI } from '../../../authorization/lws/AccessGrantUtil';
 import type { PermissionReader } from '../../../authorization/PermissionReader';
-import { AccessMode } from '../../../authorization/permissions/Permissions';
 import { NoContentResponseDescription } from '../../../http/output/response/NoContentResponseDescription';
 import { ResponseDescription } from '../../../http/output/response/ResponseDescription';
 import { BasicRepresentation } from '../../../http/representation/BasicRepresentation';
-import { getLoggerFor } from '../../../logging/LogUtil';
 import { APPLICATION_JSON, APPLICATION_LD_JSON, APPLICATION_LWS_JSON } from '../../../util/ContentTypes';
 import { BadRequestHttpError } from '../../../util/errors/BadRequestHttpError';
 import { ForbiddenHttpError } from '../../../util/errors/ForbiddenHttpError';
@@ -175,12 +175,12 @@ export class LwsSubscriptionHttpHandler extends OperationHttpHandler {
    * Throws an error if the subscriber can not read all of the given resources.
    */
   private async assertReadable(topics: string[], credentials: Credentials): Promise<void> {
-    const requestedModes = new IdentifierSetMultiMap<AccessMode>(
-      topics.map((path): [{ path: string }, AccessMode] => [{ path }, AccessMode.read ]),
+    const requestedModes = new IdentifierSetMultiMap<string>(
+      topics.map((path): [{ path: string }, string] => [{ path }, PERMISSIONS.Read ]),
     );
     const permissions = await this.permissionReader.handleSafe({ credentials, requestedModes });
     for (const path of topics) {
-      if (!permissions.get({ path })?.read) {
+      if (!permissions.get({ path })?.[PERMISSIONS.Read]) {
         throw credentials.agent?.webId ?
           new ForbiddenHttpError(`No read access to ${path}.`) :
           new UnauthorizedHttpError(`No read access to ${path}.`);

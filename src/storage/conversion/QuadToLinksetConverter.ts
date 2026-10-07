@@ -1,5 +1,4 @@
 import type { Quad } from '@rdfjs/types';
-import arrayifyStream from 'arrayify-stream';
 import type { AuxiliaryIdentifierStrategy } from '../../http/auxiliary/AuxiliaryIdentifierStrategy';
 import { BasicRepresentation } from '../../http/representation/BasicRepresentation';
 import type { Representation } from '../../http/representation/Representation';
@@ -8,6 +7,7 @@ import { APPLICATION_LINKSET_JSON, INTERNAL_QUADS } from '../../util/ContentType
 import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpError';
 import { linksToLinkset } from '../../util/LinksetUtil';
 import { CONTENT_TYPE } from '../../util/Vocabularies';
+import { arrayifyStream } from '../../util/StreamUtil';
 import { BaseTypedRepresentationConverter } from './BaseTypedRepresentationConverter';
 import type { LinksetMapper } from './LinksetMapper';
 import type { RepresentationConverterArgs } from './RepresentationConverter';

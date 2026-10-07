@@ -1,4 +1,4 @@
-import { DataFactory } from 'n3';
+import { DataFactory as DF } from 'n3';
 import type { OperationHandler } from '../../../../src/http/ldp/OperationHandler';
 import { RecursiveDeleteOperationHandler } from '../../../../src/http/ldp/RecursiveDeleteOperationHandler';
 import type { Operation } from '../../../../src/http/Operation';
@@ -12,11 +12,9 @@ import { NotImplementedHttpError } from '../../../../src/util/errors/NotImplemen
 import { PreconditionFailedHttpError } from '../../../../src/util/errors/PreconditionFailedHttpError';
 import { LDP, SOLID_HTTP } from '../../../../src/util/Vocabularies';
 
-const { namedNode, quad } = DataFactory;
-
 function containerRepresentation(container: string, members: string[]): Representation {
   return new BasicRepresentation(
-    members.map((member): any => quad(namedNode(container), LDP.terms.contains, namedNode(member))),
+    members.map((member): any => DF.quad(DF.namedNode(container), LDP.terms.contains, DF.namedNode(member))),
     'internal/quads',
   );
 }

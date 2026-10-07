@@ -1,5 +1,8 @@
 {
-  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@context": [
+    "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^8.0.0/components/context.jsonld",
+    "https://linkedsoftwaredependencies.org/bundles/npm/asynchronous-handlers/^1.0.0/components/context.jsonld"
+  ],
   "@graph": [
     {
       "comment": "Caches the requested modes based on the incoming operation. Also supports the JSON Merge Patch documents and recursive deletes of LWS.",
@@ -22,26 +25,24 @@
     {
       "comment": "Determines required modes based on HTTP methods.",
       "@id": "urn:solid-server:default:HttpModesExtractor",
-      "@type": "WaterfallHandler",
+      "@type": "StatusWaterfallHandler",
       "handlers": [
         {
           "comment": "Extract access modes for PATCH requests based on the request body.",
           "@id": "urn:solid-server:default:PatchModesExtractor"
         },
         {
-          "comment": "Requires read permissions on parent container when deleting non-existent resource for correct status code.",
-          "@type": "DeleteParentExtractor",
-          "resourceSet": { "@id": "urn:solid-server:default:CachedResourceSet" },
-          "identifierStrategy": { "@id": "urn:solid-server:default:IdentifierStrategy" },
-          "source": {
-            "comment": "Extract access modes based on the HTTP method.",
-            "@type": "MethodModesExtractor",
-            "resourceSet": { "@id": "urn:solid-server:default:CachedResourceSet" }
-          }
+          "comment": "Extract access modes based on the HTTP method.",
+          "@type": "MethodModesExtractor",
+          "resourceSet": { "@id": "urn:solid-server:default:CachedResourceSet" }
         },
         {
           "@type": "StaticThrowHandler",
-          "error": { "@type": "MethodNotAllowedHttpError" }
+          "onlyHandle": true,
+          "factory": {
+            "@type": "ClassErrorFactory",
+            "error": { "@type": "MethodNotAllowedHttpError" }
+          }
         }
       ]
     },
@@ -53,7 +54,7 @@
         "@type": "MethodFilterHandler",
         "methods": [ "PATCH" ],
         "source": {
-          "@type": "WaterfallHandler",
+          "@type": "StatusWaterfallHandler",
           "handlers": [
             {
               "@type": "N3PatchModesExtractor",
@@ -69,7 +70,11 @@
             },
             {
               "@type": "StaticThrowHandler",
-              "error": { "@type": "UnsupportedMediaTypeHttpError" }
+              "onlyHandle": true,
+              "factory": {
+                "@type": "ClassErrorFactory",
+                "error": { "@type": "UnsupportedMediaTypeHttpError" }
+              }
             }
           ]
         }

@@ -1,4 +1,4 @@
-import { DataFactory } from 'n3';
+import { DataFactory as DF } from 'n3';
 import { BasicRepresentation } from '../../../../src/http/representation/BasicRepresentation';
 import type { Representation } from '../../../../src/http/representation/Representation';
 import type { RepresentationPreferences } from '../../../../src/http/representation/RepresentationPreferences';
@@ -11,8 +11,6 @@ import { NotFoundHttpError } from '../../../../src/util/errors/NotFoundHttpError
 import { NotImplementedHttpError } from '../../../../src/util/errors/NotImplementedHttpError';
 import { readableToString } from '../../../../src/util/StreamUtil';
 import { CONTENT_TYPE_TERM, DC, IANA, LDP, POSIX, RDF } from '../../../../src/util/Vocabularies';
-
-const { namedNode: nn, literal, quad } = DataFactory;
 
 function itemIds(json: any): string[] {
   return json.items.map((item: any): string => item.id);
@@ -118,26 +116,26 @@ describe('A ContainerToLwsJsonConverter', (): void => {
     it('generates an LWS container representation.', async(): Promise<void> => {
       const c = container.path;
       representation = new BasicRepresentation([
-        quad(nn(c), RDF.terms.type, LDP.terms.BasicContainer),
-        quad(nn(c), LDP.terms.contains, nn(`${c}b`)),
-        quad(nn(c), LDP.terms.contains, nn(`${c}a/`)),
-        quad(nn(c), LDP.terms.contains, nn(`${c}c`)),
-        quad(nn(c), LDP.terms.contains, nn(`${c}d`)),
-        quad(nn(c), LDP.terms.contains, nn(`${c}e`)),
+        DF.quad(DF.namedNode(c), RDF.terms.type, LDP.terms.BasicContainer),
+        DF.quad(DF.namedNode(c), LDP.terms.contains, DF.namedNode(`${c}b`)),
+        DF.quad(DF.namedNode(c), LDP.terms.contains, DF.namedNode(`${c}a/`)),
+        DF.quad(DF.namedNode(c), LDP.terms.contains, DF.namedNode(`${c}c`)),
+        DF.quad(DF.namedNode(c), LDP.terms.contains, DF.namedNode(`${c}d`)),
+        DF.quad(DF.namedNode(c), LDP.terms.contains, DF.namedNode(`${c}e`)),
         // Container with a size and modification date
-        quad(nn(`${c}a/`), POSIX.terms.size, literal('12')),
-        quad(nn(`${c}a/`), DC.terms.modified, literal('2024-01-02T03:04:05Z')),
+        DF.quad(DF.namedNode(`${c}a/`), POSIX.terms.size, DF.literal('12')),
+        DF.quad(DF.namedNode(`${c}a/`), DC.terms.modified, DF.literal('2024-01-02T03:04:05Z')),
         // Content type triple
-        quad(nn(`${c}b`), CONTENT_TYPE_TERM, literal('text/turtle')),
-        quad(nn(`${c}b`), POSIX.terms.size, literal('123')),
-        quad(nn(`${c}b`), DC.terms.modified, literal('invalid date')),
+        DF.quad(DF.namedNode(`${c}b`), CONTENT_TYPE_TERM, DF.literal('text/turtle')),
+        DF.quad(DF.namedNode(`${c}b`), POSIX.terms.size, DF.literal('123')),
+        DF.quad(DF.namedNode(`${c}b`), DC.terms.modified, DF.literal('invalid date')),
         // IANA type
-        quad(nn(`${c}c`), RDF.terms.type, LDP.terms.Resource),
-        quad(nn(`${c}c`), RDF.terms.type, nn(`${IANA.namespace}text/plain`)),
-        quad(nn(`${c}c`), RDF.terms.type, nn(`${IANA.namespace}text/html#Resource`)),
-        quad(nn(`${c}c`), POSIX.terms.size, literal('-5')),
+        DF.quad(DF.namedNode(`${c}c`), RDF.terms.type, LDP.terms.Resource),
+        DF.quad(DF.namedNode(`${c}c`), RDF.terms.type, DF.namedNode(`${IANA.namespace}text/plain`)),
+        DF.quad(DF.namedNode(`${c}c`), RDF.terms.type, DF.namedNode(`${IANA.namespace}text/html#Resource`)),
+        DF.quad(DF.namedNode(`${c}c`), POSIX.terms.size, DF.literal('-5')),
         // No format information
-        quad(nn(`${c}d`), POSIX.terms.mtime, literal('5')),
+        DF.quad(DF.namedNode(`${c}d`), POSIX.terms.mtime, DF.literal('5')),
       ], 'internal/quads', false);
 
       const result = await converter.handle({
@@ -194,7 +192,7 @@ describe('A ContainerToLwsJsonConverter', (): void => {
 
     function createRepresentation(): Representation {
       return new BasicRepresentation(
-        members.map((member): any => quad(nn(c), LDP.terms.contains, nn(member))),
+        members.map((member): any => DF.quad(DF.namedNode(c), LDP.terms.contains, DF.namedNode(member))),
         'internal/quads',
         false,
       );
@@ -323,7 +321,7 @@ describe('A ContainerToLwsJsonConverter', (): void => {
       converter = new ContainerToLwsJsonConverter();
       const quads = [];
       for (let i = 0; i < 1001; i++) {
-        quads.push(quad(nn(c), LDP.terms.contains, nn(`${c}${String(i).padStart(4, '0')}`)));
+        quads.push(DF.quad(DF.namedNode(c), LDP.terms.contains, DF.namedNode(`${c}${String(i).padStart(4, '0')}`)));
       }
       const result = await converter.handle({
         identifier: container,

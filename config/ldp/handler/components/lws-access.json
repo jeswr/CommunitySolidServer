@@ -1,5 +1,5 @@
 {
-  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^8.0.0/components/context.jsonld",
   "@graph": [
     {
       "comment": "Keeps track of the LWS access grants, which are stored in the access grant container of every storage.",
@@ -10,23 +10,37 @@
       "grantPath": ".lws/grants/"
     },
     {
-      "comment": "Grants the permissions described by the LWS access grants. Applies to all resources except the internal ones.",
-      "@id": "urn:solid-server:default:PathBasedReader",
-      "@type": "PathBasedReader",
-      "paths": [
-        {
-          "PathBasedReader:_paths_key": "^/(?!\\.internal(/|$)).*",
-          "PathBasedReader:_paths_value": {
-            "@id": "urn:solid-server:default:AccessGrantReader",
-            "@type": "AccessGrantReader",
-            "index": { "@id": "urn:solid-server:default:AccessGrantIndex" },
-            "storageStrategy": { "@id": "urn:solid-server:default:StorageLocationStrategy" },
-            "identifierStrategy": { "@id": "urn:solid-server:default:IdentifierStrategy" },
-            "store": { "@id": "urn:solid-server:default:ResourceStore" },
-            "requestPath": ".lws/requests/"
+      "comment": "Grants the permissions described by the LWS access grants.",
+      "@id": "urn:solid-server:default:AccessGrantReader",
+      "@type": "AccessGrantReader",
+      "index": { "@id": "urn:solid-server:default:AccessGrantIndex" },
+      "storageStrategy": { "@id": "urn:solid-server:default:StorageLocationStrategy" },
+      "identifierStrategy": { "@id": "urn:solid-server:default:IdentifierStrategy" },
+      "store": { "@id": "urn:solid-server:default:ResourceStore" },
+      "requestPath": ".lws/requests/"
+    },
+    {
+      "comment": [
+        "Combines the permissions of the access grants with those of the policy engine (WAC or ACP).",
+        "Internal resources are handled by the PathBasedReader before reaching this point, so grants never apply to them."
+      ],
+      "@id": "urn:solid-server:default:ReadDeleteReaderLwsOverride",
+      "@type": "Override",
+      "overrideInstance": { "@id": "urn:solid-server:default:ReadDeleteReader" },
+      "overrideSteps": [{
+        "@type": "OverrideParameters",
+        "overrideValue": {
+          "@type": "ReadDeleteReader",
+          "reader": {
+            "@id": "urn:solid-server:default:LwsUnionPermissionReader",
+            "@type": "UnionPermissionReader",
+            "readers": [
+              { "@id": "urn:solid-server:default:PolicyEngineReader" },
+              { "@id": "urn:solid-server:default:AccessGrantReader" }
+            ]
           }
         }
-      ]
+      }]
     },
     {
       "comment": "Advertises the access request and access grant containers in the storage description.",

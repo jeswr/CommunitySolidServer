@@ -9,8 +9,6 @@ import { readableToString } from '../../../../src/util/StreamUtil';
 import { LWS, RDF } from '../../../../src/util/Vocabularies';
 import { SimpleSuffixStrategy } from '../../../util/SimpleSuffixStrategy';
 
-const { namedNode, quad } = DataFactory;
-
 describe('A QuadToLinksetConverter', (): void => {
   const subject = 'http://test.com/foo';
   const identifier = { path: 'http://test.com/foo.meta' };
@@ -22,7 +20,7 @@ describe('A QuadToLinksetConverter', (): void => {
 
   beforeEach(async(): Promise<void> => {
     representation = new BasicRepresentation([
-      quad(namedNode(subject), RDF.terms.type, namedNode('http://example.com/Type')),
+      DataFactory.quad(DataFactory.namedNode(subject), RDF.terms.type, DataFactory.namedNode('http://example.com/Type')),
     ], identifier, 'internal/quads');
     converter = new QuadToLinksetConverter(metadataStrategy, mapper);
   });

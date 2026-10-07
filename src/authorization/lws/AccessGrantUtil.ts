@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/naming-convention */
+import { PERMISSIONS } from '@solidlab/policy-engine';
 import { BadRequestHttpError } from '../../util/errors/BadRequestHttpError';
 import { isJsonObject } from '../../util/JsonMergePatch';
 import { FOAF, LWS } from '../../util/Vocabularies';
-import { AccessMode } from '../permissions/Permissions';
 
 /**
  * The JSON-LD context of LWS documents.
@@ -49,11 +49,11 @@ export interface AccessDocument {
  * The actions of the LWS Access Profile and the access modes they correspond to.
  * The `create` action is handled separately, as it applies to the members of a container.
  */
-export const ACTION_MODES: Record<string, AccessMode[]> = {
-  read: [ AccessMode.read ],
-  modify: [ AccessMode.write, AccessMode.append ],
-  create: [ AccessMode.append ],
-  delete: [ AccessMode.delete ],
+export const ACTION_MODES: Record<string, string[]> = {
+  read: [ PERMISSIONS.Read ],
+  modify: [ PERMISSIONS.Modify, PERMISSIONS.Append ],
+  create: [ PERMISSIONS.Append ],
+  delete: [ PERMISSIONS.Delete ],
 };
 
 /**

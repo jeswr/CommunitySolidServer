@@ -1,4 +1,4 @@
-import { getLoggerFor } from '../../logging/LogUtil';
+import { getLoggerFor } from 'global-logger-factory';
 import { findDescendants, isRecursiveDelete } from '../../storage/ContainerUtil';
 import type { ResourceStore } from '../../storage/ResourceStore';
 import { PreconditionFailedHttpError } from '../../util/errors/PreconditionFailedHttpError';

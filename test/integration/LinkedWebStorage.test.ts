@@ -141,7 +141,7 @@ const authorizations: [string, { configs: string[]; grant: (store: ResourceStore
     [ 'WAC', {
       configs: [ 'ldp/authorization/webacl.json', 'util/auxiliary/acl.json' ],
       grant: async(store, agent): Promise<void> => new AclHelper(store).setSimpleAcl(baseUrl, {
-        permissions: { read: true, write: true, append: true, control: true },
+        permissions: [ 'read', 'write', 'append', 'control' ],
         agent: `<${agent}>`,
         accessTo: true,
         default: true,

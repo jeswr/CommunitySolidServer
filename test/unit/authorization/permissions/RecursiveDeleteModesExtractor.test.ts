@@ -1,6 +1,6 @@
+import { PERMISSIONS } from '@solidlab/policy-engine';
 import type { ModesExtractor } from '../../../../src/authorization/permissions/ModesExtractor';
 import type { AccessMap } from '../../../../src/authorization/permissions/Permissions';
-import { AccessMode } from '../../../../src/authorization/permissions/Permissions';
 import { RecursiveDeleteModesExtractor } from '../../../../src/authorization/permissions/RecursiveDeleteModesExtractor';
 import type { Operation } from '../../../../src/http/Operation';
 import { BasicRepresentation } from '../../../../src/http/representation/BasicRepresentation';
@@ -30,7 +30,7 @@ describe('A RecursiveDeleteModesExtractor', (): void => {
     };
     operation.body.metadata.set(SOLID_HTTP.terms.depth, 'infinity');
 
-    sourceMap = new IdentifierSetMultiMap([[ target, AccessMode.delete ]]);
+    sourceMap = new IdentifierSetMultiMap<string>([[ target, PERMISSIONS.Delete ]]);
     source = {
       canHandle: jest.fn(),
       handle: jest.fn().mockResolvedValue(sourceMap),
@@ -59,8 +59,8 @@ describe('A RecursiveDeleteModesExtractor', (): void => {
   it('adds delete modes on all descendants of a recursive delete.', async(): Promise<void> => {
     const result = await extractor.handle(operation);
     expect([ ...result.keys() ]).toHaveLength(3);
-    expect(result.get(descendants[0])).toEqual(new Set([ AccessMode.delete ]));
-    expect(result.get(descendants[1])).toEqual(new Set([ AccessMode.delete ]));
+    expect(result.get(descendants[0])).toEqual(new Set([ PERMISSIONS.Delete ]));
+    expect(result.get(descendants[1])).toEqual(new Set([ PERMISSIONS.Delete ]));
     expect(findDescendants).toHaveBeenLastCalledWith(store, target);
   });
 

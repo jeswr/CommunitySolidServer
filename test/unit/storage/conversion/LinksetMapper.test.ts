@@ -1,13 +1,11 @@
 import 'jest-rdf';
-import { DataFactory } from 'n3';
+import { DataFactory as DF } from 'n3';
 import type { StorageLocationStrategy } from '../../../../src/server/description/StorageLocationStrategy';
 import { LinksetMapper } from '../../../../src/storage/conversion/LinksetMapper';
 import { SingleRootIdentifierStrategy } from '../../../../src/util/identifiers/SingleRootIdentifierStrategy';
 import { IANA_RELATION_NAMESPACE } from '../../../../src/util/LinksetUtil';
 import { DC, IANA, LDP, LWS, PIM, RDF, SOLID_META } from '../../../../src/util/Vocabularies';
 import { SimpleSuffixStrategy } from '../../../util/SimpleSuffixStrategy';
-
-const { blankNode, literal, namedNode, quad } = DataFactory;
 
 describe('A LinksetMapper', (): void => {
   const root = 'http://test.com/';
@@ -32,11 +30,11 @@ describe('A LinksetMapper', (): void => {
   describe('toLinks', (): void => {
     it('converts the metadata of the subject to links.', async(): Promise<void> => {
       const quads = [
-        quad(namedNode(subject.path), RDF.terms.type, LDP.terms.Resource),
-        quad(namedNode(subject.path), namedNode('http://example.com/rel'), namedNode('http://example.com/a')),
-        quad(namedNode(subject.path), DC.terms.modified, literal('2024-01-01T00:00:00Z')),
-        quad(namedNode(subject.path), namedNode('urn:npm:solid:community-server:meta:x'), namedNode(root)),
-        quad(namedNode('http://test.com/other'), RDF.terms.type, LDP.terms.Resource),
+        DF.quad(DF.namedNode(subject.path), RDF.terms.type, LDP.terms.Resource),
+        DF.quad(DF.namedNode(subject.path), DF.namedNode('http://example.com/rel'), DF.namedNode('http://example.com/a')),
+        DF.quad(DF.namedNode(subject.path), DC.terms.modified, DF.literal('2024-01-01T00:00:00Z')),
+        DF.quad(DF.namedNode(subject.path), DF.namedNode('urn:npm:solid:community-server:meta:x'), DF.namedNode(root)),
+        DF.quad(DF.namedNode('http://test.com/other'), RDF.terms.type, LDP.terms.Resource),
       ];
       await expect(mapper.toLinks(linkset, quads)).resolves.toEqual([
         { anchor: subject.path, rel: 'type', href: LDP.Resource },
@@ -80,19 +78,19 @@ describe('A LinksetMapper', (): void => {
 
   describe('toQuads', (): void => {
     it('preserves server-managed metadata and replaces the other metadata with the links.', async(): Promise<void> => {
-      const s = namedNode(subject.path);
+      const s = DF.namedNode(subject.path);
       const original = [
-        quad(namedNode('http://test.com/other'), namedNode('http://example.com/rel'), namedNode(root)),
-        quad(blankNode(), namedNode('http://example.com/rel'), namedNode(root)),
-        quad(s, DC.terms.modified, literal('2024-01-01T00:00:00Z')),
-        quad(s, namedNode('urn:npm:solid:community-server:meta:x'), namedNode(root)),
-        quad(s, LDP.terms.contains, namedNode(`${subject.path}/child`)),
-        quad(s, RDF.terms.type, LDP.terms.Resource),
-        quad(s, RDF.terms.type, PIM.terms.Storage),
-        quad(s, RDF.terms.type, namedNode(`${IANA.namespace}text/turtle#Resource`)),
-        quad(s, RDF.terms.type, namedNode('http://example.com/Old')),
-        quad(s, namedNode('http://example.com/rel'), namedNode('http://example.com/old')),
-        quad(s, SOLID_META.terms.ResponseMetadata, namedNode(root), SOLID_META.terms.ResponseMetadata),
+        DF.quad(DF.namedNode('http://test.com/other'), DF.namedNode('http://example.com/rel'), DF.namedNode(root)),
+        DF.quad(DF.blankNode(), DF.namedNode('http://example.com/rel'), DF.namedNode(root)),
+        DF.quad(s, DC.terms.modified, DF.literal('2024-01-01T00:00:00Z')),
+        DF.quad(s, DF.namedNode('urn:npm:solid:community-server:meta:x'), DF.namedNode(root)),
+        DF.quad(s, LDP.terms.contains, DF.namedNode(`${subject.path}/child`)),
+        DF.quad(s, RDF.terms.type, LDP.terms.Resource),
+        DF.quad(s, RDF.terms.type, PIM.terms.Storage),
+        DF.quad(s, RDF.terms.type, DF.namedNode(`${IANA.namespace}text/turtle#Resource`)),
+        DF.quad(s, RDF.terms.type, DF.namedNode('http://example.com/Old')),
+        DF.quad(s, DF.namedNode('http://example.com/rel'), DF.namedNode('http://example.com/old')),
+        DF.quad(s, SOLID_META.terms.ResponseMetadata, DF.namedNode(root), SOLID_META.terms.ResponseMetadata),
       ];
       const links = [
         { anchor: subject.path, rel: 'up', href: root },
@@ -113,8 +111,8 @@ describe('A LinksetMapper', (): void => {
         original[6],
         original[7],
         original[10],
-        quad(s, RDF.terms.type, namedNode('http://example.com/New')),
-        quad(s, namedNode(`${IANA_RELATION_NAMESPACE}describedby`), namedNode('http://example.com/new')),
+        DF.quad(s, RDF.terms.type, DF.namedNode('http://example.com/New')),
+        DF.quad(s, DF.namedNode(`${IANA_RELATION_NAMESPACE}describedby`), DF.namedNode('http://example.com/new')),
       ]);
     });
   });

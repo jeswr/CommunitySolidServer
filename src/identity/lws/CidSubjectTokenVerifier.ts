@@ -1,7 +1,7 @@
 import { fetch } from 'cross-fetch';
 import type { JWK } from 'jose';
 import { decodeProtectedHeader, importJWK } from 'jose';
-import { getLoggerFor } from '../../logging/LogUtil';
+import { getLoggerFor } from 'global-logger-factory';
 import { BadRequestHttpError } from '../../util/errors/BadRequestHttpError';
 import { createErrorMessage } from '../../util/errors/ErrorUtil';
 import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpError';
@@ -106,7 +106,7 @@ export class CidSubjectTokenVerifier extends SubjectTokenVerifier {
       if (method.controller !== undefined && method.controller !== subject) {
         throw new BadRequestHttpError(`The verification method ${keyId} is not controlled by ${subject}.`);
       }
-      return method.publicKeyJwk as JWK;
+      return method.publicKeyJwk as unknown as JWK;
     }
     throw new BadRequestHttpError(`${subject} has no verification method ${keyId}.`);
   }
