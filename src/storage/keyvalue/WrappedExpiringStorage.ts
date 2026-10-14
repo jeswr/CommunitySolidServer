@@ -1,5 +1,4 @@
 import { getLoggerFor } from 'global-logger-factory';
-import type { Finalizable } from '../../init/final/Finalizable';
 import { InternalServerError } from '../../util/errors/InternalServerError';
 import { setSafeInterval } from '../../util/TimerUtil';
 import type { ExpiringStorage } from './ExpiringStorage';
@@ -13,9 +12,8 @@ export type Expires<T> = { expires?: string; payload: T };
  * Will delete expired entries when trying to get their value.
  * Has a timer that will delete all expired data every hour (default value).
  * A random jitter is added to this interval so instances created together do not all sweep at the same time.
- * The timer is cleared when the storage is finalized.
  */
-export class WrappedExpiringStorage<TKey, TValue> implements ExpiringStorage<TKey, TValue>, Finalizable {
+export class WrappedExpiringStorage<TKey, TValue> implements ExpiringStorage<TKey, TValue> {
   protected readonly logger = getLoggerFor(this);
   private readonly source: KeyValueStorage<TKey, Expires<TValue>>;
   private readonly timer: NodeJS.Timeout;
@@ -28,7 +26,8 @@ export class WrappedExpiringStorage<TKey, TValue> implements ExpiringStorage<TKe
   public constructor(source: KeyValueStorage<TKey, Expires<TValue>>, timeout = 60, jitter = 0.15) {
     this.source = source;
     const period = timeout * 60 * 1000;
-    const jitterMs = Math.floor(Math.random() * period * jitter);
+    // Negative and NaN values would shorten the interval
+    const jitterMs = Math.floor(Math.random() * period * (jitter > 0 ? jitter : 0));
     this.timer = setSafeInterval(
       this.logger,
       'Failed to remove expired entries',
@@ -128,9 +127,5 @@ export class WrappedExpiringStorage<TKey, TValue> implements ExpiringStorage<TKe
       result.expires = new Date(expireData.expires);
     }
     return result;
-  }
-
-  public async finalize(): Promise<void> {
-    clearInterval(this.timer);
   }
 }
