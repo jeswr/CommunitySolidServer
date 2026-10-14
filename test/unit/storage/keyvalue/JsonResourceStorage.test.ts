@@ -144,7 +144,7 @@ describe('A JsonResourceStorage', (): void => {
     );
   });
 
-  it('streams container members.', async(): Promise<void> => {
+  it('closes the container listing before going through its members.', async(): Promise<void> => {
     const childCount = 100;
     let generatedChildren = 0;
     let listingClosed = false;
@@ -180,10 +180,9 @@ describe('A JsonResourceStorage', (): void => {
       done: false,
       value: [ '0', `${containerIdentifier}0` ],
     });
-    expect(generatedChildren).toBeLessThan(childCount);
-    expect(listingClosed).toBe(false);
-
-    await iterator.return?.();
+    // A store can keep the container locked while the listing is open
+    expect(generatedChildren).toBe(childCount);
     expect(listingClosed).toBe(true);
+    await iterator.return?.();
   });
 });

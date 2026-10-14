@@ -86,7 +86,13 @@ export class JsonResourceStorage<T> implements KeyValueStorage<string, T> {
     const representation = await this.safelyGetResource(identifier);
     if (representation) {
       if (isContainerIdentifier(identifier)) {
+        // Reading all members first, so the container is not kept open, and potentially locked,
+        // while going through its members.
+        const members: ResourceIdentifier[] = [];
         for await (const member of this.getContainedResourceIdentifiers(identifier, representation)) {
+          members.push(member);
+        }
+        for (const member of members) {
           yield* this.getResourceEntries(member);
         }
       } else {
