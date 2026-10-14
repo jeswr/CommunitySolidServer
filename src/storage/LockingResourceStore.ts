@@ -132,9 +132,16 @@ export class LockingResourceStore implements AtomicResourceStore {
     // See https://github.com/CommunitySolidServer/CommunitySolidServer/pull/536#discussion_r562467957
     return new Promise((resolve, reject): void => {
       let representation: Representation;
+      let lockFailed = false;
       // Make the resource time out to ensure that the lock is always released eventually.
       this.locks.withReadLock(identifier, async(maintainLock): Promise<void> => {
         representation = await whileLocked();
+        if (lockFailed) {
+          // The lock expired before the representation was available, so it will never be returned.
+          // The data stream needs to be closed here to free its resources, such as open file handles.
+          representation.data.destroy();
+          return;
+        }
         // eslint-disable-next-line @typescript-eslint/unbound-method
         const { read } = representation.data;
         resolve(this.createExpiringRepresentation(representation, maintainLock));
@@ -146,6 +153,7 @@ export class LockingResourceStore implements AtomicResourceStore {
           representation.data.read = read;
         }
       }).catch((error: unknown): void => {
+        lockFailed = true;
         // Destroy the source stream in case the lock times out
         representation?.data.destroy(error as Error);
 
