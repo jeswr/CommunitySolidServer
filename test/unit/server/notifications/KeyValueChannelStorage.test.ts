@@ -8,7 +8,7 @@ import type { ReadWriteLocker } from '../../../../src/util/locking/ReadWriteLock
 import resetAllMocks = jest.resetAllMocks;
 
 jest.mock('../../../../src/logging/LogUtil', (): any => {
-  const logger: Logger = { info: jest.fn(), error: jest.fn() } as any;
+  const logger: Logger = { info: jest.fn(), error: jest.fn(), debug: jest.fn() } as any;
   return { getLoggerFor: (): Logger => logger };
 });
 
@@ -118,6 +118,11 @@ describe('A KeyValueChannelStorage', (): void => {
       };
       await expect(storage.update(newChannel)).rejects
         .toThrow(`Trying to update ${topic} which is not a NotificationChannel.`);
+    });
+
+    it('does not store a channel that no longer exists.', async(): Promise<void> => {
+      await expect(storage.update(channel)).resolves.toBeUndefined();
+      expect(internalMap.size).toBe(0);
     });
   });
 

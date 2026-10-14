@@ -69,6 +69,10 @@ export class KeyValueChannelStorage implements NotificationChannelStorage {
         if (channel.topic !== oldChannel.topic) {
           throw new InternalServerError(`Trying to change the topic of a notification channel ${channel.id}`);
         }
+      } else {
+        // The channel was removed after it was read, e.g., because it expired or was unsubscribed
+        this.logger.debug(`Not updating notification channel ${channel.id} as it no longer exists.`);
+        return;
       }
 
       await this.storage.set(encodeURIComponent(channel.id), channel);
