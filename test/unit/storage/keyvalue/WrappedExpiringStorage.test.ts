@@ -121,7 +121,6 @@ describe('A WrappedExpiringStorage', (): void => {
     // Disable the actual interval and simply check it was created with the correct parameters.
     // Otherwise it gets quite difficult to verify the async interval function gets executed.
     let mockInterval: jest.SpyInstance;
-    let mockClear: jest.SpyInstance;
     let mockRandom: jest.SpyInstance;
     // We only need a stub timer with an `unref` function since we never let it fire on its own.
     let mockTimer: { unref: jest.Mock };
@@ -130,14 +129,12 @@ describe('A WrappedExpiringStorage', (): void => {
       mockTimer = { unref: jest.fn() };
       mockInterval = jest.spyOn(globalThis, 'setInterval')
         .mockImplementation(jest.fn().mockReturnValue(mockTimer));
-      mockClear = jest.spyOn(globalThis, 'clearInterval').mockImplementation(jest.fn());
       // Fixed jitter source so the scheduled delay is deterministic.
       mockRandom = jest.spyOn(globalThis.Math, 'random').mockReturnValue(0.5);
     });
 
     afterEach((): void => {
       mockInterval.mockRestore();
-      mockClear.mockRestore();
       mockRandom.mockRestore();
     });
 
@@ -153,6 +150,14 @@ describe('A WrappedExpiringStorage', (): void => {
       storage = new WrappedExpiringStorage(source, 1, 0.2);
       expect(mockInterval).toHaveBeenCalledTimes(1);
       expect(mockInterval.mock.calls[0][1]).toBe(60 * 1000 + 6000);
+    });
+
+    it('ignores negative and invalid jitter values.', (): void => {
+      storage = new WrappedExpiringStorage(source, 1, -1);
+      storage = new WrappedExpiringStorage(source, 1, Number.NaN);
+      expect(mockInterval).toHaveBeenCalledTimes(2);
+      expect(mockInterval.mock.calls[0][1]).toBe(60 * 1000);
+      expect(mockInterval.mock.calls[1][1]).toBe(60 * 1000);
     });
 
     it('unrefs the timer so it does not keep the event loop alive.', (): void => {
@@ -176,13 +181,6 @@ describe('A WrappedExpiringStorage', (): void => {
 
       expect(source.delete).toHaveBeenCalledTimes(1);
       expect(source.delete).toHaveBeenLastCalledWith('key2');
-    });
-
-    it('clears the timer on finalize.', async(): Promise<void> => {
-      storage = new WrappedExpiringStorage(source, 1, 0);
-      await expect(storage.finalize()).resolves.toBeUndefined();
-      expect(mockClear).toHaveBeenCalledTimes(1);
-      expect(mockClear).toHaveBeenLastCalledWith(mockTimer);
     });
   });
 });

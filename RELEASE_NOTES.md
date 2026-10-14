@@ -11,6 +11,8 @@
     - `AsyncHandler` and utility handlers such as `WaterfallHandler`: [asynchronous-handlers](https://www.npmjs.com/package/asynchronous-handlers).
     - Utilities for creating vocabularies: [rdf-vocabulary](https://www.npmjs.com/package/rdf-vocabulary).
     - WAC/ACP authorization: [@solidlab/policy-engine](https://github.com/CommunitySolidServer/policy-engine).
+- `WrappedExpiringStorage` adds up to 15% random jitter to its cleanup interval,
+  so storages created together do not all clean up at the same time.
 
 ### Data migration
 
@@ -28,9 +30,6 @@ The following changes pertain to the imports in the default configs:
 - There is a new import option for `storage/middleware`: `cache.json`, which adds caching for backend resources.
   All default configurations have been changed to use that option.
   Servers using worker threads can not use this option.
-- Default identity configurations now register their `WrappedExpiringStorage` instances with the `Finalizer`,
-  ensuring the cleanup timers are stopped during shutdown.
-  Custom configurations should register such instances as well.
 
 The following changes are relevant for v7 custom configs that replaced certain features.
 
@@ -57,8 +56,6 @@ These changes are relevant if you wrote custom modules for the server that depen
 - Due to several features being extracted, all related classes are impacted.
 - The handler changes discussed above also impact the code if you depended on these.
 - The `DeleteParentExtractor` class has been removed.
-- `WrappedExpiringStorage` now implements `Finalizable` and accepts an optional jitter fraction as its third argument.
-  Cleanup intervals use up to 15% jitter by default; pass `0` to retain a fixed interval.
 
 ## v7.0.0
 
