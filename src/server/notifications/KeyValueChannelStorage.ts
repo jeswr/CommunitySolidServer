@@ -27,17 +27,27 @@ export class KeyValueChannelStorage implements NotificationChannelStorage {
 
   public async get(id: string): Promise<NotificationChannel | undefined> {
     const channel = await this.storage.get(encodeURIComponent(id));
-    if (channel && this.isChannel(channel)) {
-      if (typeof channel.endAt === 'number' && channel.endAt < Date.now()) {
-        this.logger.info(`Notification channel ${id} has expired.`);
-        await this.locker.withWriteLock(this.getLockKey(id), async(): Promise<void> => {
-          await this.deleteChannel(channel);
-        });
-        return;
-      }
-
+    if (!channel || !this.isChannel(channel)) {
+      return;
+    }
+    if (typeof channel.endAt !== 'number' || channel.endAt >= Date.now()) {
       return channel;
     }
+    // The channel has expired and needs to be deleted.
+    // The expiry is re-checked *inside* the write lock (double-checked locking) so that,
+    // when several callers request the same expired channel concurrently, only the first
+    // one to acquire the lock performs the deletion. The others re-read, find it already
+    // gone, and skip. Previously every caller passed the outer expiry check and then raced
+    // into `deleteChannel`, producing a spurious "data consistency issue" error for all
+    // but the first.
+    await this.locker.withWriteLock(this.getLockKey(id), async(): Promise<void> => {
+      const current = await this.storage.get(encodeURIComponent(id));
+      if (current && this.isChannel(current) &&
+        typeof current.endAt === 'number' && current.endAt < Date.now()) {
+        this.logger.info(`Notification channel ${id} has expired.`);
+        await this.deleteChannel(current);
+      }
+    });
   }
 
   public async getAll(topic: ResourceIdentifier): Promise<string[]> {
@@ -77,8 +87,14 @@ export class KeyValueChannelStorage implements NotificationChannelStorage {
 
   public async delete(id: string): Promise<boolean> {
     return this.locker.withWriteLock(this.getLockKey(id), async(): Promise<boolean> => {
-      const channel = await this.get(id);
-      if (!channel) {
+      // Read the channel directly from storage rather than through `get()`.
+      // `get()` re-acquires this exact write lock when the channel has expired, and
+      // read-write locks are not reentrant, so the call would block until the lock
+      // expired (the observed "Lock expired after 30000ms on ...notification-storage"
+      // stalls that also failed the notification emit path). Deleting is idempotent
+      // regardless of expiry, so no expiry check is needed here.
+      const channel = await this.storage.get(encodeURIComponent(id));
+      if (!channel || !this.isChannel(channel)) {
         return false;
       }
       await this.deleteChannel(channel);
