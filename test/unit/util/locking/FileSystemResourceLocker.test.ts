@@ -68,6 +68,9 @@ describe('A FileSystemResourceLocker', (): void => {
   it('blocks lock acquisition until they are released.', async(): Promise<void> => {
     const results: number[] = [];
     const lock1 = locker.acquire(identifier);
+    // Acquiring a lock uses the file system, so which of several concurrent calls succeeds first is not
+    // deterministic. Waiting for the first lock makes the order of the releases below well-defined.
+    await lock1;
     const lock2 = locker.acquire(identifier);
     const lock3 = locker.acquire(identifier);
 
