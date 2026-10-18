@@ -64,9 +64,10 @@ export class ExtensionBasedMapper extends BaseFileIdentifierMapper {
 
     // Existing file
     if (!contentType) {
-      // Find a matching file
+      // Metadata files are always stored without an additional extension,
+      // so only other documents need to be looked up in their folder.
       const [ , folder, documentName ] = /^(.*\/)([^/]*)$/u.exec(filePath)!;
-      const fileName = await this.findFile(folder, documentName);
+      const fileName = this.isMetadataPath(filePath) ? undefined : await this.findFile(folder, documentName);
       if (fileName) {
         filePath = joinFilePath(folder, fileName);
       }
