@@ -1,6 +1,6 @@
 import type { Readable } from 'node:stream';
 import type { Stats } from 'fs-extra';
-import { createReadStream, createWriteStream, ensureDir, lstat, opendir, remove, stat } from 'fs-extra';
+import { createReadStream, createWriteStream, ensureDir, lstat, opendir, remove, stat, unlink } from 'fs-extra';
 import type { Representation } from '../../http/representation/Representation';
 import { RepresentationMetadata } from '../../http/representation/RepresentationMetadata';
 import type { ResourceIdentifier } from '../../http/representation/ResourceIdentifier';
@@ -107,7 +107,7 @@ export class FileDataAccessor implements DataAccessor {
       // Delete the metadata if there was an error writing the file
       if (wroteMetadata) {
         const metaLink = await this.resourceMapper.mapUrlToFilePath(identifier, true);
-        await remove(metaLink.filePath);
+        await this.removeFile(metaLink.filePath);
       }
       throw error;
     }
@@ -133,13 +133,13 @@ export class FileDataAccessor implements DataAccessor {
    */
   public async deleteResource(identifier: ResourceIdentifier): Promise<void> {
     const metaLink = await this.resourceMapper.mapUrlToFilePath(identifier, true);
-    await remove(metaLink.filePath);
+    await this.removeFile(metaLink.filePath);
 
     const link = await this.resourceMapper.mapUrlToFilePath(identifier, false);
     const stats = await this.getStats(link.filePath);
 
     if (!isContainerIdentifier(identifier) && stats.isFile()) {
-      await remove(link.filePath);
+      await this.removeFile(link.filePath);
     } else if (isContainerIdentifier(identifier) && stats.isDirectory()) {
       await remove(link.filePath);
     } else {
@@ -231,7 +231,7 @@ export class FileDataAccessor implements DataAccessor {
 
     // Delete (potentially) existing metadata file if no metadata needs to be stored
     } else {
-      await remove(metadataLink.filePath);
+      await this.removeFile(metadataLink.filePath);
       wroteMetadata = false;
     }
     return wroteMetadata;
@@ -373,7 +373,26 @@ export class FileDataAccessor implements DataAccessor {
     // Delete the old file with the (now) wrong extension
     const oldLink = await this.resourceMapper.mapUrlToFilePath(link.identifier, false);
     if (oldLink.filePath !== link.filePath) {
-      await remove(oldLink.filePath);
+      await this.removeFile(oldLink.filePath);
+    }
+  }
+
+  /**
+   * Removes the file at the given path, if there is one.
+   * In practice this is almost always a regular file, or nothing at all,
+   * so a single `unlink` is tried first.
+   * Anything else is left to `remove`, which can also remove directories.
+   *
+   * @param path - The path to remove.
+   */
+  protected async removeFile(path: string): Promise<void> {
+    try {
+      await unlink(path);
+    } catch (error: unknown) {
+      if (isSystemError(error) && error.code === 'ENOENT') {
+        return;
+      }
+      await remove(path);
     }
   }
 
@@ -403,7 +422,7 @@ export class FileDataAccessor implements DataAccessor {
   protected async cleanupDanglingMetadata(identifier: ResourceIdentifier): Promise<void> {
     try {
       const metadataLink = await this.resourceMapper.mapUrlToFilePath(identifier, true);
-      await remove(metadataLink.filePath);
+      await this.removeFile(metadataLink.filePath);
     } catch (error: unknown) {
       this.logger.error(`Failed to remove dangling metadata for ${identifier.path}: ${createErrorMessage(error)}`);
     }

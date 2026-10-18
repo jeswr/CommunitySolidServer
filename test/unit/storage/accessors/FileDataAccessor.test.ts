@@ -96,6 +96,9 @@ describe('A FileDataAccessor', (): void => {
 
     it('logs cleanup errors when removing orphaned auxiliary metadata files.', async(): Promise<void> => {
       cache.data = { 'resource.ttl.meta': '<http://this> <http://is> <http://metadata>.' };
+      jest.requireMock('fs-extra').unlink = (): never => {
+        throw new Error('unlink failed');
+      };
       jest.requireMock('fs-extra').remove = (): never => {
         throw new Error('cleanup failed');
       };
@@ -325,8 +328,34 @@ describe('A FileDataAccessor', (): void => {
       expect(cache.data['resource.meta']).toBeUndefined();
     });
 
+    it('does not fall back to a full removal if the old metadata file was deleted.', async(): Promise<void> => {
+      cache.data = { resource: 'data', 'resource.meta': 'metadata!' };
+      const remove = jest.fn();
+      jest.requireMock('fs-extra').remove = remove;
+      await expect(accessor.writeDocument({ path: `${base}resource` }, data, metadata)).resolves.toBeUndefined();
+      expect(cache.data['resource.meta']).toBeUndefined();
+      expect(remove).toHaveBeenCalledTimes(0);
+    });
+
+    it('does not fall back to a full removal if there is no old metadata file.', async(): Promise<void> => {
+      const remove = jest.fn();
+      jest.requireMock('fs-extra').remove = remove;
+      await expect(accessor.writeDocument({ path: `${base}resource` }, data, metadata)).resolves.toBeUndefined();
+      expect(cache.data).toEqual({ resource: 'data' });
+      expect(remove).toHaveBeenCalledTimes(0);
+    });
+
+    it('falls back to a full removal if the old metadata is not a regular file.', async(): Promise<void> => {
+      cache.data = { resource: 'data', 'resource.meta': { child: 'data' }};
+      await expect(accessor.writeDocument({ path: `${base}resource` }, data, metadata)).resolves.toBeUndefined();
+      expect(cache.data).toEqual({ resource: 'data' });
+    });
+
     it('errors if there is a problem deleting the old metadata file.', async(): Promise<void> => {
       cache.data = { resource: 'data', 'resource.meta': 'metadata!' };
+      jest.requireMock('fs-extra').unlink = (): any => {
+        throw new Error('unlink error');
+      };
       jest.requireMock('fs-extra').remove = (): any => {
         throw new Error('error');
       };
@@ -381,6 +410,9 @@ describe('A FileDataAccessor', (): void => {
 
     it('throws an error if there is an issue deleting the original file.', async(): Promise<void> => {
       cache.data = { 'resource$.ttl': '<this> <is> <data>.' };
+      jest.requireMock('fs-extra').unlink = (): any => {
+        throw new Error('unlink error');
+      };
       jest.requireMock('fs-extra').remove = (): any => {
         const error = new Error('error') as SystemError;
         error.code = 'EISDIR';
