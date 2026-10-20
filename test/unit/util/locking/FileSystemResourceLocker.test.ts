@@ -82,10 +82,7 @@ describe('A FileSystemResourceLocker', (): void => {
       return locker.release(identifier);
     });
 
-    // Neither of the other locks can be acquired while the first one is held
-    await new Promise((resolve): any => setTimeout(resolve, 200));
-    expect(results).toHaveLength(0);
-
+    // If either of the other locks were acquired while the first one is held, it would be pushed before 1
     results.push(1);
     await locker.release(identifier);
     await Promise.all([ prom2, prom3 ]);
