@@ -5,6 +5,7 @@ import type { ValuePreferences } from '../../http/representation/RepresentationP
 import { getLoggerFor } from '../../logging/LogUtil';
 import { BadRequestHttpError } from '../../util/errors/BadRequestHttpError';
 import { NotImplementedHttpError } from '../../util/errors/NotImplementedHttpError';
+import { isContainerPath } from '../../util/PathUtil';
 import { POSIX } from '../../util/Vocabularies';
 import { cleanPreferences, getBestPreference, getTypeWeight, preferencesToString } from './ConversionUtil';
 import type { RepresentationConverterArgs } from './RepresentationConverter';
@@ -65,7 +66,6 @@ type ConversionPath = {
  * Most of these decrease computation time at the cost of more memory.
  *  - The algorithm could start on both ends of a possible path and work towards the middle.
  *  - When creating a path, store the list of unused converters instead of checking every step.
- *  - Caching: https://github.com/CommunitySolidServer/CommunitySolidServer/issues/832
  *  - Making sure each intermediate type is only used once.
  *  - The TypedRepresentationConverter interface could potentially be updated
  *    so paths only differing in intermediate types can be combined.
@@ -74,13 +74,22 @@ export class ChainedConverter extends RepresentationConverter {
   protected readonly logger = getLoggerFor(this);
 
   private readonly converters: TypedRepresentationConverter[];
+  private readonly maxCacheSize: number;
+  // The converter set is fixed after construction, so cached paths can never go stale.
+  private readonly pathCache: Map<string, ConversionPath>;
 
-  public constructor(converters: TypedRepresentationConverter[]) {
+  /**
+   * @param converters - The converters that will be chained to find a conversion path.
+   * @param maxCacheSize - Maximum number of computed paths to memoize. A non-positive value is treated as 1.
+   */
+  public constructor(converters: TypedRepresentationConverter[], maxCacheSize = 1000) {
     super();
     if (converters.length === 0) {
       throw new Error('At least 1 converter is required.');
     }
     this.converters = [ ...converters ];
+    this.maxCacheSize = Math.max(1, maxCacheSize);
+    this.pathCache = new Map();
   }
 
   public async canHandle(input: RepresentationConverterArgs): Promise<void> {
@@ -112,13 +121,58 @@ export class ChainedConverter extends RepresentationConverter {
   }
 
   /**
-   * Finds a conversion path that can handle the given input.
+   * Finds a conversion path that can handle the given input,
+   * reusing a cached path if the same search was already performed (see `getCacheKey`).
    */
   private async findPath(input: RepresentationConverterArgs): Promise<ConversionPath> {
-    const type = input.representation.metadata.contentType!;
+    const { metadata } = input.representation;
+    const type = metadata.contentType!;
     const preferences = cleanPreferences(input.preferences.type);
 
-    return this.generatePath(type, preferences, input.representation.metadata);
+    const key = this.getCacheKey(type, preferences, metadata);
+    const cached = this.pathCache.get(key);
+    if (cached) {
+      // Reinsert the entry so it becomes the most recently used one.
+      this.pathCache.delete(key);
+      this.pathCache.set(key, cached);
+      return cached;
+    }
+
+    const path = await this.generatePath(type, preferences, metadata);
+    this.storeInCache(key, path);
+    return path;
+  }
+
+  /**
+   * Generates a cache key covering every input that can influence the chosen path:
+   * the input content type, the output type preferences,
+   * and whether the identifier is a container,
+   * which converters such as `ContainerToTemplateConverter` use in their `canHandle` call.
+   *
+   * @param inType - The input content type.
+   * @param outPreferences - The cleaned output type preferences.
+   * @param metadata - Metadata of the representation that will be converted.
+   */
+  private getCacheKey(inType: string, outPreferences: ValuePreferences, metadata: RepresentationMetadata): string {
+    const container = isContainerPath(metadata.identifier.value);
+    const preferenceKey = Object.entries(outPreferences)
+      .map(([ type, weight ]): string => `${type};${weight}`)
+      .sort((keyA, keyB): number => keyA < keyB ? -1 : 1)
+      .join(',');
+    // Null separators keep the segments unambiguous since they can not occur in content types or weights.
+    return `${container ? 'C' : 'R'}\u0000${inType}\u0000${preferenceKey}`;
+  }
+
+  /**
+   * Stores a computed path in the cache, evicting the least recently used entry when the cache is full.
+   */
+  private storeInCache(key: string, path: ConversionPath): void {
+    if (this.pathCache.size >= this.maxCacheSize) {
+      // A `Map` iterates in insertion order, so the first key is the least recently used one.
+      const oldest = this.pathCache.keys().next().value as string;
+      this.pathCache.delete(oldest);
+    }
+    this.pathCache.set(key, path);
   }
 
   /**
