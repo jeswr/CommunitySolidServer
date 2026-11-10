@@ -8,8 +8,7 @@ import type { ErrorHandlerArgs } from './ErrorHandler';
 import { ErrorHandler } from './ErrorHandler';
 
 /**
- * Adds metadata to an error to indicate the identifier of the originally targeted resource,
- * unless the error already identifies a target.
+ * Adds metadata to an error to indicate the identifier of the originally targeted resource.
  */
 export class TargetExtractorErrorHandler extends ErrorHandler {
   protected readonly logger = getLoggerFor(this);
@@ -28,13 +27,11 @@ export class TargetExtractorErrorHandler extends ErrorHandler {
   }
 
   public async handle(input: ErrorHandlerArgs): Promise<ResponseDescription> {
-    if (!input.error.metadata.has(SOLID_ERROR.terms.target)) {
-      try {
-        const target = await this.targetExtractor.handleSafe(input);
-        input.error.metadata.add(SOLID_ERROR.terms.target, DataFactory.namedNode(target.path));
-      } catch (error) {
-        this.logger.warn(`Unable to add identifier to error metadata: ${createErrorMessage(error)}`);
-      }
+    try {
+      const target = await this.targetExtractor.handleSafe(input);
+      input.error.metadata.add(SOLID_ERROR.terms.target, DataFactory.namedNode(target.path));
+    } catch (error) {
+      this.logger.warn(`Unable to add identifier to error metadata: ${createErrorMessage(error)}`);
     }
     return this.errorHandler.handle(input);
   }

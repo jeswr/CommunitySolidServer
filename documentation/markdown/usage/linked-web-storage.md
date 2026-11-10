@@ -183,7 +183,9 @@ Its subscription endpoint is `/.notifications/lws/`, which is advertised in the 
   if the subscriber can read all resources in its `topic` array.
   The endpoint is not part of a storage, so it accepts access tokens issued for any storage of the server,
   and topics need to be in the storage of the token.
-  If an anonymous request can not read a topic, the 401 response points to the topic's authorization server and storage.
+  If an anonymous request can not read a topic, the 401 response challenges with the protected resource metadata
+  of the endpoint itself, as RFC 9728 requires, and its `storage` link points to the storage of the topic,
+  for which the client then gets an access token.
   Subscriptions to a container also cover all resources contained in it, recursively.
 * A `GET` request on the endpoint lists the subscriptions of the authenticated subscriber,
   and a subscription can be read and deleted by its subscriber.

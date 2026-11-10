@@ -25,6 +25,7 @@ import { MetadataWriter } from './MetadataWriter';
  * Auxiliary resources only receive the storage link as they are not part of the containment hierarchy.
  * The storage description, and error responses which have a target, such as 401 responses,
  * also receive the storage link so clients can discover the storage without hardcoding its location.
+ * If such an error names an authorization target, the storage link points to the storage of that resource instead.
  */
 export class LwsLinkMetadataWriter extends MetadataWriter {
   protected readonly logger = getLoggerFor(this);
@@ -68,7 +69,9 @@ export class LwsLinkMetadataWriter extends MetadataWriter {
       if (location) {
         identifier = { path: location.value };
       } else {
-        const target = metadata.get(SOLID_ERROR.terms.target);
+        // A server-wide service outside every storage can name the resource whose storage
+        // the client needs an access token for, such as the topic of an LWS subscription
+        const target = metadata.get(SOLID_ERROR.terms.authorizationTarget) ?? metadata.get(SOLID_ERROR.terms.target);
         if (target) {
           identifier = { path: target.value };
           fullLinks = false;

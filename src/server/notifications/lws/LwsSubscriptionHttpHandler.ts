@@ -193,10 +193,10 @@ export class LwsSubscriptionHttpHandler extends OperationHttpHandler {
         if (credentials.agent?.webId) {
           throw new ForbiddenHttpError(`No read access to ${path}.`);
         }
-        // The topic is the target of the error, so the response points to the authorization server and
-        // storage of the topic, for which the client needs to get an access token.
+        // The challenge still describes the subscription endpoint, as that is what the client requested,
+        // but the response points to the storage of the topic, for which the client needs an access token.
         const error = new UnauthorizedHttpError(`No read access to ${path}.`);
-        error.metadata.add(SOLID_ERROR.terms.target, DataFactory.namedNode(path));
+        error.metadata.add(SOLID_ERROR.terms.authorizationTarget, DataFactory.namedNode(path));
         throw error;
       }
     }

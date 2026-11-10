@@ -87,4 +87,21 @@ describe('A LwsWwwAuthMetadataWriter', (): void => {
         `as_uri="${asUri}", realm="http://example.com/"`,
     });
   });
+
+  it('describes the target but uses the storage of the authorization target as realm.', async(): Promise<void> => {
+    writer = new LwsWwwAuthMetadataWriter(asUri, storageStrategy, undefined, 'http://example.com/');
+    storageStrategy.getStorageIdentifier.mockResolvedValueOnce({ path: 'http://example.com/alice/' });
+    const metadata = new RepresentationMetadata({
+      [HTTP.statusCodeNumber]: '401',
+      [SOLID_ERROR.target]: 'http://example.com/.notifications/lws/',
+      [SOLID_ERROR.authorizationTarget]: 'http://example.com/alice/notes/',
+    });
+    await expect(writer.handle({ response, metadata })).resolves.toBeUndefined();
+    expect(response.getHeaders()).toEqual({
+      'www-authenticate':
+        'Bearer resource_metadata="http://example.com/.well-known/oauth-protected-resource/.notifications/lws/", ' +
+        `as_uri="${asUri}", realm="http://example.com/alice/"`,
+    });
+    expect(storageStrategy.getStorageIdentifier).toHaveBeenLastCalledWith({ path: 'http://example.com/alice/notes/' });
+  });
 });

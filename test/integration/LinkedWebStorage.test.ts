@@ -584,6 +584,28 @@ describe.each(combinations)('A %s server using %s', (protocol, authorization, pr
       expect(response.headers.get('location')).toBe(subscription);
     });
 
+    it('challenges anonymous subscriptions with the metadata of the endpoint.', async(): Promise<void> => {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/lws+json' },
+        body: JSON.stringify({ type: 'WebhookSubscription', topic: [ container ], inbox }),
+      });
+      expect(response.status).toBe(401);
+      // The storage link tells the client which storage to get an access token for
+      expect(getLinks(response)).toContain(`<${baseUrl}>; rel="${LWS}storage"`);
+
+      // RFC 9728, §3.3: the resource in the metadata needs to be the URL the client requested
+      const challenge = response.headers.get('www-authenticate')!;
+      const metadataUrl = /resource_metadata="([^"]+)"/u.exec(challenge)![1];
+      expect(metadataUrl).toBe(`${baseUrl}.well-known/oauth-protected-resource/.notifications/lws/`);
+      const metadata = await fetch(metadataUrl);
+      expect(metadata.status).toBe(200);
+      await expect(metadata.json()).resolves.toEqual(expect.objectContaining({
+        resource: endpoint,
+        authorization_servers: [ baseUrl ],
+      }));
+    });
+
     it('rejects subscriptions for topics the subscriber can not read.', async(): Promise<void> => {
       const bobToken = await getAccessToken(bob);
       const response = await fetch(endpoint, {

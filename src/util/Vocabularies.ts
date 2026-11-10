@@ -159,6 +159,9 @@ export const SOLID_ERROR = createVocabulary(
   'errorResponse',
   'stack',
   'target',
+  // A resource, other than the target, whose storage the client needs an access token for.
+  // Used when the target is a server-wide service outside every storage, such as the LWS subscription endpoint.
+  'authorizationTarget',
 );
 
 // Used to pass parameters to error templates

@@ -150,6 +150,17 @@ describe('A LwsLinkMetadataWriter', (): void => {
     expect(links()).toEqual([ `<http://example.com/>; rel="${LWS.storage}"` ]);
   });
 
+  it('uses the storage of the authorization target for error responses that have one.', async(): Promise<void> => {
+    storageStrategy.getStorageIdentifier.mockResolvedValueOnce({ path: 'http://example.com/alice/' });
+    const metadata = new RepresentationMetadata({
+      [SOLID_ERROR.target]: 'http://example.com/.notifications/lws/',
+      [SOLID_ERROR.authorizationTarget]: 'http://example.com/alice/notes/',
+    });
+    await expect(writer.handle({ response, metadata })).resolves.toBeUndefined();
+    expect(storageStrategy.getStorageIdentifier).toHaveBeenLastCalledWith({ path: 'http://example.com/alice/notes/' });
+    expect(links()).toEqual([ `<http://example.com/alice/>; rel="${LWS.storage}"` ]);
+  });
+
   it('only adds the storage link for the storage description.', async(): Promise<void> => {
     const metadata = new RepresentationMetadata({ path: 'http://example.com/' }, 'application/lws+cid');
     await expect(writer.handle({ response, metadata })).resolves.toBeUndefined();

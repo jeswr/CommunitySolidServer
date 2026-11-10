@@ -227,8 +227,9 @@ describe('A LwsSubscriptionHttpHandler', (): void => {
       const error: UnauthorizedHttpError = await handler.handle({ request, response, operation })
         .catch((err: unknown): any => err);
       expect(error).toBeInstanceOf(UnauthorizedHttpError);
-      // The topic is the target, so the response refers to the storage of the topic
-      expect(error.metadata.get(SOLID_ERROR.terms.target)?.value).toBe(topic);
+      // The endpoint stays the target, but the response refers to the storage of the topic
+      expect(error.metadata.get(SOLID_ERROR.terms.target)).toBeUndefined();
+      expect(error.metadata.get(SOLID_ERROR.terms.authorizationTarget)?.value).toBe(topic);
       expect(storage.add).toHaveBeenCalledTimes(0);
     });
 

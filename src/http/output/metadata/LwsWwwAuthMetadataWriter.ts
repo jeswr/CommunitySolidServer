@@ -16,6 +16,7 @@ import { MetadataWriter } from './MetadataWriter';
  * for the requested resource."
  * Next to `resource_metadata`, the challenge contains the `as_uri` parameter, identifying the authorization server,
  * the `realm` parameter, identifying the storage that contains the target resource,
+ * or, if the error has an authorization target, the storage the client needs an access token for,
  * and an `error` parameter in case an invalid token was presented.
  * The `as_uri` and `realm` parameters are kept for clients of earlier drafts.
  *
@@ -64,12 +65,15 @@ export class LwsWwwAuthMetadataWriter extends MetadataWriter {
       params.push(`resource_metadata="${getProtectedResourceMetadataUrl(this.baseUrl, target, this.metadataPath)}"`);
     }
     params.push(`as_uri="${this.asUri}"`);
-    if (target) {
+    // The resource whose storage the client needs a token for, which differs from the target
+    // for server-wide services such as the LWS subscription endpoint
+    const storageTarget = metadata.get(SOLID_ERROR.terms.authorizationTarget)?.value ?? target;
+    if (storageTarget) {
       try {
-        const storage = await this.storageStrategy.getStorageIdentifier({ path: target });
+        const storage = await this.storageStrategy.getStorageIdentifier({ path: storageTarget });
         params.push(`realm="${storage.path}"`);
       } catch {
-        this.logger.debug(`No storage found for ${target}`);
+        this.logger.debug(`No storage found for ${storageTarget}`);
       }
     }
     const error = metadata.get(SOLID_ERROR.terms.bearerError)?.value;
