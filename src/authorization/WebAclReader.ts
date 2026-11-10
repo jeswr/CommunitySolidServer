@@ -5,6 +5,7 @@ import type { ResourceIdentifier } from '../http/representation/ResourceIdentifi
 import { getLoggerFor } from '../logging/LogUtil';
 import type { ResourceSet } from '../storage/ResourceSet';
 import type { ResourceStore } from '../storage/ResourceStore';
+import { PromiseCache } from '../util/caching/PromiseCache';
 import { INTERNAL_QUADS } from '../util/ContentTypes';
 import { createErrorMessage } from '../util/errors/ErrorUtil';
 import { ForbiddenHttpError } from '../util/errors/ForbiddenHttpError';
@@ -45,6 +46,13 @@ export class WebAclReader extends PermissionReader {
   private readonly identifierStrategy: IdentifierStrategy;
   private readonly accessChecker: AccessChecker;
 
+  /**
+   * Caches effective ACL lookups and parsed ACL data by identifier object.
+   * Weak keys prevent reuse across requests.
+   */
+  private readonly aclCache: PromiseCache<ResourceIdentifier, ResourceIdentifier>;
+  private readonly storeCache: PromiseCache<ResourceIdentifier, Store>;
+
   public constructor(
     aclStrategy: AuxiliaryIdentifierStrategy,
     resourceSet: ResourceSet,
@@ -58,6 +66,12 @@ export class WebAclReader extends PermissionReader {
     this.aclStore = aclStore;
     this.identifierStrategy = identifierStrategy;
     this.accessChecker = accessChecker;
+    this.aclCache = new PromiseCache<ResourceIdentifier, ResourceIdentifier>(
+      new WeakMap<ResourceIdentifier, Promise<ResourceIdentifier>>(),
+    );
+    this.storeCache = new PromiseCache<ResourceIdentifier, Store>(
+      new WeakMap<ResourceIdentifier, Promise<Store>>(),
+    );
   }
 
   /**
@@ -137,7 +151,10 @@ export class WebAclReader extends PermissionReader {
 
     for (const target of targets) {
       this.logger.debug(`Searching ACL data for ${target.path}`);
-      const aclIdentifier = await this.getAclRecursive(target);
+      const aclIdentifier = await this.aclCache.getOrCreate(
+        target,
+        async(): Promise<ResourceIdentifier> => this.getAclRecursive(target),
+      );
       aclMap.add(aclIdentifier, target);
     }
 
@@ -189,17 +206,10 @@ export class WebAclReader extends PermissionReader {
     const result = new Map<Store, ResourceIdentifier[]>();
     for (const [ aclIdentifier, matchedTargets ] of map.entrySets()) {
       const subject = this.aclStrategy.getSubjectIdentifier(aclIdentifier);
-      this.logger.debug(`Trying to read the ACL document ${aclIdentifier.path}`);
-      let contents: Store;
-      try {
-        const data = await this.aclStore.getRepresentation(aclIdentifier, { type: { [INTERNAL_QUADS]: 1 }});
-        contents = await readableToQuads(data.data);
-      } catch (error: unknown) {
-        // Something is wrong with the server if we can't read the resource
-        const message = `Error reading ACL resource ${aclIdentifier.path}: ${createErrorMessage(error)}`;
-        this.logger.error(message);
-        throw new InternalServerError(message, { cause: error });
-      }
+      const contents = await this.storeCache.getOrCreate(
+        aclIdentifier,
+        async(): Promise<Store> => this.readAclData(aclIdentifier),
+      );
 
       // SubjectIdentifiers are those that match the subject identifier of the found ACL document (so max 1).
       // Due to how the effective ACL document is found, all other identifiers must be (transitive) children.
@@ -219,6 +229,20 @@ export class WebAclReader extends PermissionReader {
       }
     }
     return result;
+  }
+
+  /** Reads and parses an ACL resource. */
+  private async readAclData(aclIdentifier: ResourceIdentifier): Promise<Store> {
+    this.logger.debug(`Trying to read the ACL document ${aclIdentifier.path}`);
+    try {
+      const data = await this.aclStore.getRepresentation(aclIdentifier, { type: { [INTERNAL_QUADS]: 1 }});
+      return await readableToQuads(data.data);
+    } catch (error: unknown) {
+      // Something is wrong with the server if we can't read the resource
+      const message = `Error reading ACL resource ${aclIdentifier.path}: ${createErrorMessage(error)}`;
+      this.logger.error(message);
+      throw new InternalServerError(message, { cause: error });
+    }
   }
 
   /**
