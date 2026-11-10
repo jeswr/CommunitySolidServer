@@ -11,6 +11,12 @@
     - `AsyncHandler` and utility handlers such as `WaterfallHandler`: [asynchronous-handlers](https://www.npmjs.com/package/asynchronous-handlers).
     - Utilities for creating vocabularies: [rdf-vocabulary](https://www.npmjs.com/package/rdf-vocabulary).
     - WAC/ACP authorization: [@solidlab/policy-engine](https://github.com/CommunitySolidServer/policy-engine).
+- The server can be configured to serve the [Linked Web Storage](https://w3c.github.io/lws-protocol/lws10-core/) protocol,
+  either on its own or together with the Solid Protocol,
+  using WAC or ACP for authorization.
+  This includes container pagination, access requests and grants, webhook notifications,
+  recursive deletes, and problem details for errors.
+  See the [documentation](https://communitysolidserver.github.io/CommunitySolidServer/latest/usage/linked-web-storage/).
 
 ### Data migration
 
@@ -28,6 +34,8 @@ The following changes pertain to the imports in the default configs:
 - There is a new import option for `storage/middleware`: `cache.json`, which adds caching for backend resources.
   All default configurations have been changed to use that option.
   Servers using worker threads can not use this option.
+- There are new `lws.json`, `lws-acp.json`, `solid-lws.json`, and `solid-lws-acp.json` configurations,
+  and new `lws` and `solid-lws` options for several components. Existing configurations are not affected.
 
 The following changes are relevant for v7 custom configs that replaced certain features.
 

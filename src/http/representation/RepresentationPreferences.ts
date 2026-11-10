@@ -20,6 +20,12 @@ export type ValuePreferences = {[key: string ]: number };
 export type ValuePreference = { value: string; weight: number };
 
 /**
+ * Preferred media ranges per profile URI, as used in {@link RepresentationPreferences}.
+ */
+// eslint-disable-next-line @typescript-eslint/consistent-indexed-object-style
+export type ProfilePreferences = {[profile: string]: ValuePreferences };
+
+/**
  * Contains preferences along multiple content negotiation dimensions.
  *
  * All dimensions are optional for ease of constructing; either `undefined`
@@ -31,6 +37,13 @@ export interface RepresentationPreferences {
   datetime?: ValuePreferences;
   encoding?: ValuePreferences;
   language?: ValuePreferences;
+  /**
+   * The media ranges of the `type` preferences that request a specific profile (RFC 6906)
+   * through their `profile` parameter, grouped by profile URI.
+   * For example, `Accept: text/turtle; profile="https://example.com/p"`
+   * results in `{ 'https://example.com/p': { 'text/turtle': 1 }}`.
+   */
+  profiles?: ProfilePreferences;
   // `start` can be negative and implies the last X of a stream
   range?: { unit: string; parts: { start: number; end?: number }[] };
 }

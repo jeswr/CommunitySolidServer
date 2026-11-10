@@ -1,0 +1,136 @@
+import 'jest-rdf';
+import type { Quad } from '@rdfjs/types';
+import { DataFactory } from 'n3';
+import { BasicRepresentation } from '../../../../src/http/representation/BasicRepresentation';
+import type { Patch } from '../../../../src/http/representation/Patch';
+import type { Representation } from '../../../../src/http/representation/Representation';
+import { LinksetMapper } from '../../../../src/storage/conversion/LinksetMapper';
+import { LinksetPatcher } from '../../../../src/storage/patch/LinksetPatcher';
+import { ConflictHttpError } from '../../../../src/util/errors/ConflictHttpError';
+import { InternalServerError } from '../../../../src/util/errors/InternalServerError';
+import { UnprocessableEntityHttpError } from '../../../../src/util/errors/UnprocessableEntityHttpError';
+import { SingleRootIdentifierStrategy } from '../../../../src/util/identifiers/SingleRootIdentifierStrategy';
+import { DC, LDP, RDF } from '../../../../src/util/Vocabularies';
+import { SimpleSuffixStrategy } from '../../../util/SimpleSuffixStrategy';
+import { arrayifyStream } from '../../../../src/util/StreamUtil';
+
+function getPatch(body: unknown, contentType = 'application/merge-patch+json'): Patch {
+  return new BasicRepresentation(JSON.stringify(body), contentType);
+}
+
+describe('A LinksetPatcher', (): void => {
+  const subject = 'http://test.com/foo';
+  const identifier = { path: 'http://test.com/foo.meta' };
+  const metadataStrategy = new SimpleSuffixStrategy('.meta');
+  const mapper = new LinksetMapper(metadataStrategy, new SingleRootIdentifierStrategy('http://test.com/'));
+  const original = [
+    DataFactory.quad(DataFactory.namedNode(subject), RDF.terms.type, LDP.terms.Resource),
+    DataFactory.quad(DataFactory.namedNode(subject), RDF.terms.type, DataFactory.namedNode('http://example.com/Old')),
+    DataFactory.quad(DataFactory.namedNode(subject), DC.terms.modified, DataFactory.literal('2024-01-01T00:00:00Z')),
+  ];
+  let patch: Patch;
+  let representation: Representation;
+  let patcher: LinksetPatcher;
+
+  beforeEach(async(): Promise<void> => {
+    patch = getPatch({ linkset: [{ anchor: subject, type: [{ href: 'http://example.com/New' }]}]});
+    representation = new BasicRepresentation(original, identifier, 'internal/quads');
+    patcher = new LinksetPatcher(metadataStrategy, mapper);
+  });
+
+  describe('canHandle', (): void => {
+    it('accepts JSON Patch and JSON Merge Patch documents on linkset resources.', async(): Promise<void> => {
+      await expect(patcher.canHandle({ identifier, patch, representation })).resolves.toBeUndefined();
+      patch = getPatch([], 'application/json-patch+json');
+      await expect(patcher.canHandle({ identifier, patch, representation })).resolves.toBeUndefined();
+    });
+
+    it('rejects other patch types.', async(): Promise<void> => {
+      patch = getPatch({}, 'application/sparql-update');
+      await expect(patcher.canHandle({ identifier, patch, representation }))
+        .rejects.toThrow('Only JSON Patch and JSON Merge Patch documents are supported.');
+    });
+
+    it('rejects other resources.', async(): Promise<void> => {
+      await expect(patcher.canHandle({ identifier: { path: subject }, patch, representation }))
+        .rejects.toThrow('Only linkset resources are supported.');
+    });
+  });
+
+  describe('handle', (): void => {
+    it('applies the patch to the linkset and converts the result back to metadata.', async(): Promise<void> => {
+      const result = await patcher.handle({ identifier, patch, representation });
+      expect(result.metadata.identifier.value).toBe(identifier.path);
+      expect(result.metadata.contentType).toBe('internal/quads');
+      const quads = await arrayifyStream<Quad>(result.data);
+      expect(quads).toEqualRdfQuadArray([
+        original[0],
+        original[2],
+        DataFactory.quad(DataFactory.namedNode(subject), RDF.terms.type, DataFactory.namedNode('http://example.com/New')),
+      ]);
+    });
+
+    it('applies JSON Patch documents to the linkset as it is presented.', async(): Promise<void> => {
+      patch = getPatch([
+        { op: 'test', path: '/linkset/0/anchor', value: subject },
+        { op: 'test', path: '/linkset/0/type/1/href', value: 'http://example.com/Old' },
+        { op: 'replace', path: '/linkset/0/type/1/href', value: 'http://example.com/New' },
+      ], 'application/json-patch+json');
+      const result = await patcher.handle({ identifier, patch, representation });
+      const quads = await arrayifyStream<Quad>(result.data);
+      expect(quads).toEqualRdfQuadArray([
+        original[0],
+        original[2],
+        DataFactory.quad(DataFactory.namedNode(subject), RDF.terms.type, DataFactory.namedNode('http://example.com/New')),
+      ]);
+    });
+
+    it('rejects JSON Patch documents with a failing test.', async(): Promise<void> => {
+      patch = getPatch([{ op: 'test', path: '/linkset/0/anchor', value: 'http://test.com/other' }], 'application/json-patch+json');
+      await expect(patcher.handle({ identifier, patch, representation })).rejects.toThrow(ConflictHttpError);
+    });
+
+    it('errors if the linkset does not exist.', async(): Promise<void> => {
+      await expect(patcher.handle({ identifier, patch })).rejects.toThrow(ConflictHttpError);
+      await expect(patcher.handle({ identifier, patch }))
+        .rejects.toThrow('Linkset resources can not be created directly.');
+    });
+
+    it('errors if the representation is not a quad stream.', async(): Promise<void> => {
+      representation = new BasicRepresentation('', identifier, 'text/turtle');
+      await expect(patcher.handle({ identifier, patch, representation })).rejects.toThrow(InternalServerError);
+    });
+
+    it('rejects links with a different anchor.', async(): Promise<void> => {
+      patch = getPatch({ linkset: [
+        { anchor: subject },
+        { anchor: 'http://test.com/other', type: [{ href: 'http://example.com/New' }]},
+      ]});
+      const result = patcher.handle({ identifier, patch, representation });
+      await expect(result).rejects.toThrow(ConflictHttpError);
+      await expect(result).rejects.toThrow(`This linkset can only contain links with anchor ${subject}.`);
+    });
+
+    it('rejects patches that change the up link.', async(): Promise<void> => {
+      patch = getPatch([
+        { op: 'add', path: '/linkset/0/up', value: [{ href: 'http://test.com/other/' }]},
+      ], 'application/json-patch+json');
+      await expect(patcher.handle({ identifier, patch, representation }))
+        .rejects.toThrow('Moving resources by changing their up link is not supported.');
+    });
+
+    it('accepts patches that keep the up link.', async(): Promise<void> => {
+      patch = getPatch([
+        { op: 'test', path: '/linkset/0/up', value: [{ href: 'http://test.com/' }]},
+        { op: 'add', path: '/linkset/0/up/-', value: { href: 'http://test.com/' }},
+      ], 'application/json-patch+json');
+      await expect(patcher.handle({ identifier, patch, representation })).resolves.toBeDefined();
+    });
+
+    it('rejects patches resulting in an invalid linkset.', async(): Promise<void> => {
+      patch = getPatch({ linkset: 'invalid' });
+      await expect(patcher.handle({ identifier, patch, representation }))
+        .rejects.toThrow(UnprocessableEntityHttpError);
+    });
+  });
+});

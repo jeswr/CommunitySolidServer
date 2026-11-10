@@ -30,6 +30,7 @@
   "NotificationChannelType",
   "Omit",
   "PermissionMap",
+  "ProfilePreferences",
   "Promise",
   "Readable",
   "Readonly",

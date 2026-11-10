@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { NamedNode, Quad, Term } from '@rdfjs/types';
+import type { Literal, NamedNode, Quad, Term } from '@rdfjs/types';
 import { DataFactory } from 'n3';
 import { getLoggerFor } from 'global-logger-factory';
 import type { AuxiliaryStrategy } from '../http/auxiliary/AuxiliaryStrategy';
@@ -142,9 +142,15 @@ export class DataAccessorBasedStore implements ResourceStore {
       }
 
       if (isMetadata) {
+        const modified = metadata.get(DC.terms.modified);
         metadata = new RepresentationMetadata(this.metadataStrategy.getAuxiliaryIdentifier(identifier));
         addResourceMetadata(metadata, false);
         metadata.add(RDF.terms.type, SOLID_META.terms.DescriptionResource);
+        // The description changes whenever the described resource changes, so share its modification date.
+        // This makes it possible to generate ETags for description resources.
+        if (modified) {
+          metadata.add(DC.terms.modified, modified as Literal, SOLID_META.terms.ResponseMetadata);
+        }
       }
 
       metadata.addQuad(DC.terms.namespace, PREFERRED_PREFIX_TERM, 'dc', SOLID_META.terms.ResponseMetadata);
@@ -264,6 +270,10 @@ export class DataAccessorBasedStore implements ResourceStore {
   public async modifyResource(identifier: ResourceIdentifier, patch: Patch, conditions?: Conditions): Promise<never> {
     if (conditions) {
       let metadata: RepresentationMetadata | undefined;
+      // Conditions on description resources are evaluated against the described resource
+      if (this.metadataStrategy.isAuxiliaryIdentifier(identifier)) {
+        identifier = this.metadataStrategy.getSubjectIdentifier(identifier);
+      }
       try {
         metadata = await this.accessor.getMetadata(identifier);
       } catch (error: unknown) {

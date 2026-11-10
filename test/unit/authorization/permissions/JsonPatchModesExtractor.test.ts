@@ -1,0 +1,58 @@
+import { PERMISSIONS } from '@solidlab/policy-engine';
+import { JsonPatchModesExtractor } from '../../../../src/authorization/permissions/JsonPatchModesExtractor';
+import type { AccessMap } from '../../../../src/authorization/permissions/Permissions';
+import type { Operation } from '../../../../src/http/Operation';
+import { BasicRepresentation } from '../../../../src/http/representation/BasicRepresentation';
+import type { ResourceIdentifier } from '../../../../src/http/representation/ResourceIdentifier';
+import type { ResourceSet } from '../../../../src/storage/ResourceSet';
+import { NotImplementedHttpError } from '../../../../src/util/errors/NotImplementedHttpError';
+import { IdentifierSetMultiMap } from '../../../../src/util/map/IdentifierMap';
+import { compareMaps } from '../../../util/Util';
+
+describe('A JsonPatchModesExtractor', (): void => {
+  const target: ResourceIdentifier = { path: 'http://example.com/foo' };
+  let operation: Operation;
+  let resourceSet: jest.Mocked<ResourceSet>;
+  let extractor: JsonPatchModesExtractor;
+
+  function getMap(modes: string[]): AccessMap {
+    return new IdentifierSetMultiMap(modes.map((mode): [ResourceIdentifier, string] => [ target, mode ]));
+  }
+
+  beforeEach(async(): Promise<void> => {
+    operation = {
+      method: 'PATCH',
+      body: new BasicRepresentation('{}', 'application/merge-patch+json'),
+      preferences: {},
+      target,
+    };
+
+    resourceSet = {
+      hasResource: jest.fn().mockResolvedValue(true),
+    };
+
+    extractor = new JsonPatchModesExtractor(resourceSet);
+  });
+
+  it('can only handle JSON Patch and JSON Merge Patch documents.', async(): Promise<void> => {
+    await expect(extractor.canHandle(operation)).resolves.toBeUndefined();
+    operation.body = new BasicRepresentation('[]', 'application/json-patch+json');
+    await expect(extractor.canHandle(operation)).resolves.toBeUndefined();
+
+    operation.body = new BasicRepresentation('{}', 'application/json');
+    await expect(extractor.canHandle(operation)).rejects.toThrow(NotImplementedHttpError);
+  });
+
+  it('requires read and write access.', async(): Promise<void> => {
+    compareMaps(await extractor.handle(operation), getMap([ PERMISSIONS.Read, PERMISSIONS.Modify ]));
+    expect(resourceSet.hasResource).toHaveBeenLastCalledWith(target);
+  });
+
+  it('also requires create access if the resource does not exist.', async(): Promise<void> => {
+    resourceSet.hasResource.mockResolvedValueOnce(false);
+    compareMaps(
+      await extractor.handle(operation),
+      getMap([ PERMISSIONS.Read, PERMISSIONS.Modify, PERMISSIONS.Create ]),
+    );
+  });
+});

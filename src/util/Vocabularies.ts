@@ -21,6 +21,7 @@ export const AUTH = createVocabulary(
 export const DC = createVocabulary(
   'http://purl.org/dc/terms/',
   'description',
+  'format',
   'modified',
   'title',
 );
@@ -57,6 +58,19 @@ export const LDP = createVocabulary(
   'BasicContainer',
   'Container',
   'Resource',
+);
+
+export const LWS = createVocabulary(
+  'https://www.w3.org/ns/lws#',
+  'items',
+  'storage',
+  'totalItems',
+
+  'Container',
+  'DataResource',
+  'OpenIdProvider',
+  'Storage',
+  'StorageResource',
 );
 
 export const MA = createVocabulary(
@@ -111,6 +125,11 @@ export const RDFS = createVocabulary(
   'label',
 );
 
+export const SCHEMA = createVocabulary(
+  'http://schema.org/',
+  'size',
+);
+
 export const SOLID = createVocabulary(
   'http://www.w3.org/ns/solid/terms#',
   'deletes',
@@ -134,10 +153,15 @@ export const SOLID_ERROR = createVocabulary(
   'disallowedMethod',
   // Boolean value used to indicate that no response body should be returned for this error
   'emptyBody',
+  // The OAuth 2.0 error code of a failed bearer token validation, as used in the WWW-Authenticate header
+  'bearerError',
   'errorCode',
   'errorResponse',
   'stack',
   'target',
+  // A resource, other than the target, whose storage the client needs an access token for.
+  // Used when the target is a server-wide service outside every storage, such as the LWS subscription endpoint.
+  'authorizationTarget',
 );
 
 // Used to pass parameters to error templates
@@ -152,6 +176,8 @@ export const SOLID_HTTP = createVocabulary(
   'accountCookie',
   // When the above cookie expires, expects an ISO date string
   'accountCookieExpiration',
+  // Set to `infinity` when the request has a `Depth: infinity` header
+  'depth',
   // Unit, start, and end are used for range headers
   'end',
   'location',
@@ -194,6 +220,7 @@ export const XSD = createVocabulary(
   'dateTime',
   'duration',
   'integer',
+  'long',
   'string',
 );
 
