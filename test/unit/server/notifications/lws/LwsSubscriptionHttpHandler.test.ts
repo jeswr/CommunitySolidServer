@@ -335,8 +335,27 @@ describe('A LwsSubscriptionHttpHandler', (): void => {
     it('throws a 404 if the subscription belongs to a different agent.', async(): Promise<void> => {
       credentials = { agent: { webId: 'http://example.com/bob/profile/card#me' }};
       await expect(handler.handle({ request, response, operation })).rejects.toThrow(NotFoundHttpError);
+    });
+
+    it.each([ 'GET', 'HEAD', 'DELETE' ])('challenges %s requests without an agent.', async(method): Promise<void> => {
+      operation.method = method;
       credentials = {};
-      await expect(handler.handle({ request, response, operation })).rejects.toThrow(NotFoundHttpError);
+      const error: UnauthorizedHttpError = await handler.handle({ request, response, operation })
+        .catch((err: unknown): any => err);
+      expect(error).toBeInstanceOf(UnauthorizedHttpError);
+      // The subscription stays the target, but the response refers to the storage of its topics
+      expect(error.metadata.get(SOLID_ERROR.terms.target)).toBeUndefined();
+      expect(error.metadata.get(SOLID_ERROR.terms.authorizationTarget)?.value).toBe(topic);
+      expect(storage.delete).toHaveBeenCalledTimes(0);
+    });
+
+    it('challenges requests without an agent for subscriptions that do not exist.', async(): Promise<void> => {
+      storage.get.mockResolvedValueOnce(undefined);
+      credentials = {};
+      const error: UnauthorizedHttpError = await handler.handle({ request, response, operation })
+        .catch((err: unknown): any => err);
+      expect(error).toBeInstanceOf(UnauthorizedHttpError);
+      expect(error.metadata.get(SOLID_ERROR.terms.authorizationTarget)).toBeUndefined();
     });
 
     it('deletes the subscription.', async(): Promise<void> => {

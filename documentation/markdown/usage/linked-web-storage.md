@@ -189,6 +189,8 @@ Its subscription endpoint is `/.notifications/lws/`, which is advertised in the 
   Subscriptions to a container also cover all resources contained in it, recursively.
 * A `GET` request on the endpoint lists the subscriptions of the authenticated subscriber,
   and a subscription can be read and deleted by its subscriber.
+  A request on a subscription without an access token gets the same kind of 401 challenge,
+  and a request by another agent gets a 404.
 * Notifications about creating, updating, and deleting resources are sent to the `inbox` of the subscription,
   but only if the subscriber can still read the resource when the change happens.
   The notifications do not contain the agent that made the change.

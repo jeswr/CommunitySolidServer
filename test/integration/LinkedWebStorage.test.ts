@@ -635,6 +635,18 @@ describe.each(combinations)('A %s server using %s', (protocol, authorization, pr
       expect(delivery.body.activity.actor).toBeUndefined();
     });
 
+    it('challenges anonymous requests on a subscription.', async(): Promise<void> => {
+      for (const method of [ 'GET', 'HEAD', 'DELETE' ]) {
+        const response = await fetch(subscription, { method });
+        expect(response.status).toBe(401);
+        const challenge = response.headers.get('www-authenticate')!;
+        expect(challenge).toContain(
+          `resource_metadata="${baseUrl}.well-known/oauth-protected-resource/${subscription.slice(baseUrl.length)}"`,
+        );
+        expect(getLinks(response)).toContain(`<${baseUrl}>; rel="${LWS}storage"`);
+      }
+    });
+
     it('lists and deletes subscriptions.', async(): Promise<void> => {
       let response = await fetch(endpoint, { headers: { authorization: `Bearer ${aliceToken}` }});
       expect(response.status).toBe(200);

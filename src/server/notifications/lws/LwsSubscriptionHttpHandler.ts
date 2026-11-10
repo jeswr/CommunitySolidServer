@@ -107,6 +107,9 @@ export class LwsSubscriptionHttpHandler extends OperationHttpHandler {
 
     const subscription = await this.storage.get(target.path);
     if (!subscription || (subscription.webId && subscription.webId !== credentials.agent?.webId)) {
+      if (!credentials.agent?.webId) {
+        throw this.createChallenge(subscription);
+      }
       throw new NotFoundHttpError();
     }
     if (method === 'GET' || method === 'HEAD') {
@@ -200,6 +203,22 @@ export class LwsSubscriptionHttpHandler extends OperationHttpHandler {
         throw error;
       }
     }
+  }
+
+  /**
+   * Creates the error for a request without an identified agent on a subscription
+   * that is not anonymous, or does not exist.
+   * Such a request is from an unknown requester, which gets a 401 with a challenge, not a 404.
+   * As for subscriptions, the challenge describes the requested resource,
+   * while the response points to the storage of the topics, for which the client needs an access token.
+   */
+  private createChallenge(subscription?: LwsSubscription): UnauthorizedHttpError {
+    const error = new UnauthorizedHttpError('Only the subscriber can access a subscription.');
+    // Subscriptions always have topics, which are all in the same storage
+    if (subscription) {
+      error.metadata.add(SOLID_ERROR.terms.authorizationTarget, DataFactory.namedNode(subscription.topic[0]));
+    }
+    return error;
   }
 
   /**
