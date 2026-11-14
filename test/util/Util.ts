@@ -22,6 +22,7 @@ const portNames = [
   'LpdHandlerWithoutAuth',
   'Middleware',
   'N3Patch',
+  'NotificationChannelSweep',
   'OidcCache',
   'PermissionTable',
   'PodCreation',

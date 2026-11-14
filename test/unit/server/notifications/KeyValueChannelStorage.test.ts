@@ -145,6 +145,11 @@ describe('A KeyValueChannelStorage', (): void => {
       await expect(storage.update(newChannel)).rejects
         .toThrow(`Trying to update ${topic} which is not a NotificationChannel.`);
     });
+
+    it('does not store a channel that no longer exists.', async(): Promise<void> => {
+      await expect(storage.update(channel)).resolves.toBeUndefined();
+      expect(internalMap.size).toBe(0);
+    });
   });
 
   describe('#delete', (): void => {
