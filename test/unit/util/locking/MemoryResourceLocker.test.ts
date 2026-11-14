@@ -68,4 +68,12 @@ describe('A MemoryResourceLocker', (): void => {
     });
     expect(results).toEqual([ 2, 3, 1 ]);
   });
+
+  it('rejects a queued acquisition that exceeds the configured timeout.', async(): Promise<void> => {
+    locker = new MemoryResourceLocker(10);
+    await locker.acquire(identifier);
+
+    await expect(locker.acquire(identifier)).rejects.toThrow(`async-lock timed out in queue ${identifier.path}`);
+    await expect(locker.release(identifier)).resolves.toBeUndefined();
+  });
 });

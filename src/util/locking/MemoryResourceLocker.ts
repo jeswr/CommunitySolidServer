@@ -17,22 +17,27 @@ export class MemoryResourceLocker implements ResourceLocker, SingleThreaded {
   private readonly locker: AsyncLock;
   private readonly unlockCallbacks: Record<string, () => void>;
 
-  public constructor() {
-    this.locker = new AsyncLock();
+  public constructor(timeout = 30_000, maxPending = 10_000) {
+    this.locker = new AsyncLock({ timeout, maxPending });
     this.unlockCallbacks = {};
   }
 
   public async acquire(identifier: ResourceIdentifier): Promise<void> {
     const { path } = identifier;
     this.logger.debug(`Acquiring lock for ${path}`);
-    return new Promise((resolve): void => {
+    return new Promise((resolve, reject): void => {
       this.locker.acquire(path, (done): void => {
         this.unlockCallbacks[path] = done;
         this.logger.debug(`Acquired lock for ${path}. ${this.getLockCount()} locks active.`);
         resolve();
-      }, (): void => {
-        delete this.unlockCallbacks[path];
-        this.logger.debug(`Released lock for ${path}. ${this.getLockCount()} active locks remaining.`);
+      }, (error): void => {
+        if (error) {
+          this.logger.warn(`Failed to acquire lock for ${path}: ${error.message}`);
+          reject(error);
+        } else {
+          delete this.unlockCallbacks[path];
+          this.logger.debug(`Released lock for ${path}. ${this.getLockCount()} active locks remaining.`);
+        }
       });
     });
   }
