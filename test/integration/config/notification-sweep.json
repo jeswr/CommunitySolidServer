@@ -2,10 +2,10 @@
   "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@solid/community-server/^7.0.0/components/context.jsonld",
   "@graph": [
     {
-      "comment": "Removes expired notification channels every 0.6 seconds.",
+      "comment": "Removes expired notification channels every 3 seconds. Sweeping more often made the file backend flaky on loaded Windows CI runners.",
       "@id": "urn:solid-server:default:SubscriptionSweeper",
       "@type": "KeyValueChannelSweeper",
-      "sweepInterval": 0.01,
+      "sweepInterval": 0.05,
       "jitter": 0
     }
   ]
